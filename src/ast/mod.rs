@@ -9,7 +9,18 @@ pub enum Expr<'ast, 'input> {
 pub enum Lit<'input> {
     Symbol(Symbol),
     Integer(i32),
-    Ident(&'input str),
+    Ident(Ident<'input>),
+}
+
+#[derive(Debug)]
+pub struct Ident<'input> {
+    inner: &'input str,
+}
+
+impl<'input> Ident<'input> {
+    pub fn new(inner: &'input str) -> Self {
+        Ident { inner }
+    }
 }
 
 #[derive(Debug)]
@@ -31,8 +42,8 @@ pub struct Closure<'ast, 'input> {
 #[derive(Debug)]
 pub enum Params<'input> {
     Zero,
-    One(Pat<'input>),
-    Two(Pat<'input>, Pat<'input>),
+    One(Pat<Ident<'input>>),
+    Two(Pat<Ident<'input>>, Pat<Ident<'input>>),
 }
 
 #[derive(Debug)]
@@ -64,14 +75,14 @@ impl<'ast, 'input> Closure<'ast, 'input> {
         }
     }
 
-    pub fn one(p1: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
+    pub fn one(p1: Pat<Ident<'input>>, body: &'ast Expr<'ast, 'input>) -> Self {
         Closure {
             params: Params::One(p1),
             body,
         }
     }
 
-    pub fn two(p1: Pat<'input>, p2: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
+    pub fn two(p1: Pat<Ident<'input>>, p2: Pat<Ident<'input>>, body: &'ast Expr<'ast, 'input>) -> Self {
         Closure {
             params: Params::Two(p1, p2),
             body,
@@ -80,7 +91,7 @@ impl<'ast, 'input> Closure<'ast, 'input> {
 }
 
 #[derive(Debug)]
-pub enum Pat<'input> {
-    Ident(&'input str),
-    Tuple(Vec<Pat<'input>>),
+pub enum Pat<Item> {
+    Item(Item),
+    Tuple(Vec<Pat<Item>>),
 }

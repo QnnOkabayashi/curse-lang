@@ -1,16 +1,16 @@
 use std::str::FromStr;
-use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl};
+use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl, Ident};
 use typed_arena::Arena;
 
 grammar<'ast>(arena: &'ast Arena<Expr<'ast, 'input>>);
 
-Ident: &'input str = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}";
+Ident: Ident<'input> = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}" => Ident::new(<>);
 
 Integer: i32 = r"[0-9]+" => i32::from_str(<>).unwrap();
 
-Pat: Pat<'input> = {
-    Ident => Pat::Ident(<>),
-    "(" <Comma<Pat>> ")" => Pat::Tuple(<>),
+Pat<Item>: Pat<Item> = {
+    Item => Pat::Item(<>),
+    "(" <Comma<Pat<Item>>> ")" => Pat::Tuple(<>),
 };
 
 Comma<T>: Vec<T> = <mut v:(<T> ",")*> <e:T?> => {
@@ -37,8 +37,8 @@ Lit: Lit<'input> = {
 
 Closure: Closure<'ast, 'input> = {
     "|" "|" <body:EndExpr> => Closure::zero(body),
-    "|" <p1:Pat> "|" <body:EndExpr> => Closure::one(p1, body),
-    "|" <p1:Pat> <p2:Pat> "|" <body:EndExpr> => Closure::two(p1, p2, body),
+    "|" <p1:Pat<Ident>> "|" <body:EndExpr> => Closure::one(p1, body),
+    "|" <p1:Pat<Ident>> <p2:Pat<Ident>> "|" <body:EndExpr> => Closure::two(p1, p2, body),
 };
 
 Term: &'ast Expr<'ast, 'input> = {
