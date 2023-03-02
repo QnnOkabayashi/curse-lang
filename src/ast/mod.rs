@@ -5,20 +5,6 @@ pub enum Expr<'ast, 'input> {
     Appl(Appl<'ast, 'input>),
 }
 
-impl<'ast, 'input> Expr<'ast, 'input> {
-    pub fn appl(
-        left: &'ast Expr<'ast, 'input>,
-        function: &'ast Expr<'ast, 'input>,
-        right: &'ast Expr<'ast, 'input>,
-    ) -> Self {
-        Self::Appl(Appl {
-            left,
-            function,
-            right,
-        })
-    }
-}
-
 #[derive(Debug)]
 pub enum Lit<'input> {
     Symbol(Symbol),
@@ -56,23 +42,37 @@ pub struct Appl<'ast, 'input> {
     right: &'ast Expr<'ast, 'input>,
 }
 
+impl<'ast, 'input> Appl<'ast, 'input> {
+    pub fn new(
+        left: &'ast Expr<'ast, 'input>,
+        function: &'ast Expr<'ast, 'input>,
+        right: &'ast Expr<'ast, 'input>,
+    ) -> Self {
+        Appl {
+            left,
+            function,
+            right,
+        }
+    }
+}
+
 impl<'ast, 'input> Closure<'ast, 'input> {
     pub fn zero(body: &'ast Expr<'ast, 'input>) -> Self {
-        Self {
+        Closure {
             params: Params::Zero,
             body,
         }
     }
 
     pub fn one(p1: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
-        Self {
+        Closure {
             params: Params::One(p1),
             body,
         }
     }
 
     pub fn two(p1: Pat<'input>, p2: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
-        Self {
+        Closure {
             params: Params::Two(p1, p2),
             body,
         }

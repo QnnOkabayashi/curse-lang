@@ -7,7 +7,6 @@ mod ast;
 mod error;
 
 // TODO:
-// Arena allocator
 // Spans on tokens
 // Custom errors
 // Top level items (fn, ...)
