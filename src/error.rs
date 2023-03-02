@@ -1,5 +1,5 @@
-use miette::{NamedSource, Diagnostic};
 use displaydoc::Display;
+use miette::{Diagnostic, NamedSource};
 use std::ops::Range;
 
 #[derive(Debug, Diagnostic, Display)]
@@ -42,18 +42,15 @@ impl From<LalrParseError<'_>> for ParseError {
         use lalrpop_util::ParseError::*;
 
         match value {
-            InvalidToken { location } => {
-                ParseError::InvalidToken(location)
-            }
-            UnrecognizedEOF { location, expected } => {
-                ParseError::UnrecognizedEOF(location)
-            }
-            UnrecognizedToken { token: (start, tok, end), expected } => {
-                ParseError::UnrecognizedToken(start..end)
-            }
-            ExtraToken { token: (start, tok, end) } => {
-                ParseError::UnrecognizedToken(start..end)
-            }
+            InvalidToken { location } => ParseError::InvalidToken(location),
+            UnrecognizedEOF { location, expected } => ParseError::UnrecognizedEOF(location),
+            UnrecognizedToken {
+                token: (start, tok, end),
+                expected,
+            } => ParseError::UnrecognizedToken(start..end),
+            ExtraToken {
+                token: (start, tok, end),
+            } => ParseError::UnrecognizedToken(start..end),
             User { error } => {
                 todo!()
             }
@@ -61,4 +58,4 @@ impl From<LalrParseError<'_>> for ParseError {
     }
 }
 
-// impl SourceErrors 
+// impl SourceErrors

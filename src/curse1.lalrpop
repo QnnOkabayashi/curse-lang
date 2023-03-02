@@ -1,7 +1,8 @@
 use std::str::FromStr;
 use crate::ast;
+use typed_arena::Arena;
 
-grammar;
+grammar<'ast>(arena: &'ast Arena<ast::Expr<'ast, 'input>>);
 
 Ident: &'input str = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}";
 
@@ -34,28 +35,28 @@ Lit: ast::Lit<'input> = {
     Ident => ast::Lit::Ident(<>),
 };
 
-Closure: ast::Closure<'input> = {
+Closure: ast::Closure<'ast, 'input> = {
     "|" "|" <body:EndExpr> => ast::Closure::zero(body),
     "|" <p1:Pat> "|" <body:EndExpr> => ast::Closure::one(p1, body),
     "|" <p1:Pat> <p2:Pat> "|" <body:EndExpr> => ast::Closure::two(p1, p2, body),
 };
 
-Term: ast::Expr<'input> = {
+Term: &'ast ast::Expr<'ast, 'input> = {
     "(" <EndExpr> ")",
-    Lit => ast::Expr::Lit(<>),
+    Lit => arena.alloc(ast::Expr::Lit(<>))
 };
 
-EndTerm: ast::Expr<'input> = {
+EndTerm: &'ast ast::Expr<'ast, 'input> = {
     Term,
-    Closure => ast::Expr::Closure(<>),
+    Closure => arena.alloc(ast::Expr::Closure(<>)),
 };
 
-Expr: ast::Expr<'input> = {
+Expr: &'ast ast::Expr<'ast, 'input> = {
     Term,
-    <p1:Expr> <f:Term> <p2:Term> => ast::Expr::appl(p1, f, p2),
+    <p1:Expr> <f:Term> <p2:Term> => arena.alloc(ast::Expr::appl(p1, f, p2)),
 };
 
-pub EndExpr: ast::Expr<'input> = {
+pub EndExpr: &'ast ast::Expr<'ast, 'input> = {
     EndTerm,
-    <p1:Expr> <f:Term> <p2:EndTerm> => ast::Expr::appl(p1, f, p2),
+    <p1:Expr> <f:Term> <p2:EndTerm> => arena.alloc(ast::Expr::appl(p1, f, p2)),
 };

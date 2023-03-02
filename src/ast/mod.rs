@@ -1,25 +1,29 @@
 #[derive(Debug)]
-pub enum Expr<'a> {
-    Lit(Lit<'a>),
-    Closure(Closure<'a>),
-    Appl(Appl<'a>),
+pub enum Expr<'ast, 'input> {
+    Lit(Lit<'input>),
+    Closure(Closure<'ast, 'input>),
+    Appl(Appl<'ast, 'input>),
 }
 
-impl<'a> Expr<'a> {
-    pub fn appl(left: Expr<'a>, function: Expr<'a>, right: Expr<'a>) -> Self {
+impl<'ast, 'input> Expr<'ast, 'input> {
+    pub fn appl(
+        left: &'ast Expr<'ast, 'input>,
+        function: &'ast Expr<'ast, 'input>,
+        right: &'ast Expr<'ast, 'input>,
+    ) -> Self {
         Self::Appl(Appl {
-            left: Box::new(left),
-            function: Box::new(function),
-            right: Box::new(right),
+            left,
+            function,
+            right,
         })
     }
 }
 
 #[derive(Debug)]
-pub enum Lit<'a> {
+pub enum Lit<'input> {
     Symbol(Symbol),
     Integer(i32),
-    Ident(&'a str),
+    Ident(&'input str),
 }
 
 #[derive(Debug)]
@@ -33,50 +37,50 @@ pub enum Symbol {
 }
 
 #[derive(Debug)]
-pub struct Closure<'a> {
-    pub params: Params<'a>,
-    pub body: Box<Expr<'a>>,
+pub struct Closure<'ast, 'input> {
+    params: Params<'input>,
+    body: &'ast Expr<'ast, 'input>,
 }
 
 #[derive(Debug)]
-pub enum Params<'a> {
+pub enum Params<'input> {
     Zero,
-    One(Pat<'a>),
-    Two(Pat<'a>, Pat<'a>),
+    One(Pat<'input>),
+    Two(Pat<'input>, Pat<'input>),
 }
 
 #[derive(Debug)]
-pub struct Appl<'a> {
-    pub left: Box<Expr<'a>>,
-    pub function: Box<Expr<'a>>,
-    pub right: Box<Expr<'a>>,
+pub struct Appl<'ast, 'input> {
+    left: &'ast Expr<'ast, 'input>,
+    function: &'ast Expr<'ast, 'input>,
+    right: &'ast Expr<'ast, 'input>,
 }
 
-impl<'a> Closure<'a> {
-    pub fn zero(body: Expr<'a>) -> Self {
+impl<'ast, 'input> Closure<'ast, 'input> {
+    pub fn zero(body: &'ast Expr<'ast, 'input>) -> Self {
         Self {
             params: Params::Zero,
-            body: Box::new(body),
+            body,
         }
     }
 
-    pub fn one(p1: Pat<'a>, body: Expr<'a>) -> Self {
+    pub fn one(p1: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
         Self {
             params: Params::One(p1),
-            body: Box::new(body),
+            body,
         }
     }
 
-    pub fn two(p1: Pat<'a>, p2: Pat<'a>, body: Expr<'a>) -> Self {
+    pub fn two(p1: Pat<'input>, p2: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
         Self {
             params: Params::Two(p1, p2),
-            body: Box::new(body),
+            body,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum Pat<'a> {
-    Ident(&'a str),
-    Tuple(Vec<Pat<'a>>),
+pub enum Pat<'input> {
+    Ident(&'input str),
+    Tuple(Vec<Pat<'input>>),
 }

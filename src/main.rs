@@ -1,5 +1,6 @@
 use lalrpop_util::lalrpop_mod;
 use miette::NamedSource;
+use typed_arena::Arena;
 
 lalrpop_mod!(pub curse1);
 mod ast;
@@ -7,25 +8,26 @@ mod error;
 
 // TODO:
 // Arena allocator
+// Spans on tokens
 // Custom errors
 // Top level items (fn, ...)
 // Syntax for types
 // Make it actually compile into an executable or be interpreted.
 
 fn main() -> miette::Result<()> {
-    let e = parse(_IN)?;
+    let arena = Arena::with_capacity(1024);
+    let input = _IN;
+    let e = curse1::EndExprParser::new()
+        .parse(&arena, input)
+        .map_err(|e| {
+            miette::Report::from(error::SourceErrors {
+                source: NamedSource::new("test", input.to_string()),
+                errors: vec![e.into()],
+            })
+        })?;
 
     println!("{e:#?}");
     Ok(())
-}
-
-fn parse(input: &str) -> miette::Result<ast::Expr<'_>> {
-    curse1::EndExprParser::new().parse(input).map_err(|e| {
-        error::SourceErrors {
-            source: NamedSource::new("test", input.to_string()),
-            errors: vec![e.into()],
-        }.into()
-    })
 }
 
 const _IN: &str = r#"

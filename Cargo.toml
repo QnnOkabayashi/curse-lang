@@ -11,3 +11,4 @@ displaydoc = "0.2.3"
 lalrpop-util = { version = "0.19.7", features = ["lexer"] }
 miette = { version = "5.5.0", features = ["fancy"] }
 regex = "1"
+typed-arena = "2.0.2"
