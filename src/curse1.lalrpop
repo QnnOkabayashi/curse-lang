@@ -1,0 +1,61 @@
+use std::str::FromStr;
+use crate::ast;
+
+grammar;
+
+Ident: &'input str = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}";
+
+Integer: i32 = r"[0-9]+" => i32::from_str(<>).unwrap();
+
+Pat: ast::Pat<'input> = {
+    Ident => ast::Pat::Ident(<>),
+    "(" <Comma<Pat>> ")" => ast::Pat::Tuple(<>),
+};
+
+Comma<T>: Vec<T> = <mut v:(<T> ",")*> <e:T?> => {
+    if let Some(e) = e {
+        v.push(e);
+    }
+    v
+};
+
+Symbol: ast::Symbol = {
+    "()" => ast::Symbol::Unit,
+    "+" => ast::Symbol::Plus,
+    "-" => ast::Symbol::Minus,
+    "*" => ast::Symbol::Times,
+    ".." => ast::Symbol::DotDot,
+    ";" => ast::Symbol::Semi,
+};
+
+Lit: ast::Lit<'input> = {
+    Symbol => ast::Lit::Symbol(<>),
+    Integer => ast::Lit::Integer(<>),
+    Ident => ast::Lit::Ident(<>),
+};
+
+Closure: ast::Closure<'input> = {
+    "|" "|" <body:EndExpr> => ast::Closure::zero(body),
+    "|" <p1:Pat> "|" <body:EndExpr> => ast::Closure::one(p1, body),
+    "|" <p1:Pat> <p2:Pat> "|" <body:EndExpr> => ast::Closure::two(p1, p2, body),
+};
+
+Term: ast::Expr<'input> = {
+    "(" <EndExpr> ")",
+    Lit => ast::Expr::Lit(<>),
+};
+
+EndTerm: ast::Expr<'input> = {
+    Term,
+    Closure => ast::Expr::Closure(<>),
+};
+
+Expr: ast::Expr<'input> = {
+    Term,
+    <p1:Expr> <f:Term> <p2:Term> => ast::Expr::appl(p1, f, p2),
+};
+
+pub EndExpr: ast::Expr<'input> = {
+    EndTerm,
+    <p1:Expr> <f:Term> <p2:EndTerm> => ast::Expr::appl(p1, f, p2),
+};

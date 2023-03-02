@@ -1,0 +1,13 @@
+[package]
+name = "curse"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+lalrpop = "0.19.7"
+
+[dependencies]
+displaydoc = "0.2.3"
+lalrpop-util = { version = "0.19.7", features = ["lexer"] }
+miette = { version = "5.5.0", features = ["fancy"] }
+regex = "1"
