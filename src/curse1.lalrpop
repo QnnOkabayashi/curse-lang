@@ -1,16 +1,16 @@
 use std::str::FromStr;
-use crate::ast;
+use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl};
 use typed_arena::Arena;
 
-grammar<'ast>(arena: &'ast Arena<ast::Expr<'ast, 'input>>);
+grammar<'ast>(arena: &'ast Arena<Expr<'ast, 'input>>);
 
 Ident: &'input str = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}";
 
 Integer: i32 = r"[0-9]+" => i32::from_str(<>).unwrap();
 
-Pat: ast::Pat<'input> = {
-    Ident => ast::Pat::Ident(<>),
-    "(" <Comma<Pat>> ")" => ast::Pat::Tuple(<>),
+Pat: Pat<'input> = {
+    Ident => Pat::Ident(<>),
+    "(" <Comma<Pat>> ")" => Pat::Tuple(<>),
 };
 
 Comma<T>: Vec<T> = <mut v:(<T> ",")*> <e:T?> => {
@@ -20,43 +20,43 @@ Comma<T>: Vec<T> = <mut v:(<T> ",")*> <e:T?> => {
     v
 };
 
-Symbol: ast::Symbol = {
-    "()" => ast::Symbol::Unit,
-    "+" => ast::Symbol::Plus,
-    "-" => ast::Symbol::Minus,
-    "*" => ast::Symbol::Times,
-    ".." => ast::Symbol::DotDot,
-    ";" => ast::Symbol::Semi,
+Symbol: Symbol = {
+    "()" => Symbol::Unit,
+    "+" => Symbol::Plus,
+    "-" => Symbol::Minus,
+    "*" => Symbol::Times,
+    ".." => Symbol::DotDot,
+    ";" => Symbol::Semi,
 };
 
-Lit: ast::Lit<'input> = {
-    Symbol => ast::Lit::Symbol(<>),
-    Integer => ast::Lit::Integer(<>),
-    Ident => ast::Lit::Ident(<>),
+Lit: Lit<'input> = {
+    Symbol => Lit::Symbol(<>),
+    Integer => Lit::Integer(<>),
+    Ident => Lit::Ident(<>),
 };
 
-Closure: ast::Closure<'ast, 'input> = {
-    "|" "|" <body:EndExpr> => ast::Closure::zero(body),
-    "|" <p1:Pat> "|" <body:EndExpr> => ast::Closure::one(p1, body),
-    "|" <p1:Pat> <p2:Pat> "|" <body:EndExpr> => ast::Closure::two(p1, p2, body),
+Closure: Closure<'ast, 'input> = {
+    "|" "|" <body:EndExpr> => Closure::zero(body),
+    "|" <p1:Pat> "|" <body:EndExpr> => Closure::one(p1, body),
+    "|" <p1:Pat> <p2:Pat> "|" <body:EndExpr> => Closure::two(p1, p2, body),
 };
 
-Term: &'ast ast::Expr<'ast, 'input> = {
+Term: &'ast Expr<'ast, 'input> = {
     "(" <EndExpr> ")",
-    Lit => arena.alloc(ast::Expr::Lit(<>))
+    Lit => arena.alloc(Expr::Lit(<>))
 };
 
-EndTerm: &'ast ast::Expr<'ast, 'input> = {
+EndTerm: &'ast Expr<'ast, 'input> = {
     Term,
-    Closure => arena.alloc(ast::Expr::Closure(<>)),
+    Closure => arena.alloc(Expr::Closure(<>)),
 };
 
-Expr: &'ast ast::Expr<'ast, 'input> = {
+Expr: &'ast Expr<'ast, 'input> = {
     Term,
-    <p1:Expr> <f:Term> <p2:Term> => arena.alloc(ast::Expr::Appl(ast::Appl::new(p1, f, p2))),
+    <p1:Expr> <f:Term> <p2:Term> => arena.alloc(Expr::Appl(Appl::new(p1, f, p2))),
 };
 
-pub EndExpr: &'ast ast::Expr<'ast, 'input> = {
+pub EndExpr: &'ast Expr<'ast, 'input> = {
     EndTerm,
-    <p1:Expr> <f:Term> <p2:EndTerm> => arena.alloc(ast::Expr::Appl(ast::Appl::new(p1, f, p2))),
+    <p1:Expr> <f:Term> <p2:EndTerm> => arena.alloc(Expr::Appl(Appl::new(p1, f, p2))),
 };
