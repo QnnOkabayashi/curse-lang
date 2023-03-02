@@ -1,6 +1,6 @@
 #[derive(Debug)]
 pub enum Expr<'ast, 'input> {
-    Lit(Lit<'input>),
+    Pat(Pat<Lit<'input>>),
     Closure(Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
 }
@@ -82,7 +82,11 @@ impl<'ast, 'input> Closure<'ast, 'input> {
         }
     }
 
-    pub fn two(p1: Pat<Ident<'input>>, p2: Pat<Ident<'input>>, body: &'ast Expr<'ast, 'input>) -> Self {
+    pub fn two(
+        p1: Pat<Ident<'input>>,
+        p2: Pat<Ident<'input>>,
+        body: &'ast Expr<'ast, 'input>,
+    ) -> Self {
         Closure {
             params: Params::Two(p1, p2),
             body,

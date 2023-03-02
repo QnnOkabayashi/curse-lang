@@ -13,7 +13,7 @@ Pat<Item>: Pat<Item> = {
     "(" <Comma<Pat<Item>>> ")" => Pat::Tuple(<>),
 };
 
-Comma<T>: Vec<T> = <mut v:(<T> ",")*> <e:T?> => {
+Comma<T>: Vec<T> = <mut v:(<T> ",")+> <e:T?> => {
     if let Some(e) = e {
         v.push(e);
     }
@@ -43,7 +43,7 @@ Closure: Closure<'ast, 'input> = {
 
 Term: &'ast Expr<'ast, 'input> = {
     "(" <EndExpr> ")",
-    Lit => arena.alloc(Expr::Lit(<>))
+    Pat<Lit> => arena.alloc(Expr::Pat(<>))
 };
 
 EndTerm: &'ast Expr<'ast, 'input> = {

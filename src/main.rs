@@ -15,7 +15,7 @@ mod error;
 
 fn main() -> miette::Result<()> {
     let arena = Arena::with_capacity(1024);
-    let input = _IN;
+    let input = _PATS;
     let e = curse1::EndExprParser::new()
         .parse(&arena, input)
         .map_err(|e| {
@@ -43,4 +43,10 @@ const _ITER: &str = r#"
     map (|x| x + 1)
     step_by 2
     collect ()
+"#;
+
+const _PATS: &str = r#"
+(1, 2) (|(a, b) (c, d)|
+    (a * c) + (b * d)
+) (3, 4)
 "#;
