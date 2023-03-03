@@ -8,9 +8,9 @@ Ident: Ident<'input> = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}" => Ident::new(<>);
 
 Integer: i32 = r"[0-9]+" => i32::from_str(<>).unwrap();
 
-Pat<Item>: Pat<Item> = {
-    Item => Pat::Item(<>),
-    "(" <Comma<Pat<Item>>> ")" => Pat::Tuple(<>),
+Pat: Pat<'input> = {
+    Ident => Pat::Ident(<>),
+    Tuple<Pat> => Pat::Tuple(<>),
 };
 
 Comma<T>: Vec<T> = <mut v:(<T> ",")+> <e:T?> => {
@@ -19,6 +19,10 @@ Comma<T>: Vec<T> = <mut v:(<T> ",")+> <e:T?> => {
     }
     v
 };
+
+Paren<T>: T = "(" <T> ")";
+
+Tuple<T>: Vec<T> = Paren<Comma<T>>;
 
 Symbol: Symbol = {
     "()" => Symbol::Unit,
@@ -30,33 +34,36 @@ Symbol: Symbol = {
 };
 
 Lit: Lit<'input> = {
-    Symbol => Lit::Symbol(<>),
     Integer => Lit::Integer(<>),
     Ident => Lit::Ident(<>),
 };
 
 Closure: Closure<'ast, 'input> = {
     "|" "|" <body:EndExpr> => Closure::zero(body),
-    "|" <p1:Pat<Ident>> "|" <body:EndExpr> => Closure::one(p1, body),
-    "|" <p1:Pat<Ident>> <p2:Pat<Ident>> "|" <body:EndExpr> => Closure::two(p1, p2, body),
+    "|" <lhs:Pat> "|" <body:EndExpr> => Closure::one(lhs, body),
+    "|" <lhs:Pat> <rhs:Pat> "|" <body:EndExpr> => Closure::two(lhs, rhs, body),
 };
 
-Term: &'ast Expr<'ast, 'input> = {
-    "(" <EndExpr> ")",
-    Pat<Lit> => arena.alloc(Expr::Pat(<>))
+Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);
+
+Term = {
+    Paren<EndExpr>,
+    Symbol => arena.alloc(Expr::Symbol(<>)),
+    Lit => arena.alloc(Expr::Lit(<>)),
+    Tuple<EndExpr> => arena.alloc(Expr::Tuple(<>)),
 };
 
-EndTerm: &'ast Expr<'ast, 'input> = {
+EndTerm = {
     Term,
     Closure => arena.alloc(Expr::Closure(<>)),
 };
 
-Expr: &'ast Expr<'ast, 'input> = {
+Expr = {
     Term,
-    <p1:Expr> <f:Term> <p2:Term> => arena.alloc(Expr::Appl(Appl::new(p1, f, p2))),
+    Appl<Term> => arena.alloc(Expr::Appl(<>)),
 };
 
 pub EndExpr: &'ast Expr<'ast, 'input> = {
     EndTerm,
-    <p1:Expr> <f:Term> <p2:EndTerm> => arena.alloc(Expr::Appl(Appl::new(p1, f, p2))),
+    Appl<EndTerm> => arena.alloc(Expr::Appl(<>)),
 };

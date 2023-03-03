@@ -1,5 +1,5 @@
-use miette::Diagnostic;
 use displaydoc::Display;
+use miette::Diagnostic;
 
 #[derive(Debug, Diagnostic, Display)]
 pub enum EvalError<'input> {

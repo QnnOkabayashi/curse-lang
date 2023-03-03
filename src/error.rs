@@ -44,7 +44,10 @@ impl From<LalrParseError<'_>> for ParseError {
 
         match value {
             InvalidToken { location } => ParseError::InvalidToken(location),
-            UnrecognizedEOF { location, expected: _ } => ParseError::UnrecognizedEOF(location),
+            UnrecognizedEOF {
+                location,
+                expected: _,
+            } => ParseError::UnrecognizedEOF(location),
             UnrecognizedToken {
                 token: (start, _tok, end),
                 expected: _,

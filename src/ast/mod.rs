@@ -1,20 +1,39 @@
-#[derive(Debug)]
+use std::fmt;
+
 pub enum Expr<'ast, 'input> {
-    Pat(Pat<Lit<'input>>),
+    Symbol(Symbol),
+    Lit(Lit<'input>),
+    Tuple(Vec<&'ast Expr<'ast, 'input>>),
     Closure(Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
 }
 
+impl fmt::Debug for Expr<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Symbol(arg0) => arg0.fmt(f),
+            Self::Lit(arg0) => arg0.fmt(f),
+            Self::Tuple(arg0) => arg0.fmt(f),
+            Self::Closure(arg0) => arg0.fmt(f),
+            Self::Appl(arg0) => arg0.fmt(f),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Lit<'input> {
-    Symbol(Symbol),
     Integer(i32),
     Ident(Ident<'input>),
 }
 
-#[derive(Debug)]
 pub struct Ident<'input> {
     pub inner: &'input str,
+}
+
+impl fmt::Debug for Ident<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
 }
 
 impl<'input> Ident<'input> {
@@ -40,10 +59,16 @@ pub struct Closure<'ast, 'input> {
 }
 
 #[derive(Debug)]
+pub enum Pat<'input> {
+    Ident(Ident<'input>),
+    Tuple(Vec<Pat<'input>>),
+}
+
+#[derive(Debug)]
 pub enum Params<'input> {
     Zero,
-    One(Pat<Ident<'input>>),
-    Two(Pat<Ident<'input>>, Pat<Ident<'input>>),
+    One(Pat<'input>),
+    Two(Pat<'input>, Pat<'input>),
 }
 
 #[derive(Debug)]
@@ -75,27 +100,17 @@ impl<'ast, 'input> Closure<'ast, 'input> {
         }
     }
 
-    pub fn one(p1: Pat<Ident<'input>>, body: &'ast Expr<'ast, 'input>) -> Self {
+    pub fn one(p1: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
         Closure {
             params: Params::One(p1),
             body,
         }
     }
 
-    pub fn two(
-        p1: Pat<Ident<'input>>,
-        p2: Pat<Ident<'input>>,
-        body: &'ast Expr<'ast, 'input>,
-    ) -> Self {
+    pub fn two(p1: Pat<'input>, p2: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
         Closure {
             params: Params::Two(p1, p2),
             body,
         }
     }
-}
-
-#[derive(Debug)]
-pub enum Pat<Item> {
-    Item(Item),
-    Tuple(Vec<Pat<Item>>),
 }

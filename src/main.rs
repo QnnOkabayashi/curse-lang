@@ -1,6 +1,5 @@
 use lalrpop_util::lalrpop_mod;
 
-use repl::repl;
 lalrpop_mod!(pub curse1);
 mod ast;
 mod error;
@@ -15,7 +14,14 @@ mod repl;
 // Make it actually compile into an executable or be interpreted.
 
 fn main() -> miette::Result<()> {
-    repl().unwrap();
+    // use miette::IntoDiagnostic;
+
+    // let arena = typed_arena::Arena::with_capacity(1024);
+    // let e = curse1::EndExprParser::new()
+    //     .parse(&arena, _PATS)
+    //     .into_diagnostic()?;
+    // println!("{e:#?}");
+    repl::repl().unwrap();
     Ok(())
 }
 
@@ -31,7 +37,6 @@ const _LET: &str = r#"
 3 in |x| x in print
 "#;
 
-// x in print;
 const _IN: &str = r#"
 (|x f| x f ()) (|in|
     4 in |x|
@@ -48,7 +53,7 @@ const _ITER: &str = r#"
 "#;
 
 const _PATS: &str = r#"
-(1, 2) (|(a, b) (c, d)|
+(1 * 2, 2 in |x| x * 2) (|(a, b) (c, d)|
     (a * c) + (b * d)
 ) (3, 4)
 "#;

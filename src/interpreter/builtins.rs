@@ -1,5 +1,5 @@
 use super::eval;
-use crate::ast::{self, Params, Pat, Symbol};
+use crate::ast::{self, Params, Pat, Symbol, Closure};
 use crate::interpreter::{error::EvalError, value::Value};
 use std::collections::HashMap;
 
@@ -46,15 +46,15 @@ pub fn call_function<'ast, 'input>(
         Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) => Err(EvalError::TypeMismatch),
         Value::Symbol(s) => symbol(left, right, s),
         Value::Builtin(f) => f(left, right, env),
-        Value::Closure(ast::Closure { params, body }) => match params {
-            Params::Two(Pat::Item(x), Pat::Item(y)) => {
+        Value::Closure(Closure { params, body }) => match params {
+            Params::Two(Pat::Ident(x), Pat::Ident(y)) => {
                 let mut new_env = env.clone();
                 new_env.insert(x.inner, left);
                 new_env.insert(y.inner, right);
                 let result = eval(body, &mut new_env)?;
                 Ok(result)
             }
-            Params::One(Pat::Item(x)) => {
+            Params::One(Pat::Ident(x)) => {
                 let mut new_env = env.clone();
                 new_env.insert(x.inner, left);
                 let result = eval(body, &mut new_env)?;
@@ -129,7 +129,7 @@ fn reduce<'ast, 'input>(
 
     // it really sucks that I can't quite use `fold` or `reduce` here
     let mut vec = vec.into_iter();
-    let mut ret = vec.next().unwrap();      // guaranteed safe since vec isn't empty
+    let mut ret = vec.next().unwrap(); // guaranteed safe since vec isn't empty
     while let Some(val) = vec.next() {
         ret = call_function(ret, right.clone(), val, env)?;
     }
