@@ -18,6 +18,12 @@ pub enum Value<'ast, 'input> {
     ),
 }
 
+impl<'ast, 'input> Default for Value<'ast, 'input> {
+    fn default() -> Self {
+        Value::Tuple(vec![])
+    }
+}
+
 impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
