@@ -1,10 +1,11 @@
 use lalrpop_util::lalrpop_mod;
-use miette::NamedSource;
-use typed_arena::Arena;
 
+use repl::repl;
 lalrpop_mod!(pub curse1);
 mod ast;
 mod error;
+mod interpreter;
+mod repl;
 
 // TODO:
 // Spans on tokens
@@ -14,26 +15,27 @@ mod error;
 // Make it actually compile into an executable or be interpreted.
 
 fn main() -> miette::Result<()> {
-    let arena = Arena::with_capacity(1024);
-    let input = _PATS;
-    let e = curse1::EndExprParser::new()
-        .parse(&arena, input)
-        .map_err(|e| {
-            miette::Report::from(error::SourceErrors {
-                source: NamedSource::new("test", input.to_string()),
-                errors: vec![e.into()],
-            })
-        })?;
-
-    println!("{e:#?}");
+    repl().unwrap();
     Ok(())
 }
 
+const _MATH: &str = r#"
+1 + 2 * 3 - 3
+"#;
+
+const _FUNC: &str = r#"
+1 (|x y| x + y) 2
+"#;
+
+const _LET: &str = r#"
+3 in |x| x in print
+"#;
+
+// x in print;
 const _IN: &str = r#"
 (|x f| x f ()) (|in|
     4 in |x|
     5 in |y|
-    x in print;
     x + y
 ) ()
 "#;

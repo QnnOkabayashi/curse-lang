@@ -14,7 +14,7 @@ pub enum Lit<'input> {
 
 #[derive(Debug)]
 pub struct Ident<'input> {
-    inner: &'input str,
+    pub inner: &'input str,
 }
 
 impl<'input> Ident<'input> {
@@ -23,7 +23,7 @@ impl<'input> Ident<'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Symbol {
     Unit,
     Plus,
@@ -35,8 +35,8 @@ pub enum Symbol {
 
 #[derive(Debug)]
 pub struct Closure<'ast, 'input> {
-    params: Params<'input>,
-    body: &'ast Expr<'ast, 'input>,
+    pub params: Params<'input>,
+    pub body: &'ast Expr<'ast, 'input>,
 }
 
 #[derive(Debug)]
@@ -48,9 +48,9 @@ pub enum Params<'input> {
 
 #[derive(Debug)]
 pub struct Appl<'ast, 'input> {
-    left: &'ast Expr<'ast, 'input>,
-    function: &'ast Expr<'ast, 'input>,
-    right: &'ast Expr<'ast, 'input>,
+    pub left: &'ast Expr<'ast, 'input>,
+    pub function: &'ast Expr<'ast, 'input>,
+    pub right: &'ast Expr<'ast, 'input>,
 }
 
 impl<'ast, 'input> Appl<'ast, 'input> {
