@@ -112,23 +112,6 @@ pub fn call_function<'ast, 'input>(
             add_params_to_env(left, right, &closure.params, &mut new_env)?;
             eval(closure.body, &mut new_env)
         }
-        //
-        //     match params {
-        //     Params::Two(Pat::Ident(x), Pat::Ident(y)) => {
-        //         let mut new_env = env.clone();
-        //         new_env.insert(x.inner, left);
-        //         new_env.insert(y.inner, right);
-        //         let result = eval(body, &mut new_env)?;
-        //         Ok(result)
-        //     }
-        //     Params::One(Pat::Ident(x)) => {
-        //         let mut new_env = env.clone();
-        //         new_env.insert(x.inner, left);
-        //         let result = eval(body, &mut new_env)?;
-        //         Ok(result)
-        //     }
-        //     _ => todo!(),
-        // },
     }
 }
 
