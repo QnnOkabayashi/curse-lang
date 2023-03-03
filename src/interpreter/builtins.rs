@@ -8,6 +8,7 @@ pub fn default_env<'ast, 'input>() -> HashMap<&'input str, Value<'ast, 'input>> 
 
     env.insert("print", Value::Builtin(print));
     env.insert("in", Value::Builtin(inn));
+    env.insert("map", Value::Builtin(map));
 
     env
 }
@@ -23,7 +24,7 @@ fn symbol<'ast, 'input>(
             Symbol::Plus => Ok(Value::Integer(x + y)),
             Symbol::Minus => Ok(Value::Integer(x - y)),
             Symbol::Times => Ok(Value::Integer(x * y)),
-            Symbol::DotDot => todo!(),
+            Symbol::DotDot => Ok(Value::Vector((*x..*y).map(|n| Value::Integer(n)).collect())),
             Symbol::Semi => todo!(),
         },
         _ => Err(EvalError::TypeMismatch),
@@ -37,7 +38,7 @@ pub fn call_function<'ast, 'input>(
     env: &mut HashMap<&'input str, Value<'ast, 'input>>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match function {
-        Value::Integer(_) | Value::Tuple(_) => Err(EvalError::TypeMismatch),
+        Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) => Err(EvalError::TypeMismatch),
         Value::Symbol(s) => symbol(&left, &right, s),
         Value::Builtin(f) => f(left, right, env),
         Value::Closure(ast::Closure { params, body }) => match params {
@@ -74,4 +75,20 @@ fn inn<'ast, 'input>(
     env: &mut HashMap<&'input str, Value<'ast, 'input>>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     call_function(left, right, Value::Tuple(vec![]), env)
+}
+
+fn map<'ast, 'input>(
+    left: Value<'ast, 'input>,
+    right: Value<'ast, 'input>,
+    env: &mut HashMap<&'input str, Value<'ast, 'input>>,
+) -> Result<Value<'ast, 'input>, EvalError<'input>> {
+    let Value::Vector(vec) = left else {
+        return Err(EvalError::TypeMismatch);
+    };
+
+    Ok(Value::Vector(
+        vec.into_iter()
+            .map(|val| call_function(val, right.clone(), Value::Tuple(vec![]), env))
+            .collect::<Result<Vec<Value<'ast, 'input>>, EvalError<'input>>>()?,
+    ))
 }
