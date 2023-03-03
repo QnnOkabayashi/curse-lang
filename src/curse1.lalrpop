@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl, Ident};
+use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl, Ident, IrrefutableClosure, RefutableClosure};
 use typed_arena::Arena;
 
 grammar<'ast>(arena: &'ast Arena<Expr<'ast, 'input>>);
@@ -38,10 +38,10 @@ Lit: Lit<'input> = {
     Ident => Lit::Ident(<>),
 };
 
-Closure: Closure<'ast, 'input> = {
-    "|" "|" <body:EndExpr> => Closure::zero(body),
-    "|" <lhs:Pat> "|" <body:EndExpr> => Closure::one(lhs, body),
-    "|" <lhs:Pat> <rhs:Pat> "|" <body:EndExpr> => Closure::two(lhs, rhs, body),
+IrrefutableClosure: IrrefutableClosure<'ast, 'input> = {
+    "|" "|" <body:EndExpr> => IrrefutableClosure::zero(body),
+    "|" <lhs:Pat> "|" <body:EndExpr> => IrrefutableClosure::one(lhs, body),
+    "|" <lhs:Pat> <rhs:Pat> "|" <body:EndExpr> => IrrefutableClosure::two(lhs, rhs, body),
 };
 
 Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);

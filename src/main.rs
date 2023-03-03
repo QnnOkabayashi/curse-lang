@@ -7,11 +7,12 @@ mod interpreter;
 mod repl;
 
 // TODO:
+// support parsing piecewise closures (with curly braces)
+// fix interpreter
 // Spans on tokens
 // Custom errors
 // Top level items (fn, ...)
 // Syntax for types
-// Make it actually compile into an executable or be interpreted.
 
 fn main() -> miette::Result<()> {
     // use miette::IntoDiagnostic;

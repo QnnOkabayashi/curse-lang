@@ -1,12 +1,12 @@
 use super::error::EvalError;
-use crate::ast::{Closure, Symbol};
+use crate::ast::{ClosureKind, Symbol};
 use std::{collections::HashMap, fmt};
 
 #[derive(Clone)]
 pub enum Value<'ast, 'input> {
     Integer(i32),
     Symbol(Symbol),
-    Closure(&'ast Closure<'ast, 'input>),
+    Closure(&'ast ClosureKind<'ast, 'input>),
     Tuple(Vec<Value<'ast, 'input>>),
     Vector(Vec<Value<'ast, 'input>>),
     Builtin(

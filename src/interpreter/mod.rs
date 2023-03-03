@@ -17,13 +17,13 @@ pub fn eval<'ast, 'input>(
             .get(ident.inner)
             .ok_or(EvalError::UnboundVariable(ident.inner))
             .cloned(),
-        Expr::Tuple(elements) => elements
+        Expr::Tuple(items) => items
             .iter()
             .map(|it| eval(it, env))
             .collect::<Result<_, _>>()
             .map(Value::Tuple),
         Expr::Symbol(symbol) => Ok(Value::Symbol(*symbol)),
-        Expr::Closure(f) => Ok(Value::Closure(f)),
+        Expr::Closure(closure) => Ok(Value::Closure(closure)),
         Expr::Appl(appl) => {
             let left = eval(appl.left, env)?;
             let right = eval(appl.right, env)?;

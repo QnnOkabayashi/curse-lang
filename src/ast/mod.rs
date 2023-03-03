@@ -52,23 +52,31 @@ pub enum Symbol {
     Semi,
 }
 
+pub enum Closure<'ast, 'input> {
+    Nonpiecewise(IrrefutableClosure<'ast, 'input>),
+    Piecewise(Vec<RefutableClosure<'ast, 'input>>),
+}
+
 #[derive(Debug)]
-pub struct Closure<'ast, 'input> {
-    pub params: Params<'input>,
+pub struct ClosureKind<'ast, 'input, Item> {
+    pub params: Params<Item>,
     pub body: &'ast Expr<'ast, 'input>,
 }
 
+pub type IrrefutableClosure<'ast, 'input> = ClosureKind<'ast, 'input, Ident<'input>>;
+pub type RefutableClosure<'ast, 'input> = ClosureKind<'ast, 'input, Lit<'input>>;
+
 #[derive(Debug)]
-pub enum Pat<'input> {
-    Ident(Ident<'input>),
-    Tuple(Vec<Pat<'input>>),
+pub enum Pat<Item> {
+    Item(Item),
+    Tuple(Vec<Pat<Item>>),
 }
 
 #[derive(Debug)]
-pub enum Params<'input> {
+pub enum Params<Item> {
     Zero,
-    One(Pat<'input>),
-    Two(Pat<'input>, Pat<'input>),
+    One(Pat<Item>),
+    Two(Pat<Item>, Pat<Item>),
 }
 
 #[derive(Debug)]
@@ -92,23 +100,27 @@ impl<'ast, 'input> Appl<'ast, 'input> {
     }
 }
 
-impl<'ast, 'input> Closure<'ast, 'input> {
+impl<'ast, 'input, Item> ClosureKind<'ast, 'input, Item> {
     pub fn zero(body: &'ast Expr<'ast, 'input>) -> Self {
-        Closure {
+        ClosureKind {
             params: Params::Zero,
             body,
         }
     }
 
-    pub fn one(p1: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
-        Closure {
+    pub fn one(p1: Pat<Item>, body: &'ast Expr<'ast, 'input>) -> Self {
+        ClosureKind {
             params: Params::One(p1),
             body,
         }
     }
 
-    pub fn two(p1: Pat<'input>, p2: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
-        Closure {
+    pub fn two(
+        p1: Pat<Item>,
+        p2: Pat<Item>,
+        body: &'ast Expr<'ast, 'input>,
+    ) -> Self {
+        ClosureKind {
             params: Params::Two(p1, p2),
             body,
         }
