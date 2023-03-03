@@ -14,6 +14,7 @@ pub struct SourceErrors {
 
 impl std::error::Error for SourceErrors {}
 
+#[allow(dead_code)]
 #[derive(Debug, Diagnostic, Display)]
 pub enum ParseError {
     /// Invalid token
@@ -43,15 +44,15 @@ impl From<LalrParseError<'_>> for ParseError {
 
         match value {
             InvalidToken { location } => ParseError::InvalidToken(location),
-            UnrecognizedEOF { location, expected } => ParseError::UnrecognizedEOF(location),
+            UnrecognizedEOF { location, expected: _ } => ParseError::UnrecognizedEOF(location),
             UnrecognizedToken {
-                token: (start, tok, end),
-                expected,
+                token: (start, _tok, end),
+                expected: _,
             } => ParseError::UnrecognizedToken(start..end),
             ExtraToken {
-                token: (start, tok, end),
+                token: (start, _tok, end),
             } => ParseError::UnrecognizedToken(start..end),
-            User { error } => {
+            User { error: _ } => {
                 todo!()
             }
         }

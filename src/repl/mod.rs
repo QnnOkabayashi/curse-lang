@@ -20,7 +20,6 @@ pub fn repl() -> rustyline::Result<()> {
                 let arena = Arena::with_capacity(1024);
                 let mut env = default_env();
 
-                // TODO: improve error handling here
                 let e = curse1::EndExprParser::new()
                     .parse(&arena, &line)
                     .map_err(|e| {
@@ -28,10 +27,23 @@ pub fn repl() -> rustyline::Result<()> {
                             source: NamedSource::new("test", line.to_string()),
                             errors: vec![e.into()],
                         })
-                    }).unwrap();
+                    });
 
-                // TODO: and here
-                let e = eval(e, &mut env).unwrap();
+                let e = match e {
+                    Ok(ast) => ast,
+                    Err(err) => {
+                        println!("{}", err);
+                        continue;
+                    }
+                };
+
+                let e = match eval(e, &mut env) {
+                    Ok(ast) => ast,
+                    Err(err) => {
+                        println!("{err}");
+                        continue;
+                    }
+                };
 
                 println!("{e}");
             }

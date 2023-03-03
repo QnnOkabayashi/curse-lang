@@ -1,11 +1,14 @@
+use miette::Diagnostic;
 use displaydoc::Display;
 
-#[derive(Debug, Display)]
+#[derive(Debug, Diagnostic, Display)]
 pub enum EvalError<'input> {
     /// Type mismatch
+    #[diagnostic(help("Wrong types"))]
     TypeMismatch,
 
     /// Identifier not defined
+    #[diagnostic(help("Unbound variable"))]
     UnboundVariable(&'input str),
 }
 
