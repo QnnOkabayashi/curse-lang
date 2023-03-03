@@ -2,9 +2,12 @@ use lalrpop_util::lalrpop_mod;
 use miette::NamedSource;
 use typed_arena::Arena;
 
+use crate::interpreter::{eval, builtins::default_env};
+
 lalrpop_mod!(pub curse1);
 mod ast;
 mod error;
+mod interpreter;
 
 // TODO:
 // Spans on tokens
@@ -15,7 +18,8 @@ mod error;
 
 fn main() -> miette::Result<()> {
     let arena = Arena::with_capacity(1024);
-    let input = _PATS;
+    let input = _LET;
+    let mut env = default_env();
     let e = curse1::EndExprParser::new()
         .parse(&arena, input)
         .map_err(|e| {
@@ -26,14 +30,27 @@ fn main() -> miette::Result<()> {
         })?;
 
     println!("{e:#?}");
+    println!("{}", eval(e, &mut env).unwrap());
     Ok(())
 }
 
+const _MATH: &str = r#"
+1 + 2 * 3 - 3
+"#;
+
+const _FUNC: &str = r#"
+1 (|x y| x + y) 2
+"#;
+
+const _LET: &str = r#"
+3 in |x| x in print
+"#;
+
+    // x in print;
 const _IN: &str = r#"
 (|x f| x f ()) (|in|
     4 in |x|
     5 in |y|
-    x in print;
     x + y
 ) ()
 "#;
