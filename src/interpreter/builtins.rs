@@ -1,7 +1,8 @@
 use super::eval;
-use crate::ast::{self, Params, Pat, Symbol, Closure};
+use crate::ast::{self, Closure, Params, Pat, Symbol};
 use crate::interpreter::{error::EvalError, value::Value};
 use std::collections::HashMap;
+use std::iter;
 
 pub fn default_env<'ast, 'input>() -> HashMap<&'input str, Value<'ast, 'input>> {
     let mut env = HashMap::new();
@@ -23,6 +24,7 @@ fn symbol<'ast, 'input>(
     if let Symbol::Semi = op {
         return Ok(right);
     }
+
     match (left, right) {
         (Value::Integer(x), Value::Integer(y)) => match op {
             Symbol::Unit => Err(EvalError::TypeMismatch),
@@ -36,6 +38,65 @@ fn symbol<'ast, 'input>(
     }
 }
 
+fn add_params_to_env<'ast, 'input>(
+    left: Value<'ast, 'input>,
+    right: Value<'ast, 'input>,
+    params: &Params<'input>,
+    env: &mut HashMap<&'input str, Value<'ast, 'input>>,
+) -> Result<(), EvalError<'input>> {
+    match params {
+        Params::Zero => match (left, right) {
+            (Value::Tuple(t1), Value::Tuple(t2)) => {
+                if t1.is_empty() && t2.is_empty() {
+                    Ok(())
+                } else {
+                    Err(EvalError::TypeMismatch)
+                }
+            }
+            _ => Err(EvalError::TypeMismatch),
+        },
+        Params::One(pat) => {
+            if let Value::Tuple(t) = right {
+                if t.is_empty() {
+                    add_param_to_env(left, &pat, env)
+                } else {
+                    Err(EvalError::TypeMismatch)
+                }
+            } else {
+                Err(EvalError::TypeMismatch)
+            }
+        }
+        Params::Two(pat1, pat2) => {
+            add_param_to_env(left, &pat1, env)?;
+            add_param_to_env(right, &pat2, env)
+        }
+    }
+}
+
+fn add_param_to_env<'ast, 'input>(
+    arg: Value<'ast, 'input>,
+    pattern: &Pat<'input>,
+    env: &mut HashMap<&'input str, Value<'ast, 'input>>,
+) -> Result<(), EvalError<'input>> {
+    match pattern {
+        Pat::Ident(ident) => {
+            env.insert(ident.inner, arg);
+            Ok(())
+        }
+        Pat::Tuple(pats) => {
+            if let Value::Tuple(vals) = arg {
+                if vals.len() == pats.len() {
+                    iter::zip(vals, pats).try_for_each(|(val, pat)| add_param_to_env(val, pat, env))
+                } else {
+                    Err(EvalError::FailedPatternMatch)
+                }
+            } else {
+                Err(EvalError::FailedPatternMatch)
+            }
+        }
+    }
+}
+
 pub fn call_function<'ast, 'input>(
     left: Value<'ast, 'input>,
     function: Value<'ast, 'input>,
@@ -46,22 +107,28 @@ pub fn call_function<'ast, 'input>(
         Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) => Err(EvalError::TypeMismatch),
         Value::Symbol(s) => symbol(left, right, s),
         Value::Builtin(f) => f(left, right, env),
-        Value::Closure(Closure { params, body }) => match params {
-            Params::Two(Pat::Ident(x), Pat::Ident(y)) => {
-                let mut new_env = env.clone();
-                new_env.insert(x.inner, left);
-                new_env.insert(y.inner, right);
-                let result = eval(body, &mut new_env)?;
-                Ok(result)
-            }
-            Params::One(Pat::Ident(x)) => {
-                let mut new_env = env.clone();
-                new_env.insert(x.inner, left);
-                let result = eval(body, &mut new_env)?;
-                Ok(result)
-            }
-            _ => todo!(),
-        },
+        Value::Closure(closure) => {
+            let mut new_env = env.clone();
+            add_params_to_env(left, right, &closure.params, &mut new_env)?;
+            eval(closure.body, &mut new_env)
+        }
+        //
+        //     match params {
+        //     Params::Two(Pat::Ident(x), Pat::Ident(y)) => {
+        //         let mut new_env = env.clone();
+        //         new_env.insert(x.inner, left);
+        //         new_env.insert(y.inner, right);
+        //         let result = eval(body, &mut new_env)?;
+        //         Ok(result)
+        //     }
+        //     Params::One(Pat::Ident(x)) => {
+        //         let mut new_env = env.clone();
+        //         new_env.insert(x.inner, left);
+        //         let result = eval(body, &mut new_env)?;
+        //         Ok(result)
+        //     }
+        //     _ => todo!(),
+        // },
     }
 }
 

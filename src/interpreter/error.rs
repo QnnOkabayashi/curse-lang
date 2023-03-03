@@ -10,6 +10,10 @@ pub enum EvalError<'input> {
     /// Identifier not defined
     #[diagnostic(help("Unbound variable"))]
     UnboundVariable(&'input str),
+
+    /// Bad Pattern match
+    #[diagnostic(help("idk"))]
+    FailedPatternMatch,
 }
 
 impl<'input> std::error::Error for EvalError<'input> {}
