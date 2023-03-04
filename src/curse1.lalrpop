@@ -8,14 +8,9 @@ Ident: Ident<'input> = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}" => Ident::new(<>);
 
 Integer: i32 = r"[0-9]+" => i32::from_str(<>).unwrap();
 
-Pat: Pat<Ident<'input>> = {
-    Ident => Pat::Item(<>),
+Pat: Pat<'input> = {
+    Lit => Pat::Lit(<>),
     Tuple<Pat> => Pat::Tuple(<>),
-};
-
-RPat: Pat<Lit<'input>> = {
-    Lit => Pat::Item(<>),
-    Tuple<RPat> => Pat::Tuple(<>),
 };
 
 Comma<T>: Vec<T> = <mut v:(<T> ",")+> <e:T?> => {
@@ -35,7 +30,6 @@ Symbol: Symbol = {
     "-" => Symbol::Minus,
     "*" => Symbol::Times,
     ".." => Symbol::DotDot,
-    ";" => Symbol::Semi,
 };
 
 Lit: Lit<'input> = {
@@ -44,24 +38,14 @@ Lit: Lit<'input> = {
 };
 
 Closure: Closure<'ast, 'input> = {
-    IrrefutableClosure => Closure::Nonpiecewise(<>),
-    RefutableClosures => Closure::Piecewise(<>),
+    Branch => Closure::new(<>),
+    <branch:Branch> ";" <mut closure:Closure> => closure.with_branch(branch),
 };
 
-IrrefutableClosure: IrrefutableClosure<'ast, 'input> = {
-    "|" "|" <body:EndExpr> => IrrefutableClosure::zero(body),
-    "|" <lhs:Pat> "|" <body:EndExpr> => IrrefutableClosure::one(lhs, body),
-    "|" <lhs:Pat> <rhs:Pat> "|" <body:EndExpr> => IrrefutableClosure::two(lhs, rhs, body),
-};
-
-RefutableClosures: Vec<RefutableClosure<'ast, 'input>> = {
-    "{" <Comma<RefutableClosure>> "}"
-};
-
-RefutableClosure: RefutableClosure<'ast, 'input> = {
-    "|" "|" <body:EndExpr> => RefutableClosure::zero(body),
-    "|" <lhs:RPat> "|" <body:EndExpr> => RefutableClosure::one(lhs, body),
-    "|" <lhs:RPat> <rhs:RPat> "|" <body:EndExpr> => RefutableClosure::two(lhs, rhs, body),
+Branch: Branch<'ast, 'input> = {
+    "|" "|" <body:EndExpr> => Branch::zero(body),
+    "|" <lhs:Pat> "|" <body:EndExpr> => Branch::one(lhs, body),
+    "|" <lhs:Pat> <rhs:Pat> "|" <body:EndExpr> => Branch::two(lhs, rhs, body),
 };
 
 Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);

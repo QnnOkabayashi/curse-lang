@@ -85,29 +85,29 @@ true map (|| 5) else (|| 4)
 
 This is what `map` in the above example would do internally:
 ```rust
-cond in [
-    |Some(())| (
-        // true
-    ),
-    |None| (
-        // false
-    ),
-]
+cond in
+    |Some(())| 5;
+    |None| 4
 ```
 
 ```rust
-params in {
-    |Params::Zero| (left, right) in {
-        |(Value::Tuple(t1), Value::Tuple(t2))| if t1.is_empty() && t2.is_empty() => Ok(()),
-        |_| Err(EvalError::TypeMismatch),
-    },
-    |Params::One(pat)| right in {
-        |Value::Tuple(t)| if t.is_empty() => add_param_to_env(left, &pat, env),
-        |_| Err(EvalError::TypeMismatch),
-    },
+params in 
+    |Params::Zero| (left, right) in (
+        |(Value::Tuple(t1), Value::Tuple(t2))| if t1.is_empty() && t2.is_empty() => Ok(()) else
+        |_| Err(EvalError::TypeMismatch)
+    ) else
+    |Params::One(pat)| right in (
+        |Value::Tuple(t)| if t.is_empty() => add_param_to_env(left, &pat, env) else
+        |_| Err(EvalError::TypeMismatch)
+    ) else
     |Params::Two(pat1, pat2)| (
-        add_param_to_env(left, &pat1, env)?;
+        add_param_to_env(left, &pat1, env) and_then
         add_param_to_env(right, &pat2, env)
-    ),
-}
+    )
+```
+
+```rust
+// else should bind to the closest function
+|1| (|2| 5 else |n| n) else
+|x| |n| n + 2
 ```

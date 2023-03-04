@@ -31,35 +31,43 @@ pub enum Symbol {
     Minus,
     Times,
     DotDot,
-    Semi,
 }
 
 #[derive(Debug)]
-pub enum Closure<'ast, 'input> {
-    Nonpiecewise(IrrefutableClosure<'ast, 'input>),
-    Piecewise(Vec<RefutableClosure<'ast, 'input>>),
+pub struct Closure<'ast, 'input> {
+    branches: Vec<Branch<'ast, 'input>>,
+}
+
+impl<'ast, 'input> Closure<'ast, 'input> {
+    pub fn new(branch: Branch<'ast, 'input>) -> Self {
+        Closure {
+            branches: vec![branch],
+        }
+    }
+
+    pub fn with_branch(mut self, branch: Branch<'ast, 'input>) -> Self {
+        self.branches.insert(0, branch);
+        self
+    }
 }
 
 #[derive(Debug)]
-pub struct ClosureKind<'ast, 'input, Item> {
-    pub params: Params<Item>,
+pub struct Branch<'ast, 'input> {
+    pub params: Params<'input>,
     pub body: &'ast Expr<'ast, 'input>,
 }
 
-pub type IrrefutableClosure<'ast, 'input> = ClosureKind<'ast, 'input, Ident<'input>>;
-pub type RefutableClosure<'ast, 'input> = ClosureKind<'ast, 'input, Lit<'input>>;
-
 #[derive(Debug)]
-pub enum Pat<Item> {
-    Item(Item),
-    Tuple(Vec<Pat<Item>>),
+pub enum Pat<'input> {
+    Lit(Lit<'input>),
+    Tuple(Vec<Pat<'input>>),
 }
 
 #[derive(Debug)]
-pub enum Params<Item> {
+pub enum Params<'input> {
     Zero,
-    One(Pat<Item>),
-    Two(Pat<Item>, Pat<Item>),
+    One(Pat<'input>),
+    Two(Pat<'input>, Pat<'input>),
 }
 
 #[derive(Debug)]
@@ -83,27 +91,23 @@ impl<'ast, 'input> Appl<'ast, 'input> {
     }
 }
 
-impl<'ast, 'input, Item> ClosureKind<'ast, 'input, Item> {
+impl<'ast, 'input> Branch<'ast, 'input> {
     pub fn zero(body: &'ast Expr<'ast, 'input>) -> Self {
-        ClosureKind {
+        Branch {
             params: Params::Zero,
             body,
         }
     }
 
-    pub fn one(p1: Pat<Item>, body: &'ast Expr<'ast, 'input>) -> Self {
-        ClosureKind {
+    pub fn one(p1: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
+        Branch {
             params: Params::One(p1),
             body,
         }
     }
 
-    pub fn two(
-        p1: Pat<Item>,
-        p2: Pat<Item>,
-        body: &'ast Expr<'ast, 'input>,
-    ) -> Self {
-        ClosureKind {
+    pub fn two(p1: Pat<'input>, p2: Pat<'input>, body: &'ast Expr<'ast, 'input>) -> Self {
+        Branch {
             params: Params::Two(p1, p2),
             body,
         }
