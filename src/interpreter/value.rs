@@ -2,6 +2,12 @@ use super::error::EvalError;
 use crate::ast::{Closure, Symbol};
 use std::{collections::HashMap, fmt};
 
+type BuiltinFn<'ast, 'input> = fn(
+    Value<'ast, 'input>,
+    Value<'ast, 'input>,
+    &mut HashMap<&'input str, Value<'ast, 'input>>,
+) -> Result<Value<'ast, 'input>, EvalError<'input>>;
+
 #[derive(Clone)]
 pub enum Value<'ast, 'input> {
     Integer(i32),
@@ -9,13 +15,7 @@ pub enum Value<'ast, 'input> {
     Closure(&'ast Closure<'ast, 'input>),
     Tuple(Vec<Value<'ast, 'input>>),
     Vector(Vec<Value<'ast, 'input>>),
-    Builtin(
-        fn(
-            Value<'ast, 'input>,
-            Value<'ast, 'input>,
-            &mut HashMap<&'input str, Value<'ast, 'input>>,
-        ) -> Result<Value<'ast, 'input>, EvalError<'input>>,
-    ),
+    Builtin(BuiltinFn<'ast, 'input>),
 }
 
 impl<'ast, 'input> Default for Value<'ast, 'input> {

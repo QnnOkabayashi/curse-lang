@@ -58,7 +58,7 @@ fn symbol<'ast, 'input>(
             Symbol::Plus => Ok(Value::Integer(x + y)),
             Symbol::Minus => Ok(Value::Integer(x - y)),
             Symbol::Times => Ok(Value::Integer(x * y)),
-            Symbol::DotDot => Ok(Value::Vector((x..y).map(|n| Value::Integer(n)).collect())),
+            Symbol::DotDot => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
             Symbol::Semi => Ok(Value::Integer(y)),
         },
         _ => Err(EvalError::TypeMismatch),

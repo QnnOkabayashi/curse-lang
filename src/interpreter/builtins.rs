@@ -76,8 +76,7 @@ fn reduce<'ast, 'input>(
         return Ok(Value::default());
     };
 
-    // it really sucks that I can't quite use `fold` or `reduce` here
-    while let Some(val) = vec.next() {
+    for val in vec {
         ret = call_function(ret, right.clone(), val, env)?;
     }
     Ok(ret)

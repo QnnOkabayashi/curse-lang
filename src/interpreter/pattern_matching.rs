@@ -80,8 +80,9 @@ pub fn match_irrefutable_pattern<'ast, 'input>(
     }
 }
 
-pub fn check_irrefutable_pattern<'ast, 'input>(
-    value: &Value<'ast, 'input>,
+#[allow(dead_code)]
+pub fn check_irrefutable_pattern<'input>(
+    value: &Value<'_, 'input>,
     pattern: &Pat<Ident<'input>>,
 ) -> Result<(), EvalError<'input>> {
     match pattern {
@@ -117,8 +118,8 @@ pub fn match_refutable_pattern<'ast, 'input>(
     }
 }
 
-pub fn check_refutable_pattern<'ast, 'input>(
-    value: &Value<'ast, 'input>,
+pub fn check_refutable_pattern<'input>(
+    value: &Value<'_, 'input>,
     pattern: &Pat<Lit<'input>>,
 ) -> Result<(), EvalError<'input>> {
     match pattern {
