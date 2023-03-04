@@ -78,11 +78,11 @@ pub enum Symbol {
     Unit,
     Plus,
     Minus,
-    Times,
+    Asterisk,
     DotDot,
     Semi,
-    Mod,
-    Div,
+    Percent,
+    Slash,
 }
 
 #[derive(Debug)]

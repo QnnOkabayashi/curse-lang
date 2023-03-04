@@ -31,11 +31,11 @@ Symbol: Symbol = {
     "()" => Symbol::Unit,
     "+" => Symbol::Plus,
     "-" => Symbol::Minus,
-    "*" => Symbol::Times,
+    "*" => Symbol::Asterisk,
     ".." => Symbol::DotDot,
     ";" => Symbol::Semi,
-    "%" => Symbol::Mod,
-    "/" => Symbol::Div,
+    "%" => Symbol::Percent,
+    "/" => Symbol::Slash,
 };
 
 Lit: Lit<'input> = {
