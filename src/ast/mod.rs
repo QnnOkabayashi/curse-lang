@@ -1,3 +1,35 @@
+pub struct Arena<'ast, 'input> {
+    arena: typed_arena::Arena<Expr<'ast, 'input>>,
+}
+
+impl<'ast, 'input> Arena<'ast, 'input> {
+    pub fn new() -> Self {
+        Arena {
+            arena: typed_arena::Arena::with_capacity(1024),
+        }
+    }
+
+    pub fn symbol(&'ast self, symbol: Symbol) -> &'ast Expr<'ast, 'input> {
+        self.arena.alloc(Expr::Symbol(symbol))
+    }
+
+    pub fn lit(&'ast self, lit: Lit<'input>) -> &'ast Expr<'ast, 'input> {
+        self.arena.alloc(Expr::Lit(lit))
+    }
+
+    pub fn tuple(&'ast self, vec: Vec<&'ast Expr<'ast, 'input>>) -> &'ast Expr<'ast, 'input> {
+        self.arena.alloc(Expr::Tuple(vec))
+    }
+
+    pub fn closure(&'ast self, closure: Closure<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
+        self.arena.alloc(Expr::Closure(closure))
+    }
+
+    pub fn appl(&'ast self, appl: Appl<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
+        self.arena.alloc(Expr::Appl(appl))
+    }
+}
+
 #[derive(Debug)]
 pub enum Expr<'ast, 'input> {
     Symbol(Symbol),

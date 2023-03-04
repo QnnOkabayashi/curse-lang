@@ -2,10 +2,9 @@ use rustyline;
 use rustyline::error::ReadlineError;
 
 use miette::NamedSource;
-use typed_arena::Arena;
 
 use crate::{
-    curse1, error,
+    ast, curse1, error,
     interpreter::{builtins::default_env, eval},
 };
 
@@ -17,7 +16,7 @@ pub fn repl() -> rustyline::Result<()> {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(&line)?;
-                let arena = Arena::with_capacity(1024);
+                let arena = ast::Arena::new();
                 let mut env = default_env();
 
                 let e = curse1::EndExprParser::new()

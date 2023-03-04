@@ -28,7 +28,7 @@ fn main() -> miette::Result<()> {
     if let Some(path) = Cli::parse().file {
         // Example: cargo run -- --file examples/branching.curse
         let input = fs::read_to_string(path).into_diagnostic()?;
-        let arena = typed_arena::Arena::with_capacity(1024);
+        let arena = ast::Arena::new();
         let expr = curse1::EndExprParser::new().parse(&arena, &input).unwrap();
 
         let mut env = interpreter::builtins::default_env();

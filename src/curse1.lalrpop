@@ -1,8 +1,7 @@
 use std::str::FromStr;
-use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl, Ident, Branch};
-use typed_arena::Arena;
+use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Ident, Branch};
 
-grammar<'ast>(arena: &'ast Arena<Expr<'ast, 'input>>);
+grammar<'ast>(arena: &'ast Arena<'ast, 'input>);
 
 Ident: Ident<'input> = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}" => Ident::new(<>);
 
@@ -52,32 +51,32 @@ Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, 
 
 Term = {
     Paren<EndExpr>,
-    Symbol => arena.alloc(Expr::Symbol(<>)),
-    Lit => arena.alloc(Expr::Lit(<>)),
-    Tuple<EndExpr> => arena.alloc(Expr::Tuple(<>)),
+    Symbol => arena.symbol(<>),
+    Lit => arena.lit(<>),
+    Tuple<EndExpr> => arena.tuple(<>),
 };
 
 InternalTerm = {
     Term,
-    Branch => arena.alloc(Expr::Closure(Closure::new(<>))),
+    Branch => arena.closure(Closure::new(<>)),
 };
 
 EndTerm = {
     Term,
-    Closure => arena.alloc(Expr::Closure(<>)),
+    Closure => arena.closure(<>),
 };
 
 Expr = {
     Term,
-    Appl<Term> => arena.alloc(Expr::Appl(<>)),
+    Appl<Term> => arena.appl(<>),
 };
 
 InternalExpr = {
     InternalTerm,
-    Appl<InternalTerm> => arena.alloc(Expr::Appl(<>)),
+    Appl<InternalTerm> => arena.appl(<>),
 };
 
 pub EndExpr: &'ast Expr<'ast, 'input> = {
     EndTerm,
-    Appl<EndTerm> => arena.alloc(Expr::Appl(<>)),
+    Appl<EndTerm> => arena.appl(<>),
 };
