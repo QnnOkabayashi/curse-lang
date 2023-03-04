@@ -37,12 +37,8 @@ Lit: Lit<'input> = {
     Ident => Lit::Ident(<>),
 };
 
-InternalClosure: Closure<'ast, 'input> = {
-    Branch => Closure::new(<>),
-};
-
 Closure: Closure<'ast, 'input> = {
-    InternalClosure,
+    Branch => Closure::new(<>),
     <closure:Closure> "else" <branch:Branch> => closure.with_branch(branch),
 };
 
@@ -63,7 +59,7 @@ Term = {
 
 InternalTerm = {
     Term,
-    InternalClosure => arena.alloc(Expr::Closure(<>)),
+    Branch => arena.alloc(Expr::Closure(Closure::new(<>))),
 };
 
 EndTerm = {

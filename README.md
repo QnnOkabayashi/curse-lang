@@ -111,3 +111,16 @@ params in
 |1| (|2| 5 else |n| n) else
 |x| |n| n + 2
 ```
+
+Here's some ideas for top level functions
+```rust
+fn fib: i32 -> i32 =
+    |0| 0 else
+    |1| 1 else
+    |n| n - 1 in fib + (n - 2 in fib)
+
+fn main := ||
+    10 in fib
+
+
+```
