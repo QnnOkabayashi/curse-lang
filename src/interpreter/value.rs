@@ -40,22 +40,20 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Symbol(Symbol::Semi) => write!(f, ";"),
             Value::Tuple(t) => {
                 write!(f, "(")?;
-                let mut t = t.iter().peekable();
-                while let Some(val) = t.next() {
-                    write!(f, "{val}")?;
-                    if t.peek().is_some() {
-                        write!(f, ", ")?;
+                if let Some((first, rest)) = t.split_first() {
+                    write!(f, "{first}")?;
+                    for val in rest {
+                        write!(f, ", {val}")?;
                     }
                 }
                 write!(f, ")")
             }
             Value::Vector(v) => {
                 write!(f, "[")?;
-                let mut t = v.iter().peekable();
-                while let Some(val) = t.next() {
-                    write!(f, "{val}")?;
-                    if t.peek().is_some() {
-                        write!(f, ", ")?;
+                if let Some((first, rest)) = v.split_first() {
+                    write!(f, "{first}")?;
+                    for val in rest {
+                        write!(f, ", {val}")?;
                     }
                 }
                 write!(f, "]")
