@@ -35,7 +35,7 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Symbol(Symbol::Plus) => write!(f, "+"),
             Value::Symbol(Symbol::Minus) => write!(f, "-"),
             Value::Symbol(Symbol::DotDot) => write!(f, ".."),
-            // Value::Symbol(Symbol::Semi) => write!(f, ";"),
+            Value::Symbol(Symbol::Semi) => write!(f, ";"),
             Value::Tuple(t) => {
                 write!(f, "(")?;
                 let mut t = t.iter().peekable();

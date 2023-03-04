@@ -46,9 +46,9 @@ fn symbol<'ast, 'input>(
     right: Value<'ast, 'input>,
     op: Symbol,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
-    // if let Symbol::Semi = op {
-    //     return Ok(right);
-    // }
+    if let Symbol::Semi = op {
+        return Ok(right);
+    }
 
     match (left, right) {
         (Value::Integer(x), Value::Integer(y)) => match op {
@@ -57,7 +57,7 @@ fn symbol<'ast, 'input>(
             Symbol::Minus => Ok(Value::Integer(x - y)),
             Symbol::Times => Ok(Value::Integer(x * y)),
             Symbol::DotDot => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
-            // Symbol::Semi => Ok(Value::Integer(y)),
+            Symbol::Semi => Ok(Value::Integer(y)),
         },
         _ => Err(EvalError::TypeMismatch),
     }

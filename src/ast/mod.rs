@@ -63,6 +63,7 @@ pub enum Symbol {
     Minus,
     Times,
     DotDot,
+    Semi,
 }
 
 #[derive(Debug)]
