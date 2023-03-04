@@ -35,7 +35,7 @@ pub enum Symbol {
 
 #[derive(Debug)]
 pub struct Closure<'ast, 'input> {
-    branches: Vec<Branch<'ast, 'input>>,
+    pub branches: Vec<Branch<'ast, 'input>>,
 }
 
 impl<'ast, 'input> Closure<'ast, 'input> {

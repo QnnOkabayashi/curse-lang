@@ -2,13 +2,11 @@ use crate::{
     ast::{Closure, Expr, Lit, Symbol},
     interpreter::{
         error::EvalError,
-        pattern_matching::{match_irrefutable_pattern, match_refutable_pattern},
+        pattern_matching::{check_args, match_args},
         value::Value,
     },
 };
 use std::collections::HashMap;
-
-use self::pattern_matching::{check_args, check_refutable_pattern, match_args};
 
 pub mod builtins;
 mod error;
@@ -48,9 +46,9 @@ fn symbol<'ast, 'input>(
     right: Value<'ast, 'input>,
     op: Symbol,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
-    if let Symbol::Semi = op {
-        return Ok(right);
-    }
+    // if let Symbol::Semi = op {
+    //     return Ok(right);
+    // }
 
     match (left, right) {
         (Value::Integer(x), Value::Integer(y)) => match op {
@@ -59,7 +57,7 @@ fn symbol<'ast, 'input>(
             Symbol::Minus => Ok(Value::Integer(x - y)),
             Symbol::Times => Ok(Value::Integer(x * y)),
             Symbol::DotDot => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
-            Symbol::Semi => Ok(Value::Integer(y)),
+            // Symbol::Semi => Ok(Value::Integer(y)),
         },
         _ => Err(EvalError::TypeMismatch),
     }
@@ -75,27 +73,15 @@ pub fn call_function<'ast, 'input>(
         Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) => Err(EvalError::TypeMismatch),
         Value::Symbol(s) => symbol(lhs, rhs, s),
         Value::Builtin(f) => f(lhs, rhs, env),
-        Value::Closure(Closure::Nonpiecewise(irrefutable_closure)) => {
-            let mut new_env = env.clone();
-            match_args(
-                lhs,
-                rhs,
-                &irrefutable_closure.params,
-                &mut new_env,
-                match_irrefutable_pattern,
-            )?;
-            eval(irrefutable_closure.body, &mut new_env)
-        }
-        Value::Closure(Closure::Piecewise(branches)) => {
+        Value::Closure(Closure { branches }) => {
             let mut new_env = env.clone();
             for branch in branches {
-                if check_args(&lhs, &rhs, &branch.params, check_refutable_pattern).is_ok() {
+                if check_args(&lhs, &rhs, &branch.params).is_ok() {
                     match_args(
                         lhs,
                         rhs,
                         &branch.params,
                         &mut new_env,
-                        match_refutable_pattern,
                     )?;
                     return eval(branch.body, &mut new_env);
                 }

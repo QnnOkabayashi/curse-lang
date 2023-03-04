@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl, Ident, IrrefutableClosure, RefutableClosure};
+use crate::ast::{Expr, Symbol, Pat, Lit, Closure, Appl, Ident, Branch};
 use typed_arena::Arena;
 
 grammar<'ast>(arena: &'ast Arena<Expr<'ast, 'input>>);
@@ -37,15 +37,19 @@ Lit: Lit<'input> = {
     Ident => Lit::Ident(<>),
 };
 
-Closure: Closure<'ast, 'input> = {
+InternalClosure: Closure<'ast, 'input> = {
     Branch => Closure::new(<>),
+};
+
+Closure: Closure<'ast, 'input> = {
+    <InternalClosure>,
     <branch:Branch> ";" <mut closure:Closure> => closure.with_branch(branch),
 };
 
 Branch: Branch<'ast, 'input> = {
-    "|" "|" <body:EndExpr> => Branch::zero(body),
-    "|" <lhs:Pat> "|" <body:EndExpr> => Branch::one(lhs, body),
-    "|" <lhs:Pat> <rhs:Pat> "|" <body:EndExpr> => Branch::two(lhs, rhs, body),
+    "|" "|" <body:InternalExpr> => Branch::zero(body),
+    "|" <lhs:Pat> "|" <body:InternalExpr> => Branch::one(lhs, body),
+    "|" <lhs:Pat> <rhs:Pat> "|" <body:InternalExpr> => Branch::two(lhs, rhs, body),
 };
 
 Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);
@@ -57,6 +61,11 @@ Term = {
     Tuple<EndExpr> => arena.alloc(Expr::Tuple(<>)),
 };
 
+InternalTerm = {
+    Term,
+    InternalClosure => arena.alloc(Expr::Closure(<>)),
+};
+
 EndTerm = {
     Term,
     Closure => arena.alloc(Expr::Closure(<>)),
@@ -65,6 +74,11 @@ EndTerm = {
 Expr = {
     Term,
     Appl<Term> => arena.alloc(Expr::Appl(<>)),
+};
+
+InternalExpr = {
+    InternalTerm,
+    Appl<InternalTerm> => arena.alloc(Expr::Appl(<>)),
 };
 
 pub EndExpr: &'ast Expr<'ast, 'input> = {

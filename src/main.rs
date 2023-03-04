@@ -3,8 +3,8 @@ use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub curse1);
 mod ast;
 mod error;
-// mod interpreter;
-// mod repl;
+mod interpreter;
+mod repl;
 
 // TODO:
 // support parsing piecewise closures (with curly braces)
@@ -15,15 +15,15 @@ mod error;
 // Syntax for types
 
 fn main() -> miette::Result<()> {
-    use miette::IntoDiagnostic;
+    // use miette::IntoDiagnostic;
 
-    let arena = typed_arena::Arena::with_capacity(1024);
-    let e = curse1::EndExprParser::new()
-        .parse(&arena, _REF)
-        .into_diagnostic()?;
-    println!("{e:#?}");
+    // let arena = typed_arena::Arena::with_capacity(1024);
+    // let e = curse1::EndExprParser::new()
+    //     .parse(&arena, _REF)
+    //     .into_diagnostic()?;
+    // println!("{e:#?}");
 
-    // repl::repl().unwrap();
+    repl::repl().unwrap();
     Ok(())
 }
 
