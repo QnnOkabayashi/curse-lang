@@ -45,7 +45,6 @@ impl<'ast, 'input> Program<'ast, 'input> {
         self
     }
 }
-    // <t:TopLevel> <p:Program> => p.add_statement(t),
 
 #[derive(Debug)]
 pub enum TopLevel<'ast, 'input> {
