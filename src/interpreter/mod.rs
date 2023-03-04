@@ -77,12 +77,7 @@ pub fn call_function<'ast, 'input>(
             let mut new_env = env.clone();
             for branch in branches {
                 if check_args(&lhs, &rhs, &branch.params).is_ok() {
-                    match_args(
-                        lhs,
-                        rhs,
-                        &branch.params,
-                        &mut new_env,
-                    )?;
+                    match_args(lhs, rhs, &branch.params, &mut new_env)?;
                     return eval(branch.body, &mut new_env);
                 }
             }

@@ -1,4 +1,7 @@
+use std::{fs, path::PathBuf};
+
 use lalrpop_util::lalrpop_mod;
+use miette::IntoDiagnostic;
 
 lalrpop_mod!(pub curse1);
 mod ast;
@@ -6,24 +9,34 @@ mod error;
 mod interpreter;
 mod repl;
 
+use clap::Parser;
+
 // TODO:
-// support parsing piecewise closures (with curly braces)
-// fix interpreter
 // Spans on tokens
 // Custom errors
 // Top level items (fn, ...)
 // Syntax for types
 
+#[derive(Parser)]
+struct Cli {
+    /// The file to evaluate
+    #[arg(long = "file")]
+    file: Option<PathBuf>,
+}
+
 fn main() -> miette::Result<()> {
-    // use miette::IntoDiagnostic;
+    if let Some(path) = Cli::parse().file {
+        // Example: cargo run -- --file examples/branching.curse
+        let input = fs::read_to_string(path).into_diagnostic()?;
+        let arena = typed_arena::Arena::with_capacity(1024);
+        let expr = curse1::EndExprParser::new().parse(&arena, &input).unwrap();
 
-    // let arena = typed_arena::Arena::with_capacity(1024);
-    // let e = curse1::EndExprParser::new()
-    //     .parse(&arena, _REF)
-    //     .into_diagnostic()?;
-    // println!("{e:#?}");
-
-    repl::repl().unwrap();
+        let mut env = interpreter::builtins::default_env();
+        let res = interpreter::eval(expr, &mut env).unwrap(); // miette longer lifetiems...
+        println!("{res}");
+    } else {
+        repl::repl().unwrap();
+    }
     Ok(())
 }
 

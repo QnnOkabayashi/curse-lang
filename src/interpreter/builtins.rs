@@ -1,4 +1,4 @@
-use crate::interpreter::{call_function, EvalError, value::Value};
+use crate::interpreter::{call_function, value::Value, EvalError};
 use std::collections::HashMap;
 
 pub fn default_env<'ast, 'input>() -> HashMap<&'input str, Value<'ast, 'input>> {

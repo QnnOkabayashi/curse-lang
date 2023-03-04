@@ -42,8 +42,8 @@ InternalClosure: Closure<'ast, 'input> = {
 };
 
 Closure: Closure<'ast, 'input> = {
-    <InternalClosure>,
-    <branch:Branch> ";" <mut closure:Closure> => closure.with_branch(branch),
+    InternalClosure,
+    <closure:Closure> "else" <branch:Branch> => closure.with_branch(branch),
 };
 
 Branch: Branch<'ast, 'input> = {

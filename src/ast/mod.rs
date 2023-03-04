@@ -46,7 +46,7 @@ impl<'ast, 'input> Closure<'ast, 'input> {
     }
 
     pub fn with_branch(mut self, branch: Branch<'ast, 'input>) -> Self {
-        self.branches.insert(0, branch);
+        self.branches.push(branch);
         self
     }
 }
