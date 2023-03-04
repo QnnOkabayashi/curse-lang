@@ -4,8 +4,7 @@ use rustyline::error::ReadlineError;
 use miette::NamedSource;
 
 use crate::{
-    ast,
-    curse1, error,
+    ast, curse1, error,
     interpreter::{builtins::default_env, eval_expr},
 };
 
