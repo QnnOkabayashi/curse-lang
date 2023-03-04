@@ -12,7 +12,6 @@ use crate::{
 pub fn repl() -> rustyline::Result<()> {
     let mut rl = rustyline::DefaultEditor::new()?;
 
-
     loop {
         let readline = rl.readline("> ");
         match readline {

@@ -36,13 +36,8 @@ pub struct Program<'ast, 'input> {
 }
 
 impl<'ast, 'input> Program<'ast, 'input> {
-    pub fn new(stmt: TopLevel<'ast, 'input>) -> Program<'ast, 'input> {
-        Program { stmts: vec![stmt] }
-    }
-
-    pub fn add_statement(mut self, stmt: TopLevel<'ast, 'input>) -> Program<'ast, 'input> {
-        self.stmts.push(stmt);
-        self
+    pub fn new(stmts: Vec<TopLevel<'ast, 'input>>) -> Self {
+        Program { stmts }
     }
 }
 
@@ -94,15 +89,8 @@ pub struct Closure<'ast, 'input> {
 }
 
 impl<'ast, 'input> Closure<'ast, 'input> {
-    pub fn new(branch: Branch<'ast, 'input>) -> Self {
-        Closure {
-            branches: vec![branch],
-        }
-    }
-
-    pub fn with_branch(mut self, branch: Branch<'ast, 'input>) -> Self {
-        self.branches.push(branch);
-        self
+    pub fn new(branches: Vec<Branch<'ast, 'input>>) -> Self {
+        Closure { branches }
     }
 }
 

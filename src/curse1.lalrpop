@@ -3,14 +3,9 @@ use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Ident, Branch, Pr
 
 grammar<'ast>(arena: &'ast Arena<'ast, 'input>);
 
-pub Program: Program<'ast, 'input> = {
-    TopLevel => Program::new(<>),
-    <t:TopLevel> <p:Program> => p.add_statement(t),
-};
+pub Program: Program<'ast, 'input> = TopLevel* => Program::new(<>);
 
-pub TopLevel: TopLevel<'ast, 'input> = {
-    "fn" <name:Ident> ":=" <body:Closure> => TopLevel::Function(name, body),
-};
+pub TopLevel: TopLevel<'ast, 'input> = "fn" <name:Ident> ":=" <body:Closure> => TopLevel::Function(name, body);
 
 Ident: Ident<'input> = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}" => Ident::new(<>);
 
@@ -45,9 +40,9 @@ Lit: Lit<'input> = {
     Ident => Lit::Ident(<>),
 };
 
-Closure: Closure<'ast, 'input> = {
-    Branch => Closure::new(<>),
-    <closure:Closure> "else" <branch:Branch> => closure.with_branch(branch),
+Closure: Closure<'ast, 'input> = <mut branches:(<Branch> "else")*> <last:Branch> => {
+    branches.push(last);
+    Closure::new(branches)
 };
 
 Branch: Branch<'ast, 'input> = {
@@ -67,7 +62,7 @@ Term = {
 
 InternalTerm = {
     Term,
-    Branch => arena.closure(Closure::new(<>)),
+    Branch => arena.closure(Closure::new(vec![<>])),
 };
 
 EndTerm = {
