@@ -1,7 +1,16 @@
 use std::str::FromStr;
-use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Ident, Branch};
+use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Ident, Branch, Program, TopLevel};
 
 grammar<'ast>(arena: &'ast Arena<'ast, 'input>);
+
+pub Program: Program<'ast, 'input> = {
+    TopLevel => Program::new(<>),
+    <t:TopLevel> <p:Program> => p.add_statement(t),
+};
+
+pub TopLevel: TopLevel<'ast, 'input> = {
+    "fn" <name:Ident> ":=" <body:Closure> => TopLevel::Function(name, body),
+};
 
 Ident: Ident<'input> = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}" => Ident::new(<>);
 
@@ -76,7 +85,7 @@ InternalExpr = {
     Appl<InternalTerm> => arena.appl(<>),
 };
 
-pub EndExpr: &'ast Expr<'ast, 'input> = {
+EndExpr: &'ast Expr<'ast, 'input> = {
     EndTerm,
     Appl<EndTerm> => arena.appl(<>),
 };

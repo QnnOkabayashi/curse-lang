@@ -4,22 +4,25 @@ use rustyline::error::ReadlineError;
 use miette::NamedSource;
 
 use crate::{
-    ast, curse1, error,
-    interpreter::{builtins::default_env, eval},
+    ast::{self, TopLevel},
+    curse1, error,
+    interpreter::{builtins::default_env, eval_expr},
 };
 
 pub fn repl() -> rustyline::Result<()> {
     let mut rl = rustyline::DefaultEditor::new()?;
+
 
     loop {
         let readline = rl.readline("> ");
         match readline {
             Ok(line) => {
                 rl.add_history_entry(&line)?;
-                let arena = ast::Arena::new();
-                let mut env = default_env();
 
-                let e = curse1::EndExprParser::new()
+                let mut env = default_env();
+                let arena = ast::Arena::new();
+
+                let top_level = curse1::TopLevelParser::new()
                     .parse(&arena, &line)
                     .map_err(|e| {
                         miette::Report::from(error::SourceErrors {
@@ -28,7 +31,7 @@ pub fn repl() -> rustyline::Result<()> {
                         })
                     });
 
-                let e = match e {
+                let top_level = match top_level {
                     Ok(ast) => ast,
                     Err(err) => {
                         println!("{}", err);
@@ -36,15 +39,19 @@ pub fn repl() -> rustyline::Result<()> {
                     }
                 };
 
-                let e = match eval(e, &mut env) {
-                    Ok(ast) => ast,
-                    Err(err) => {
-                        println!("{err}");
-                        continue;
+                match top_level {
+                    TopLevel::Function(_name, _body) => {
+                        // lots of horrible lifetimes issues lie here
+                        todo!();
                     }
+                    TopLevel::Expr(expr) => match eval_expr(expr, &mut env) {
+                        Ok(result) => println!("{result}"),
+                        Err(err) => {
+                            println!("{err}");
+                            continue;
+                        }
+                    },
                 };
-
-                println!("{e}");
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
             Err(err) => {

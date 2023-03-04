@@ -31,6 +31,29 @@ impl<'ast, 'input> Arena<'ast, 'input> {
 }
 
 #[derive(Debug)]
+pub struct Program<'ast, 'input> {
+    pub stmts: Vec<TopLevel<'ast, 'input>>,
+}
+
+impl<'ast, 'input> Program<'ast, 'input> {
+    pub fn new(stmt: TopLevel<'ast, 'input>) -> Program<'ast, 'input> {
+        Program { stmts: vec![stmt] }
+    }
+
+    pub fn add_statement(mut self, stmt: TopLevel<'ast, 'input>) -> Program<'ast, 'input> {
+        self.stmts.push(stmt);
+        self
+    }
+}
+    // <t:TopLevel> <p:Program> => p.add_statement(t),
+
+#[derive(Debug)]
+pub enum TopLevel<'ast, 'input> {
+    Function(Ident<'input>, Closure<'ast, 'input>),
+    Expr(&'ast Expr<'ast, 'input>),
+}
+
+#[derive(Debug)]
 pub enum Expr<'ast, 'input> {
     Symbol(Symbol),
     Lit(Lit<'input>),

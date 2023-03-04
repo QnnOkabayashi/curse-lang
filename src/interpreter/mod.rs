@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Closure, Expr, Lit, Symbol},
+    ast::{Closure, Expr, Ident, Lit, Params, Program, Symbol, TopLevel},
     interpreter::{
         error::EvalError,
         pattern_matching::{check_args, match_args},
@@ -8,6 +8,8 @@ use crate::{
 };
 use std::collections::HashMap;
 
+use self::builtins::default_env;
+
 pub mod builtins;
 mod error;
 mod pattern_matching;
@@ -15,7 +17,49 @@ mod value;
 
 pub type Environment<'ast, 'input> = HashMap<&'input str, Value<'ast, 'input>>;
 
-pub fn eval<'ast, 'input>(
+pub fn function_definition<'ast, 'input>(
+    name: &Ident<'input>,
+    body: &'ast Closure<'ast, 'input>,
+    env: &mut Environment<'ast, 'input>,
+) {
+    env.insert(name.inner, Value::Closure(body));
+}
+
+pub fn eval_program<'ast, 'input>(program: Program<'ast, 'input>) -> Result<(), EvalError<'input>> {
+    let mut env = default_env();
+
+    // eval top level statements
+    for stmt in &program.stmts {
+        match stmt {
+            TopLevel::Function(name, body) => {
+                function_definition(name, body, &mut env);
+            }
+            TopLevel::Expr(expr) => {
+                eval_expr(expr, &mut env)?;
+            }
+        };
+    }
+
+    // find and execute `main`
+    for (name, val) in &env {
+        match (*name, val) {
+            ("main", Value::Closure(Closure { branches })) if branches.len() == 1 => {
+                // argc and argv?
+                let Params::Zero = branches[0].params else {
+                    return Err(EvalError::TypeMismatch)
+                };
+
+                let mut new_env = env.clone();
+                eval_expr(branches[0].body, &mut new_env)?;
+            }
+            _ => (),
+        }
+    }
+
+    Ok(())
+}
+
+pub fn eval_expr<'ast, 'input>(
     expr: &'ast Expr<'ast, 'input>,
     env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
@@ -27,15 +71,15 @@ pub fn eval<'ast, 'input>(
             .cloned(),
         Expr::Tuple(items) => items
             .iter()
-            .map(|it| eval(it, env))
+            .map(|it| eval_expr(it, env))
             .collect::<Result<_, _>>()
             .map(Value::Tuple),
         Expr::Symbol(symbol) => Ok(Value::Symbol(*symbol)),
         Expr::Closure(closure) => Ok(Value::Closure(closure)),
         Expr::Appl(appl) => {
-            let left = eval(appl.left, env)?;
-            let right = eval(appl.right, env)?;
-            let function = eval(appl.function, env)?;
+            let left = eval_expr(appl.left, env)?;
+            let right = eval_expr(appl.right, env)?;
+            let function = eval_expr(appl.function, env)?;
             call_function(left, function, right, env)
         }
     }
@@ -78,7 +122,7 @@ pub fn call_function<'ast, 'input>(
             for branch in branches {
                 if check_args(&lhs, &rhs, &branch.params).is_ok() {
                     match_args(lhs, rhs, &branch.params, &mut new_env)?;
-                    return eval(branch.body, &mut new_env);
+                    return eval_expr(branch.body, &mut new_env);
                 }
             }
             Err(EvalError::FailedPatternMatch)

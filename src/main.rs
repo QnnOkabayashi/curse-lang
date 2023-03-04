@@ -29,11 +29,9 @@ fn main() -> miette::Result<()> {
         // Example: cargo run -- --file examples/branching.curse
         let input = fs::read_to_string(path).into_diagnostic()?;
         let arena = ast::Arena::new();
-        let expr = curse1::EndExprParser::new().parse(&arena, &input).unwrap();
+        let program = curse1::ProgramParser::new().parse(&arena, &input).unwrap();
 
-        let mut env = interpreter::builtins::default_env();
-        let res = interpreter::eval(expr, &mut env).unwrap(); // miette longer lifetiems...
-        println!("{res}");
+        interpreter::eval_program(program).unwrap();
     } else {
         repl::repl().unwrap();
     }
