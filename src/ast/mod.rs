@@ -81,6 +81,8 @@ pub enum Symbol {
     Times,
     DotDot,
     Semi,
+    Mod,
+    Div,
 }
 
 #[derive(Debug)]

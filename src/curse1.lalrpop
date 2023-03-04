@@ -33,6 +33,9 @@ Symbol: Symbol = {
     "-" => Symbol::Minus,
     "*" => Symbol::Times,
     ".." => Symbol::DotDot,
+    ";" => Symbol::Semi,
+    "%" => Symbol::Mod,
+    "/" => Symbol::Div,
 };
 
 Lit: Lit<'input> = {
@@ -46,18 +49,18 @@ Closure: Closure<'ast, 'input> = <mut branches:(<Branch> "else")*> <last:Branch>
 };
 
 Branch: Branch<'ast, 'input> = {
-    "|" "|" <body:Expr<InternalTerm>> => Branch::zero(body),
-    "|" <lhs:Pat> "|" <body:Expr<InternalTerm>> => Branch::one(lhs, body),
-    "|" <lhs:Pat> <rhs:Pat> "|" <body:Expr<InternalTerm>> => Branch::two(lhs, rhs, body),
+    "|" "|" <body:InternalExpr> => Branch::zero(body),
+    "|" <lhs:Pat> "|" <body:InternalExpr> => Branch::one(lhs, body),
+    "|" <lhs:Pat> <rhs:Pat> "|" <body:InternalExpr> => Branch::two(lhs, rhs, body),
 };
 
-Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr<Term>> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);
+Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);
 
 Term = {
-    Paren<Expr<EndTerm>>,
+    Paren<EndExpr>,
     Symbol => alloc.symbol(<>),
     Lit => alloc.lit(<>),
-    Tuple<Expr<EndTerm>> => alloc.tuple(<>),
+    Tuple<EndExpr> => alloc.tuple(<>),
 };
 
 InternalTerm = {
@@ -70,7 +73,17 @@ EndTerm = {
     Closure => alloc.closure(<>),
 };
 
-Expr<TermKind>: &'ast Expr<'ast, 'input> = {
-    TermKind,
-    Appl<TermKind> => alloc.appl(<>),
+Expr: &'ast Expr<'ast, 'input> = {
+    Term,
+    Appl<Term> => alloc.appl(<>),
+};
+
+InternalExpr: &'ast Expr<'ast, 'input> = {
+    InternalTerm,
+    Appl<InternalTerm> => alloc.appl(<>),
+};
+
+pub EndExpr: &'ast Expr<'ast, 'input> = {
+    EndTerm,
+    Appl<EndTerm> => alloc.appl(<>),
 };

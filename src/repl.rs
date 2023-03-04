@@ -4,7 +4,7 @@ use rustyline::error::ReadlineError;
 use miette::NamedSource;
 
 use crate::{
-    ast::{self, TopLevel},
+    ast,
     curse1, error,
     interpreter::{builtins::default_env, eval_expr},
 };
@@ -21,7 +21,7 @@ pub fn repl() -> rustyline::Result<()> {
                 let mut env = default_env();
                 let arena = ast::Arena::new();
 
-                let top_level = curse1::TopLevelParser::new()
+                let expr = curse1::EndExprParser::new()
                     .parse(&arena, &line)
                     .map_err(|e| {
                         miette::Report::from(error::SourceErrors {
@@ -30,7 +30,7 @@ pub fn repl() -> rustyline::Result<()> {
                         })
                     });
 
-                let top_level = match top_level {
+                let expr = match expr {
                     Ok(ast) => ast,
                     Err(err) => {
                         println!("{}", err);
@@ -38,18 +38,12 @@ pub fn repl() -> rustyline::Result<()> {
                     }
                 };
 
-                match top_level {
-                    TopLevel::Function(_name, _body) => {
-                        // lots of horrible lifetimes issues lie here
-                        todo!();
+                match eval_expr(expr, &mut env) {
+                    Ok(result) => println!("{result}"),
+                    Err(err) => {
+                        println!("{err}");
+                        continue;
                     }
-                    TopLevel::Expr(expr) => match eval_expr(expr, &mut env) {
-                        Ok(result) => println!("{result}"),
-                        Err(err) => {
-                            println!("{err}");
-                            continue;
-                        }
-                    },
                 };
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,

@@ -34,6 +34,8 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Symbol(Symbol::Times) => write!(f, "*"),
             Value::Symbol(Symbol::Plus) => write!(f, "+"),
             Value::Symbol(Symbol::Minus) => write!(f, "-"),
+            Value::Symbol(Symbol::Mod) => write!(f, "%"),
+            Value::Symbol(Symbol::Div) => write!(f, "/"),
             Value::Symbol(Symbol::DotDot) => write!(f, ".."),
             Value::Symbol(Symbol::Semi) => write!(f, ";"),
             Value::Tuple(t) => {
