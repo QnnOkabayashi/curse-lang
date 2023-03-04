@@ -1,23 +1,12 @@
 use std::fmt;
 
+#[derive(Debug)]
 pub enum Expr<'ast, 'input> {
     Symbol(Symbol),
     Lit(Lit<'input>),
     Tuple(Vec<&'ast Expr<'ast, 'input>>),
     Closure(Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
-}
-
-impl fmt::Debug for Expr<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Symbol(arg0) => arg0.fmt(f),
-            Self::Lit(arg0) => arg0.fmt(f),
-            Self::Tuple(arg0) => arg0.fmt(f),
-            Self::Closure(arg0) => arg0.fmt(f),
-            Self::Appl(arg0) => arg0.fmt(f),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -52,6 +41,7 @@ pub enum Symbol {
     Semi,
 }
 
+#[derive(Debug)]
 pub enum Closure<'ast, 'input> {
     Nonpiecewise(IrrefutableClosure<'ast, 'input>),
     Piecewise(Vec<RefutableClosure<'ast, 'input>>),

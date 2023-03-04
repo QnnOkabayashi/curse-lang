@@ -15,14 +15,15 @@ mod repl;
 // Syntax for types
 
 fn main() -> miette::Result<()> {
-    // use miette::IntoDiagnostic;
+    use miette::IntoDiagnostic;
 
-    // let arena = typed_arena::Arena::with_capacity(1024);
-    // let e = curse1::EndExprParser::new()
-    //     .parse(&arena, _PATS)
-    //     .into_diagnostic()?;
-    // println!("{e:#?}");
-    repl::repl().unwrap();
+    let arena = typed_arena::Arena::with_capacity(1024);
+    let e = curse1::EndExprParser::new()
+        .parse(&arena, _REF)
+        .into_diagnostic()?;
+    println!("{e:#?}");
+
+    // repl::repl().unwrap();
     Ok(())
 }
 
@@ -57,4 +58,13 @@ const _PATS: &str = r#"
 (1 * 2, 2 in |x| x * 2) (|(a, b) (c, d)|
     (a * c) + (b * d)
 ) (3, 4)
+"#;
+
+const _REF: &str = r#"
+3 in {
+    |1| 1 in print,
+    |2| 2 in print,
+    |3| 7 in print,
+    |x| x in print,
+}
 "#;
