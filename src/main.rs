@@ -15,15 +15,15 @@ mod repl;
 // Syntax for types
 
 fn main() -> miette::Result<()> {
-    use miette::IntoDiagnostic;
+    // use miette::IntoDiagnostic;
+    //
+    // let arena = typed_arena::Arena::with_capacity(1024);
+    // let e = curse1::EndExprParser::new()
+    //     .parse(&arena, _REF)
+    //     .into_diagnostic()?;
+    // println!("{e:#?}");
 
-    let arena = typed_arena::Arena::with_capacity(1024);
-    let e = curse1::EndExprParser::new()
-        .parse(&arena, _REF)
-        .into_diagnostic()?;
-    println!("{e:#?}");
-
-    // repl::repl().unwrap();
+    repl::repl().unwrap();
     Ok(())
 }
 

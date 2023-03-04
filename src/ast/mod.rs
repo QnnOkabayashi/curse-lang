@@ -1,5 +1,3 @@
-use std::fmt;
-
 #[derive(Debug)]
 pub enum Expr<'ast, 'input> {
     Symbol(Symbol),
@@ -9,20 +7,15 @@ pub enum Expr<'ast, 'input> {
     Appl(Appl<'ast, 'input>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Lit<'input> {
     Integer(i32),
     Ident(Ident<'input>),
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Ident<'input> {
     pub inner: &'input str,
-}
-
-impl fmt::Debug for Ident<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner.fmt(f)
-    }
 }
 
 impl<'input> Ident<'input> {
