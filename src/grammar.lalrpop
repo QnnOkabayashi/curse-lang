@@ -1,6 +1,6 @@
 use crate::ast::{
     Appl, Arena, Branch, Closure, Expr, ItemFunction, Lit, Paren, Pat, Program, Symbol, TopLevel,
-    Tuple,
+    Tuple, types, types::Type,
 };
 use crate::lex::{tok, LexError, Token};
 
@@ -31,6 +31,8 @@ extern {
         "|" => Token::Pipe(<tok::Pipe>),
         "fn" => Token::Fn(<tok::Fn>),
         "else" => Token::Else(<tok::Else>),
+        "i32" => Token::I32(<tok::I32>),
+        "->" => Token::Arrow(<tok::Arrow>),
     }
 }
 
@@ -40,7 +42,19 @@ Integer: tok::Integer<'input> = "integer literal";
 
 pub Program: Program<'ast, 'input> = TopLevel* => Program::new(<>);
 
-pub TopLevel: TopLevel<'ast, 'input> = "fn" Ident ":" "=" Closure => TopLevel::Function(ItemFunction::new(<>));
+pub TopLevel: TopLevel<'ast, 'input> = "fn" Ident ":" Type "=" Closure => TopLevel::Function(ItemFunction::new(<>));
+
+StartType: Type = {
+    "i32" => Type::Integer(types::Integer::new(<>)),
+    Tuple<Type> => Type::Tuple(types::Tuple::new(<>)),
+    "(" ")" => Type::Unit(types::Unit::new(<>)),
+    "(" <Type> ")",
+};
+
+Type: Type = {
+    StartType StartType "->" Type => Type::Function(types::Function::new(<>)),
+    StartType,
+};
 
 Pat: Pat<'input> = {
     Lit => Pat::Lit(<>),

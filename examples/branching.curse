@@ -1,7 +1,7 @@
-fn fib :=
+fn fib : i32 () -> i32 =
     |0| 0 else
     |1| 1 else
     |n| n - 1 in fib + (n - 2 in fib)
 
-fn main :=
+fn main : () () -> () =
     || 10 in fib in print

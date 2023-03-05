@@ -1,5 +1,7 @@
 use crate::lex::tok;
 
+pub mod types;
+
 pub struct Arena<'ast, 'input> {
     arena: typed_arena::Arena<Expr<'ast, 'input>>,
 }
@@ -64,6 +66,7 @@ pub struct ItemFunction<'ast, 'input> {
     pub tok_fn: tok::Fn,
     pub name: tok::Ident<'input>,
     pub tok_colon: tok::Colon,
+    pub typ: types::Type,
     pub tok_equal: tok::Equal,
     pub closure: Closure<'ast, 'input>,
 }
@@ -73,6 +76,7 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         tok_fn: tok::Fn,
         name: tok::Ident<'input>,
         tok_colon: tok::Colon,
+        typ: types::Type,
         tok_equal: tok::Equal,
         closure: Closure<'ast, 'input>,
     ) -> Self {
@@ -80,6 +84,7 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
             tok_fn,
             name,
             tok_colon,
+            typ,
             tok_equal,
             closure,
         }
