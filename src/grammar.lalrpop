@@ -1,5 +1,8 @@
-use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Branch, Program, TopLevel, ItemFunction, Tuple, Paren};
-use crate::lex::{LexError, Token, tok};
+use crate::ast::{
+    Appl, Arena, Branch, Closure, Expr, ItemFunction, Lit, Paren, Pat, Program, Symbol, TopLevel,
+    Tuple,
+};
+use crate::lex::{tok, LexError, Token};
 
 grammar<'ast, 'input>(alloc: &'ast Arena<'ast, 'input>);
 
