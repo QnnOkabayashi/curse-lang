@@ -12,9 +12,7 @@ mod repl;
 use clap::Parser;
 
 // TODO:
-// Spans on tokens
 // Custom errors
-// Top level items (fn, ...)
 // Syntax for types
 
 #[derive(Parser)]
