@@ -30,7 +30,7 @@ pub fn eval_program<'input>(program: Program<'_, 'input>) -> Result<(), EvalErro
     for stmt in &program.items {
         match stmt {
             TopLevel::Function(function) => {
-                function_definition(function.name.1, &function.closure, &mut env);
+                function_definition(function.name.literal, &function.closure, &mut env);
             }
             TopLevel::Expr(expr) => {
                 eval_expr(expr, &mut env)?;
@@ -64,15 +64,15 @@ pub fn eval_expr<'ast, 'input>(
     env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match expr {
-        Expr::Lit(Lit::Integer(tok::Integer(span, slice))) => {
-            let int = slice
+        Expr::Lit(Lit::Integer(tok::Integer { span, literal })) => {
+            let int = literal
                 .parse()
                 .map_err(|_| EvalError::ParseInt(span.clone()))?;
             Ok(Value::Integer(int))
         }
         Expr::Lit(Lit::Ident(ident)) => env
-            .get(ident.1)
-            .ok_or(EvalError::UnboundVariable(ident.1))
+            .get(ident.literal)
+            .ok_or(EvalError::UnboundVariable(ident.literal))
             .cloned(),
         Expr::Tuple(items) => items
             .iter_elements()

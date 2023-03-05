@@ -53,12 +53,12 @@ pub fn match_pattern<'ast, 'input>(
     match pattern {
         Pat::Lit(lit) => match (value, lit) {
             (Value::Integer(x), Lit::Integer(y))
-                if x == y.1.parse::<i32>().expect("parse int failed") =>
+                if x == y.literal.parse::<i32>().expect("parse int failed") =>
             {
                 Ok(())
             }
             (val, Lit::Ident(ident)) => {
-                env.insert(ident.1, val);
+                env.insert(ident.literal, val);
                 Ok(())
             }
             _ => Err(EvalError::FailedPatternMatch),
@@ -78,7 +78,7 @@ pub fn check_pattern<'input>(
     match pattern {
         Pat::Lit(lit) => match (value, lit) {
             (Value::Integer(x), Lit::Integer(y))
-                if *x == y.1.parse::<i32>().expect("parse into failed") =>
+                if *x == y.literal.parse::<i32>().expect("parse into failed") =>
             {
                 Ok(())
             }

@@ -15,7 +15,6 @@ macro_rules! declare_tokens {
             Integer,
 
             $(
-                $(#[$attr])*
                 #[token($tok)]
                 $name,
             )*
@@ -32,15 +31,23 @@ macro_rules! declare_tokens {
             use super::Span;
 
             #[derive(Clone, Debug)]
-            pub struct Ident<'input>(pub Span, pub &'input str);
+            pub struct Ident<'input> {
+                pub span: Span,
+                pub literal: &'input str,
+            }
 
             #[derive(Clone, Debug)]
-            pub struct Integer<'input>(pub Span, pub &'input str);
+            pub struct Integer<'input> {
+                pub span: Span,
+                pub literal: &'input str,
+            }
 
             $(
                 $(#[$attr])*
                 #[derive(Clone, Debug)]
-                pub struct $name(pub Span);
+                pub struct $name {
+                    pub span: Span,
+                }
             )*
         }
 
@@ -59,10 +66,10 @@ macro_rules! declare_tokens {
 
             fn next(&mut self) -> Option<Self::Item> {
                 let token = match self.lex.next()? {
-                    LogosToken::Ident => Token::Ident(tok::Ident(self.lex.span(), self.lex.slice())),
-                    LogosToken::Integer => Token::Integer(tok::Integer(self.lex.span(), self.lex.slice())),
+                    LogosToken::Ident => Token::Ident(tok::Ident { span: self.lex.span(), literal: self.lex.slice() }),
+                    LogosToken::Integer => Token::Integer(tok::Integer { span: self.lex.span(), literal: self.lex.slice() }),
                     $(
-                        LogosToken::$name => Token::$name(tok::$name(self.lex.span())),
+                        LogosToken::$name => Token::$name(tok::$name { span: self.lex.span() }),
                     )*
                     LogosToken::Unknown => return Some(Err(LexError)),
                     _ => unreachable!("remaining patterns are skipped"),
@@ -76,7 +83,6 @@ macro_rules! declare_tokens {
 }
 
 declare_tokens! {
-    "fn" => Fn,
     ":" => Colon,
     "," => Comma,
     "(" => LParen,
@@ -90,6 +96,7 @@ declare_tokens! {
     "%" => Percent,
     "/" => Slash,
     "|" => Pipe,
+    "fn" => Fn,
     "else" => Else,
 }
 

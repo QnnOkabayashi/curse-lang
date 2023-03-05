@@ -13,7 +13,6 @@ extern {
         // give us the rhs.
         "ident literal" => Token::Ident(<tok::Ident<'input>>),
         "integer literal" => Token::Integer(<tok::Integer<'input>>),
-        "fn" => Token::Fn(<tok::Fn>),
         ":" => Token::Colon(<tok::Colon>),
         "," => Token::Comma(<tok::Comma>),
         "(" => Token::LParen(<tok::LParen>),
@@ -27,6 +26,7 @@ extern {
         "%" => Token::Percent(<tok::Percent>),
         "/" => Token::Slash(<tok::Slash>),
         "|" => Token::Pipe(<tok::Pipe>),
+        "fn" => Token::Fn(<tok::Fn>),
         "else" => Token::Else(<tok::Else>),
     }
 }
