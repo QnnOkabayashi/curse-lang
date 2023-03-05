@@ -68,7 +68,7 @@ pub fn eval_expr<'ast, 'input>(
         Expr::Lit(Lit::Integer(tok::Integer { span, literal })) => literal
             .parse()
             .map(Value::Integer)
-            .map_err(|_| EvalError::ParseInt(span.clone())),
+            .map_err(|_| EvalError::ParseInt(span.into())),
         Expr::Lit(Lit::Ident(ident)) => env
             .get(ident.literal)
             .ok_or(EvalError::UnboundVariable(ident.literal))
@@ -79,7 +79,7 @@ pub fn eval_expr<'ast, 'input>(
             .collect::<Result<_, _>>()
             .map(Value::Tuple),
         Expr::Symbol(Symbol::Unit(_, _)) => Ok(Value::default()),
-        Expr::Symbol(symbol) => Ok(Value::Symbol(symbol.clone())),
+        Expr::Symbol(symbol) => Ok(Value::Symbol(*symbol)),
         Expr::Closure(closure) => Ok(Value::Closure(closure)),
         Expr::Appl(appl) => {
             let left = eval_expr(appl.lhs, env)?;

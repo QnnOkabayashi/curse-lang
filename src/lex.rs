@@ -2,7 +2,24 @@ use logos::Logos;
 use std::ops::Range;
 
 type Loc = usize;
-type Span = Range<Loc>;
+
+#[derive(Copy, Clone, Debug)]
+pub struct Span {
+    start: Loc,
+    end: Loc,
+}
+
+impl From<Range<Loc>> for Span {
+    fn from(Range { start, end }: Range<Loc>) -> Self {
+        Span { start, end }
+    }
+}
+
+impl From<&Span> for Range<Loc> {
+    fn from(Span { start, end }: &Span) -> Self {
+        *start..*end
+    }
+}
 
 macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
@@ -30,13 +47,13 @@ macro_rules! declare_tokens {
         pub mod tok {
             use super::Span;
 
-            #[derive(Clone, Debug)]
+            #[derive(Copy, Clone, Debug)]
             pub struct Ident<'input> {
                 pub span: Span,
                 pub literal: &'input str,
             }
 
-            #[derive(Clone, Debug)]
+            #[derive(Copy, Clone, Debug)]
             pub struct Integer<'input> {
                 pub span: Span,
                 pub literal: &'input str,
@@ -44,7 +61,7 @@ macro_rules! declare_tokens {
 
             $(
                 $(#[$attr])*
-                #[derive(Clone, Debug)]
+                #[derive(Copy, Clone, Debug)]
                 pub struct $name {
                     pub span: Span,
                 }
@@ -66,10 +83,18 @@ macro_rules! declare_tokens {
 
             fn next(&mut self) -> Option<Self::Item> {
                 let token = match self.lex.next()? {
-                    LogosToken::Ident => Token::Ident(tok::Ident { span: self.lex.span(), literal: self.lex.slice() }),
-                    LogosToken::Integer => Token::Integer(tok::Integer { span: self.lex.span(), literal: self.lex.slice() }),
+                    LogosToken::Ident => Token::Ident(tok::Ident {
+                        span: self.lex.span().into(),
+                        literal: self.lex.slice(),
+                    }),
+                    LogosToken::Integer => Token::Integer(tok::Integer {
+                        span: self.lex.span().into(),
+                        literal: self.lex.slice(),
+                    }),
                     $(
-                        LogosToken::$name => Token::$name(tok::$name { span: self.lex.span() }),
+                        LogosToken::$name => Token::$name(tok::$name {
+                            span: self.lex.span().into(),
+                        }),
                     )*
                     LogosToken::Unknown => return Some(Err(LexError)),
                     _ => unreachable!("remaining patterns are skipped"),
@@ -82,6 +107,8 @@ macro_rules! declare_tokens {
     }
 }
 
+// Make sure to update the `extern` block in `src/grammar.lalrpop`
+// if you make any changes here.
 declare_tokens! {
     ":" => Colon,
     "," => Comma,

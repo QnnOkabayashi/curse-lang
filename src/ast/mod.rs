@@ -86,7 +86,7 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expr<'ast, 'input> {
     Paren(Paren<'ast, 'input>),
     Symbol(Symbol),
@@ -96,7 +96,7 @@ pub enum Expr<'ast, 'input> {
     Appl(Appl<'ast, 'input>),
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Paren<'ast, 'input> {
     pub lparen: tok::LParen,
     pub inner: &'ast Expr<'ast, 'input>,
@@ -113,7 +113,7 @@ impl<'ast, 'input> Paren<'ast, 'input> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Symbol {
     Unit(tok::LParen, tok::RParen),
     Plus(tok::Plus),
@@ -125,13 +125,13 @@ pub enum Symbol {
     Slash(tok::Slash),
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Lit<'input> {
     Integer(tok::Integer<'input>),
     Ident(tok::Ident<'input>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Tuple<T> {
     pub lparen: tok::LParen,
     pub elements: Vec<(T, tok::Comma)>,
@@ -166,7 +166,7 @@ impl<T> Tuple<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Closure<'ast, 'input> {
     pub branches: Vec<(Branch<'ast, 'input>, tok::Else)>,
     pub last: Branch<'ast, 'input>,
@@ -188,7 +188,7 @@ impl<'ast, 'input> Closure<'ast, 'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Branch<'ast, 'input> {
     pub open: tok::Pipe,
     pub params: Params<'input>,
@@ -236,20 +236,20 @@ impl<'ast, 'input> Branch<'ast, 'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Pat<'input> {
     Lit(Lit<'input>),
     Tuple(Tuple<Pat<'input>>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Params<'input> {
     Zero,
     One(Pat<'input>),
     Two(Pat<'input>, Pat<'input>),
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Appl<'ast, 'input> {
     pub lhs: &'ast Expr<'ast, 'input>,
     pub function: &'ast Expr<'ast, 'input>,
