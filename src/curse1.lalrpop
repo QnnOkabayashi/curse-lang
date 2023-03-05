@@ -52,6 +52,7 @@ Branch: Branch<'ast, 'input> = {
     "|" "|" <body:InternalExpr> => Branch::zero(body),
     "|" <lhs:Pat> "|" <body:InternalExpr> => Branch::one(lhs, body),
     "|" <lhs:Pat> <rhs:Pat> "|" <body:InternalExpr> => Branch::two(lhs, rhs, body),
+    "{" <body:Expr> "}" => Branch::zero(body)
 };
 
 Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);
