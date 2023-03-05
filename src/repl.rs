@@ -1,5 +1,5 @@
 use crate::interpreter::{builtins::default_env, eval_expr};
-use crate::{ast, grammar, error, lex::Lexer};
+use crate::{ast, error, grammar, lex::Lexer};
 use miette::NamedSource;
 use rustyline::error::ReadlineError;
 
