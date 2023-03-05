@@ -2,7 +2,7 @@ use lalrpop_util::lalrpop_mod;
 use miette::IntoDiagnostic;
 use std::{fs, path::PathBuf};
 
-lalrpop_mod!(#[allow(clippy::all)] pub curse1);
+lalrpop_mod!(#[allow(clippy::all)] pub grammar);
 mod ast;
 mod error;
 mod interpreter;
@@ -28,7 +28,7 @@ fn main() -> miette::Result<()> {
         let input = fs::read_to_string(path).into_diagnostic()?;
         let arena = ast::Arena::new();
         let lexer = lex::Lexer::new(&input);
-        let program = curse1::ProgramParser::new().parse(&arena, lexer).unwrap();
+        let program = grammar::ProgramParser::new().parse(&arena, lexer).unwrap();
 
         interpreter::eval_program(program).unwrap();
     } else {
