@@ -66,7 +66,7 @@ pub struct ItemFunction<'ast, 'input> {
     pub tok_fn: tok::Fn,
     pub name: tok::Ident<'input>,
     pub tok_colon: tok::Colon,
-    pub typ: types::Type,
+    pub typ: types::Type<'input>,
     pub tok_equal: tok::Equal,
     pub closure: Closure<'ast, 'input>,
 }
@@ -76,7 +76,7 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         tok_fn: tok::Fn,
         name: tok::Ident<'input>,
         tok_colon: tok::Colon,
-        typ: types::Type,
+        typ: types::Type<'input>,
         tok_equal: tok::Equal,
         closure: Closure<'ast, 'input>,
     ) -> Self {

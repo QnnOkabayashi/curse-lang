@@ -125,7 +125,6 @@ declare_tokens! {
     "|" => Pipe,
     "fn" => Fn,
     "else" => Else,
-    "i32" => I32,
     "->" => Arrow,
 }
 

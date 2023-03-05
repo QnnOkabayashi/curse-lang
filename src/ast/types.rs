@@ -5,17 +5,17 @@ use crate::lex::tok;
 use std::fmt;
 
 #[derive(Debug, Clone)]
-pub enum Type {
-    Integer(Integer),
-    Tuple(Tuple),
-    Function(Function),
+pub enum Type<'input> {
+    Named(Named<'input>),
+    Tuple(Tuple<'input>),
+    Function(Function<'input>),
     Unit(Unit),
 }
 
-impl fmt::Display for Type {
+impl<'input> fmt::Display for Type<'input> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Integer(integer) => integer.fmt(f),
+            Type::Named(name) => name.fmt(f),
             Type::Tuple(tuple) => tuple.fmt(f),
             Type::Function(function) => function.fmt(f),
             Type::Unit(unit) => unit.fmt(f),
@@ -24,34 +24,34 @@ impl fmt::Display for Type {
 }
 
 #[derive(Debug, Clone)]
-pub struct Integer {
-    name: tok::I32,
+pub struct Named<'input> {
+    name: tok::Ident<'input>,
 }
 
-impl Integer {
-    pub fn new(name: tok::I32) -> Self {
+impl<'input> Named<'input> {
+    pub fn new(name: tok::Ident<'input>) -> Self {
         Self { name }
     }
 }
 
-impl fmt::Display for Integer {
+impl fmt::Display for Named<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "i32")
+        write!(f, "{}", self.name.literal)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Tuple {
-    tuple: ast::Tuple<Type>,
+pub struct Tuple<'input> {
+    tuple: ast::Tuple<Type<'input>>,
 }
 
-impl Tuple {
-    pub fn new(tuple: ast::Tuple<Type>) -> Self {
+impl<'input> Tuple<'input> {
+    pub fn new(tuple: ast::Tuple<Type<'input>>) -> Self {
         Self { tuple }
     }
 }
 
-impl fmt::Display for Tuple {
+impl fmt::Display for Tuple<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         if let Some((first, rest)) = self.tuple.elements.split_first() {
@@ -71,15 +71,15 @@ impl fmt::Display for Tuple {
 
 // TODO: rework arena to allocate types as well to avoid Box
 #[derive(Debug, Clone)]
-pub struct Function {
-    lhs: Box<Type>,
-    rhs: Box<Type>,
+pub struct Function<'input> {
+    lhs: Box<Type<'input>>,
+    rhs: Box<Type<'input>>,
     arrow: tok::Arrow,
-    ret: Box<Type>,
+    ret: Box<Type<'input>>,
 }
 
-impl Function {
-    pub fn new(lhs: Type, rhs: Type, arrow: tok::Arrow, ret: Type) -> Self {
+impl<'input> Function<'input> {
+    pub fn new(lhs: Type<'input>, rhs: Type<'input>, arrow: tok::Arrow, ret: Type<'input>) -> Self {
         Self {
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
@@ -89,7 +89,7 @@ impl Function {
     }
 }
 
-impl fmt::Display for Function {
+impl fmt::Display for Function<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} -> {}", self.lhs, self.rhs, self.ret)
     }

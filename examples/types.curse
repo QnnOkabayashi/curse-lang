@@ -15,6 +15,3 @@ fn weird : (i32, i32) (i32 () -> (i32, i32), i32 () -> (i32, i32)) -> ((i32, i32
 
 fn sum : () () -> () =
     |x y| x + y
-
-fn main: () () -> () =
-    || 2 in (1 in curried_sum)
