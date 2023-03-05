@@ -1,4 +1,3 @@
-
 use crate::ast::{Branch, Closure, Expr, Lit, Params, Program, Symbol, TopLevel};
 use crate::interpreter::{
     error::EvalError,
