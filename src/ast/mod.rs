@@ -4,6 +4,12 @@ pub struct Arena<'ast, 'input> {
     arena: typed_arena::Arena<Expr<'ast, 'input>>,
 }
 
+impl Default for Arena<'_, '_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'ast, 'input> Arena<'ast, 'input> {
     pub fn new() -> Self {
         Arena {

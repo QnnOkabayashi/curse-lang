@@ -26,7 +26,7 @@ pub fn function_definition<'ast, 'input>(
     env.insert(name, Value::Closure(closure));
 }
 
-pub fn eval_program<'ast, 'input>(program: Program<'ast, 'input>) -> Result<(), EvalError<'input>> {
+pub fn eval_program<'input>(program: Program<'_, 'input>) -> Result<(), EvalError<'input>> {
     let mut env = default_env();
 
     // eval top level statements

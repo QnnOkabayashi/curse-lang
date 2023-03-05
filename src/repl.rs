@@ -1,4 +1,3 @@
-use rustyline;
 use rustyline::error::ReadlineError;
 
 use miette::NamedSource;
