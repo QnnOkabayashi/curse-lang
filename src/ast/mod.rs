@@ -42,7 +42,7 @@ impl<'ast, 'input> Arena<'ast, 'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Program<'ast, 'input> {
     pub items: Vec<TopLevel<'ast, 'input>>,
 }
@@ -53,13 +53,13 @@ impl<'ast, 'input> Program<'ast, 'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TopLevel<'ast, 'input> {
     Function(ItemFunction<'ast, 'input>),
     Expr(&'ast Expr<'ast, 'input>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ItemFunction<'ast, 'input> {
     pub tok_fn: tok::Fn,
     pub name: tok::Ident<'input>,
