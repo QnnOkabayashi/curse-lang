@@ -2,6 +2,8 @@ use displaydoc::Display;
 use miette::{Diagnostic, NamedSource};
 use std::ops::Range;
 
+use crate::lex::{LexError, Token};
+
 #[derive(Debug, Diagnostic, Display)]
 #[displaydoc("A parsing error occurred.")]
 pub struct SourceErrors {
@@ -36,7 +38,7 @@ pub enum ParseError {
 
 impl std::error::Error for ParseError {}
 
-type LalrParseError<'a> = lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token<'a>, &'a str>;
+type LalrParseError<'a> = lalrpop_util::ParseError<usize, Token<'a>, LexError>;
 
 impl From<LalrParseError<'_>> for ParseError {
     fn from(value: LalrParseError<'_>) -> Self {

@@ -1,5 +1,6 @@
 use displaydoc::Display;
 use miette::Diagnostic;
+use std::ops::Range;
 
 #[derive(Debug, Diagnostic, Display)]
 pub enum EvalError<'input> {
@@ -14,6 +15,10 @@ pub enum EvalError<'input> {
     /// Bad Pattern match
     #[diagnostic(help("idk"))]
     FailedPatternMatch,
+
+    /// Bad Pattern match
+    #[diagnostic(help("Use a smaller integer"))]
+    ParseInt(#[label("This integer is failed to parse into an i32")] Range<usize>),
 }
 
 impl<'input> std::error::Error for EvalError<'input> {}

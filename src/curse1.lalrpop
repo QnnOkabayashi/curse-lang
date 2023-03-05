@@ -1,15 +1,43 @@
-use std::str::FromStr;
-use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Ident, Branch, Program, TopLevel};
+use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Branch, Program, TopLevel, ItemFunction, Tuple};
+use crate::lex::{LexError, Token, tok};
 
-grammar<'ast>(alloc: &'ast Arena<'ast, 'input>);
+grammar<'ast, 'input>(alloc: &'ast Arena<'ast, 'input>);
+
+extern {
+    type Location = usize;
+    type Error = LexError;
+
+    enum Token<'input> {
+        // In the grammar, if we specify the string on the lhs,
+        // it means that we're waiting for the lexer to
+        // give us the rhs.
+        "ident literal" => Token::Ident(<tok::Ident<'input>>),
+        "integer literal" => Token::Integer(<tok::Integer<'input>>),
+        "fn" => Token::Fn(<tok::Fn>),
+        ":" => Token::Colon(<tok::Colon>),
+        "," => Token::Comma(<tok::Comma>),
+        "(" => Token::LParen(<tok::LParen>),
+        ")" => Token::RParen(<tok::RParen>),
+        "=" => Token::Equal(<tok::Equal>),
+        "+" => Token::Plus(<tok::Plus>),
+        "-" => Token::Minus(<tok::Minus>),
+        "*" => Token::Star(<tok::Star>),
+        ".." => Token::DotDot(<tok::DotDot>),
+        ";" => Token::Semi(<tok::Semi>),
+        "%" => Token::Percent(<tok::Percent>),
+        "/" => Token::Slash(<tok::Slash>),
+        "|" => Token::Pipe(<tok::Pipe>),
+        "else" => Token::Else(<tok::Else>),
+    }
+}
+
+Ident: tok::Ident<'input> = "ident literal";
+
+Integer: tok::Integer<'input> = "integer literal";
 
 pub Program: Program<'ast, 'input> = TopLevel* => Program::new(<>);
 
-pub TopLevel: TopLevel<'ast, 'input> = "fn" <name:Ident> ":=" <body:Closure> => TopLevel::Function(name, body);
-
-Ident: Ident<'input> = r"[_a-zA-Z][_a-zA-Z0-9]{0,30}" => Ident::new(<>);
-
-Integer: i32 = r"[0-9]+" => i32::from_str(<>).unwrap();
+pub TopLevel: TopLevel<'ast, 'input> = "fn" Ident ":" "=" Closure => TopLevel::Function(ItemFunction::new(<>));
 
 Pat: Pat<'input> = {
     Lit => Pat::Lit(<>),
@@ -25,17 +53,17 @@ Comma<T>: Vec<T> = <mut v:(<T> ",")+> <e:T?> => {
 
 Paren<T>: T = "(" <T> ")";
 
-Tuple<T>: Vec<T> = Paren<Comma<T>>;
+Tuple<T>: Tuple<T> = "(" (T ",")+ T? ")" => Tuple::new(<>);
 
 Symbol: Symbol = {
-    "()" => Symbol::Unit,
-    "+" => Symbol::Plus,
-    "-" => Symbol::Minus,
-    "*" => Symbol::Asterisk,
-    ".." => Symbol::DotDot,
-    ";" => Symbol::Semi,
-    "%" => Symbol::Percent,
-    "/" => Symbol::Slash,
+    "(" ")" => Symbol::Unit(<>),
+    "+" => Symbol::Plus(<>),
+    "-" => Symbol::Minus(<>),
+    "*" => Symbol::Star(<>),
+    ".." => Symbol::DotDot(<>),
+    ";" => Symbol::Semi(<>),
+    "%" => Symbol::Percent(<>),
+    "/" => Symbol::Slash(<>),
 };
 
 Lit: Lit<'input> = {
@@ -43,18 +71,15 @@ Lit: Lit<'input> = {
     Ident => Lit::Ident(<>),
 };
 
-Closure: Closure<'ast, 'input> = <mut branches:(<Branch> "else")*> <last:Branch> => {
-    branches.push(last);
-    Closure::new(branches)
-};
+Closure: Closure<'ast, 'input> = (Branch "else")* Branch => Closure::new(<>);
 
 Branch: Branch<'ast, 'input> = {
-    "|" "|" <body:InternalExpr> => Branch::zero(body),
-    "|" <lhs:Pat> "|" <body:InternalExpr> => Branch::one(lhs, body),
-    "|" <lhs:Pat> <rhs:Pat> "|" <body:InternalExpr> => Branch::two(lhs, rhs, body),
+    "|" "|" InternalExpr => Branch::zero(<>),
+    "|" Pat "|" InternalExpr => Branch::one(<>),
+    "|" Pat Pat "|" InternalExpr => Branch::two(<>),
 };
 
-Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <f:Term> <rhs:Rhs> => Appl::new(lhs, f, rhs);
+Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <fun:Term> <rhs:Rhs> => Appl::new(<>);
 
 Term = {
     Paren<EndExpr>,
@@ -65,7 +90,7 @@ Term = {
 
 InternalTerm = {
     Term,
-    Branch => alloc.closure(Closure::new(vec![<>])),
+    Branch => alloc.closure(Closure::new(vec![], <>)),
 };
 
 EndTerm = {
@@ -73,12 +98,12 @@ EndTerm = {
     Closure => alloc.closure(<>),
 };
 
-Expr: &'ast Expr<'ast, 'input> = {
+Expr = {
     Term,
     Appl<Term> => alloc.appl(<>),
 };
 
-InternalExpr: &'ast Expr<'ast, 'input> = {
+InternalExpr = {
     InternalTerm,
     Appl<InternalTerm> => alloc.appl(<>),
 };

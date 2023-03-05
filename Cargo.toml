@@ -14,3 +14,4 @@ miette = { version = "5.5.0", features = ["fancy"] }
 regex = "1"
 rustyline = "11.0.0"
 typed-arena = "2.0.2"
+logos = "0.12.1"
