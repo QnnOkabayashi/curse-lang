@@ -1,7 +1,5 @@
-use crate::{
-    ast::{Lit, Params, Pat},
-    interpreter::{error::EvalError, value::Value, Environment},
-};
+use crate::ast::{Lit, Params, Pat};
+use crate::interpreter::{error::EvalError, value::Value, Environment};
 use std::iter;
 
 pub fn match_args<'ast, 'input>(

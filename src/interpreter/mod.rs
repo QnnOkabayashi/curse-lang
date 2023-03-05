@@ -1,20 +1,18 @@
-use crate::{
-    ast::{Branch, Closure, Expr, Lit, Params, Program, Symbol, TopLevel},
-    interpreter::{
-        error::EvalError,
-        pattern_matching::{check_args, match_args},
-        value::Value,
-    },
-    lex::tok,
-};
-use std::collections::HashMap;
 
-use self::builtins::default_env;
+use crate::ast::{Branch, Closure, Expr, Lit, Params, Program, Symbol, TopLevel};
+use crate::interpreter::{
+    error::EvalError,
+    pattern_matching::{check_args, match_args},
+    value::Value,
+};
+use crate::lex::tok;
+use std::collections::HashMap;
 
 pub mod builtins;
 mod error;
 mod pattern_matching;
 mod value;
+use builtins::default_env;
 
 pub type Environment<'ast, 'input> = HashMap<&'input str, Value<'ast, 'input>>;
 

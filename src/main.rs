@@ -1,10 +1,8 @@
-use std::{fs, path::PathBuf};
-
 use lalrpop_util::lalrpop_mod;
 use miette::IntoDiagnostic;
+use std::{fs, path::PathBuf};
 
 lalrpop_mod!(#[allow(clippy::all)] pub curse1);
-
 mod ast;
 mod error;
 mod interpreter;

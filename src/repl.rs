@@ -1,12 +1,7 @@
-use rustyline::error::ReadlineError;
-
+use crate::interpreter::{builtins::default_env, eval_expr};
+use crate::{ast, curse1, error, lex::Lexer};
 use miette::NamedSource;
-
-use crate::{
-    ast, curse1, error,
-    interpreter::{builtins::default_env, eval_expr},
-    lex::Lexer,
-};
+use rustyline::error::ReadlineError;
 
 pub fn repl() -> rustyline::Result<()> {
     let mut rl = rustyline::DefaultEditor::new()?;

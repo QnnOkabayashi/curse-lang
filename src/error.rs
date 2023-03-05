@@ -1,8 +1,7 @@
+use crate::lex::{LexError, Token};
 use displaydoc::Display;
 use miette::{Diagnostic, NamedSource};
 use std::ops::Range;
-
-use crate::lex::{LexError, Token};
 
 #[derive(Debug, Diagnostic, Display)]
 #[displaydoc("A parsing error occurred.")]
