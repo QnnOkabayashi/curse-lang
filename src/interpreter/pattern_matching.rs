@@ -54,17 +54,20 @@ pub fn match_pattern<'ast, 'input>(
 ) -> Result<(), EvalError<'input>> {
     match pattern {
         Pat::Lit(lit) => match (value, lit) {
-            (Value::Integer(x), Lit::Integer(y)) if x == *y => Ok(()),
+            (Value::Integer(x), Lit::Integer(y))
+                if x == y.1.parse::<i32>().expect("parse int failed") =>
+            {
+                Ok(())
+            }
             (val, Lit::Ident(ident)) => {
-                env.insert(ident.inner, val);
+                env.insert(ident.1, val);
                 Ok(())
             }
             _ => Err(EvalError::FailedPatternMatch),
         },
         Pat::Tuple(pats) => match value {
-            Value::Tuple(vals) if vals.len() == pats.len() => {
-                iter::zip(vals, pats).try_for_each(|(val, pat)| match_pattern(val, pat, env))
-            }
+            Value::Tuple(vals) if vals.len() == pats.len() => iter::zip(vals, pats.iter_elements())
+                .try_for_each(|(val, pat)| match_pattern(val, pat, env)),
             _ => Err(EvalError::FailedPatternMatch),
         },
     }
@@ -76,14 +79,17 @@ pub fn check_pattern<'input>(
 ) -> Result<(), EvalError<'input>> {
     match pattern {
         Pat::Lit(lit) => match (value, lit) {
-            (Value::Integer(x), Lit::Integer(y)) if *x == *y => Ok(()),
+            (Value::Integer(x), Lit::Integer(y))
+                if *x == y.1.parse::<i32>().expect("parse into failed") =>
+            {
+                Ok(())
+            }
             (_, Lit::Ident(_)) => Ok(()),
             _ => Err(EvalError::FailedPatternMatch),
         },
         Pat::Tuple(pats) => match value {
-            Value::Tuple(vals) if vals.len() == pats.len() => {
-                iter::zip(vals, pats).try_for_each(|(val, pat)| check_pattern(val, pat))
-            }
+            Value::Tuple(vals) if vals.len() == pats.len() => iter::zip(vals, pats.iter_elements())
+                .try_for_each(|(val, pat)| check_pattern(val, pat)),
             _ => Err(EvalError::FailedPatternMatch),
         },
     }

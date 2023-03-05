@@ -30,14 +30,14 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Integer(n) => write!(f, "{n}"),
             Value::Closure(_) => write!(f, "<closure>"),
             Value::Builtin(_) => write!(f, "<builtin>"),
-            Value::Symbol(Symbol::Unit) => write!(f, "()"),
-            Value::Symbol(Symbol::Asterisk) => write!(f, "*"),
-            Value::Symbol(Symbol::Plus) => write!(f, "+"),
-            Value::Symbol(Symbol::Minus) => write!(f, "-"),
-            Value::Symbol(Symbol::Percent) => write!(f, "%"),
-            Value::Symbol(Symbol::Slash) => write!(f, "/"),
-            Value::Symbol(Symbol::DotDot) => write!(f, ".."),
-            Value::Symbol(Symbol::Semi) => write!(f, ";"),
+            Value::Symbol(Symbol::Unit(..)) => write!(f, "()"),
+            Value::Symbol(Symbol::Star(_)) => write!(f, "*"),
+            Value::Symbol(Symbol::Plus(_)) => write!(f, "+"),
+            Value::Symbol(Symbol::Minus(_)) => write!(f, "-"),
+            Value::Symbol(Symbol::Percent(_)) => write!(f, "%"),
+            Value::Symbol(Symbol::Slash(_)) => write!(f, "/"),
+            Value::Symbol(Symbol::DotDot(_)) => write!(f, ".."),
+            Value::Symbol(Symbol::Semi(_)) => write!(f, ";"),
             Value::Tuple(t) => {
                 write!(f, "(")?;
                 if let Some((first, rest)) = t.split_first() {

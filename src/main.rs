@@ -7,6 +7,7 @@ lalrpop_mod!(pub curse1);
 mod ast;
 mod error;
 mod interpreter;
+mod lex;
 mod repl;
 
 use clap::Parser;
@@ -29,7 +30,8 @@ fn main() -> miette::Result<()> {
         // Example: cargo run -- --file examples/branching.curse
         let input = fs::read_to_string(path).into_diagnostic()?;
         let arena = ast::Arena::new();
-        let program = curse1::ProgramParser::new().parse(&arena, &input).unwrap();
+        let lexer = lex::Lexer::new(&input);
+        let program = curse1::ProgramParser::new().parse(&arena, lexer).unwrap();
 
         interpreter::eval_program(program).unwrap();
     } else {

@@ -1,10 +1,11 @@
 use crate::{
-    ast::{Closure, Expr, Ident, Lit, Params, Program, Symbol, TopLevel},
+    ast::{Branch, Closure, Expr, Lit, Params, Program, Symbol, TopLevel},
     interpreter::{
         error::EvalError,
         pattern_matching::{check_args, match_args},
         value::Value,
     },
+    lex::tok,
 };
 use std::collections::HashMap;
 
@@ -18,21 +19,21 @@ mod value;
 pub type Environment<'ast, 'input> = HashMap<&'input str, Value<'ast, 'input>>;
 
 pub fn function_definition<'ast, 'input>(
-    name: &Ident<'input>,
-    body: &'ast Closure<'ast, 'input>,
+    name: &'input str,
+    closure: &'ast Closure<'ast, 'input>,
     env: &mut Environment<'ast, 'input>,
 ) {
-    env.insert(name.inner, Value::Closure(body));
+    env.insert(name, Value::Closure(closure));
 }
 
 pub fn eval_program<'ast, 'input>(program: Program<'ast, 'input>) -> Result<(), EvalError<'input>> {
     let mut env = default_env();
 
     // eval top level statements
-    for stmt in &program.stmts {
+    for stmt in &program.items {
         match stmt {
-            TopLevel::Function(name, body) => {
-                function_definition(name, body, &mut env);
+            TopLevel::Function(function) => {
+                function_definition(function.name.1, &function.closure, &mut env);
             }
             TopLevel::Expr(expr) => {
                 eval_expr(expr, &mut env)?;
@@ -41,21 +42,23 @@ pub fn eval_program<'ast, 'input>(program: Program<'ast, 'input>) -> Result<(), 
     }
 
     // find and execute `main`
-    for (name, val) in &env {
-        match (*name, val) {
-            ("main", Value::Closure(Closure { branches })) if branches.len() == 1 => {
-                // argc and argv?
-                let Params::Zero = branches[0].params else {
-                    return Err(EvalError::TypeMismatch)
-                };
-
+    if let Some(Value::Closure(closure)) = env.get("main") {
+        match closure {
+            Closure {
+                branches,
+                last:
+                    Branch {
+                        params: Params::Zero,
+                        body,
+                        ..
+                    },
+            } if branches.is_empty() => {
                 let mut new_env = env.clone();
-                eval_expr(branches[0].body, &mut new_env)?;
+                eval_expr(body, &mut new_env)?;
             }
-            _ => (),
+            _ => return Err(EvalError::TypeMismatch),
         }
     }
-
     Ok(())
 }
 
@@ -64,22 +67,27 @@ pub fn eval_expr<'ast, 'input>(
     env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match expr {
-        Expr::Lit(Lit::Integer(integer)) => Ok(Value::Integer(*integer)),
+        Expr::Lit(Lit::Integer(tok::Integer(span, slice))) => {
+            let int = slice
+                .parse()
+                .map_err(|_| EvalError::ParseInt(span.clone()))?;
+            Ok(Value::Integer(int))
+        }
         Expr::Lit(Lit::Ident(ident)) => env
-            .get(ident.inner)
-            .ok_or(EvalError::UnboundVariable(ident.inner))
+            .get(ident.1)
+            .ok_or(EvalError::UnboundVariable(ident.1))
             .cloned(),
         Expr::Tuple(items) => items
-            .iter()
+            .iter_elements()
             .map(|it| eval_expr(it, env))
             .collect::<Result<_, _>>()
             .map(Value::Tuple),
         Expr::Symbol(Symbol::Unit) => Ok(Value::default()),
-        Expr::Symbol(symbol) => Ok(Value::Symbol(*symbol)),
+        Expr::Symbol(symbol) => Ok(Value::Symbol(symbol.clone())),
         Expr::Closure(closure) => Ok(Value::Closure(closure)),
         Expr::Appl(appl) => {
-            let left = eval_expr(appl.left, env)?;
-            let right = eval_expr(appl.right, env)?;
+            let left = eval_expr(appl.lhs, env)?;
+            let right = eval_expr(appl.rhs, env)?;
             let function = eval_expr(appl.function, env)?;
             call_function(left, function, right, env)
         }
@@ -91,20 +99,20 @@ fn symbol<'ast, 'input>(
     right: Value<'ast, 'input>,
     op: Symbol,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
-    if let Symbol::Semi = op {
+    if let Symbol::Semi(_) = op {
         return Ok(right);
     }
 
     match (left, right) {
         (Value::Integer(x), Value::Integer(y)) => match op {
-            Symbol::Unit => Err(EvalError::TypeMismatch),
-            Symbol::Plus => Ok(Value::Integer(x + y)),
-            Symbol::Minus => Ok(Value::Integer(x - y)),
-            Symbol::Asterisk => Ok(Value::Integer(x * y)),
-            Symbol::Percent => Ok(Value::Integer(x % y)),
-            Symbol::Slash => Ok(Value::Integer(x / y)),
-            Symbol::DotDot => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
-            Symbol::Semi => Ok(Value::Integer(y)),
+            Symbol::Unit(..) => Err(EvalError::TypeMismatch),
+            Symbol::Plus(_) => Ok(Value::Integer(x + y)),
+            Symbol::Minus(_) => Ok(Value::Integer(x - y)),
+            Symbol::Star(_) => Ok(Value::Integer(x * y)),
+            Symbol::Percent(_) => Ok(Value::Integer(x % y)),
+            Symbol::Slash(_) => Ok(Value::Integer(x / y)),
+            Symbol::DotDot(_) => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
+            Symbol::Semi(_) => Ok(Value::Integer(y)),
         },
         _ => Err(EvalError::TypeMismatch),
     }
@@ -120,9 +128,9 @@ pub fn call_function<'ast, 'input>(
         Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) => Err(EvalError::TypeMismatch),
         Value::Symbol(s) => symbol(lhs, rhs, s),
         Value::Builtin(f) => f(lhs, rhs, env),
-        Value::Closure(Closure { branches }) => {
+        Value::Closure(closure) => {
             let mut new_env = env.clone();
-            for branch in branches {
+            for branch in closure.iter_branches() {
                 if check_args(&lhs, &rhs, &branch.params).is_ok() {
                     match_args(lhs, rhs, &branch.params, &mut new_env)?;
                     return eval_expr(branch.body, &mut new_env);

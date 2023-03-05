@@ -6,6 +6,7 @@ use miette::NamedSource;
 use crate::{
     ast, curse1, error,
     interpreter::{builtins::default_env, eval_expr},
+    lex::Lexer,
 };
 
 pub fn repl() -> rustyline::Result<()> {
@@ -19,9 +20,10 @@ pub fn repl() -> rustyline::Result<()> {
 
                 let mut env = default_env();
                 let arena = ast::Arena::new();
+                let lexer = Lexer::new(&line);
 
                 let expr = curse1::EndExprParser::new()
-                    .parse(&arena, &line)
+                    .parse(&arena, lexer)
                     .map_err(|e| {
                         miette::Report::from(error::SourceErrors {
                             source: NamedSource::new("test", line.to_string()),
