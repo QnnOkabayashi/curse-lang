@@ -1,4 +1,4 @@
-use crate::ast::{Branch, Closure, Expr, Lit, Params, Program, Symbol, TopLevel};
+use crate::ast::{Branch, Closure, Expr, Lit, Params, Paren, Program, Symbol, TopLevel};
 use crate::interpreter::{
     error::EvalError,
     pattern_matching::{check_args, match_args},
@@ -64,12 +64,11 @@ pub fn eval_expr<'ast, 'input>(
     env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match expr {
-        Expr::Lit(Lit::Integer(tok::Integer { span, literal })) => {
-            let int = literal
-                .parse()
-                .map_err(|_| EvalError::ParseInt(span.clone()))?;
-            Ok(Value::Integer(int))
-        }
+        Expr::Paren(Paren { inner, .. }) => eval_expr(inner, env),
+        Expr::Lit(Lit::Integer(tok::Integer { span, literal })) => literal
+            .parse()
+            .map(Value::Integer)
+            .map_err(|_| EvalError::ParseInt(span.clone())),
         Expr::Lit(Lit::Ident(ident)) => env
             .get(ident.literal)
             .ok_or(EvalError::UnboundVariable(ident.literal))

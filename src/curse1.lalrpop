@@ -1,4 +1,4 @@
-use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Branch, Program, TopLevel, ItemFunction, Tuple};
+use crate::ast::{Arena, Expr, Symbol, Pat, Lit, Closure, Appl, Branch, Program, TopLevel, ItemFunction, Tuple, Paren};
 use crate::lex::{LexError, Token, tok};
 
 grammar<'ast, 'input>(alloc: &'ast Arena<'ast, 'input>);
@@ -44,14 +44,7 @@ Pat: Pat<'input> = {
     Tuple<Pat> => Pat::Tuple(<>),
 };
 
-Comma<T>: Vec<T> = <mut v:(<T> ",")+> <e:T?> => {
-    if let Some(e) = e {
-        v.push(e);
-    }
-    v
-};
-
-Paren<T>: T = "(" <T> ")";
+Paren: Paren<'ast, 'input> = "(" EndExpr ")" => Paren::new(<>);
 
 Tuple<T>: Tuple<T> = "(" (T ",")+ T? ")" => Tuple::new(<>);
 
@@ -81,8 +74,8 @@ Branch: Branch<'ast, 'input> = {
 
 Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <fun:Term> <rhs:Rhs> => Appl::new(<>);
 
-Term = {
-    Paren<EndExpr>,
+Term: &'ast Expr<'ast, 'input> = {
+    Paren => alloc.paren(<>),
     Symbol => alloc.symbol(<>),
     Lit => alloc.lit(<>),
     Tuple<EndExpr> => alloc.tuple(<>),
@@ -108,7 +101,7 @@ InternalExpr = {
     Appl<InternalTerm> => alloc.appl(<>),
 };
 
-pub EndExpr: &'ast Expr<'ast, 'input> = {
+pub EndExpr = {
     EndTerm,
     Appl<EndTerm> => alloc.appl(<>),
 };

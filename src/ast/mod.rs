@@ -17,6 +17,10 @@ impl<'ast, 'input> Arena<'ast, 'input> {
         }
     }
 
+    pub fn paren(&'ast self, paren: Paren<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
+        self.arena.alloc(Expr::Paren(paren))
+    }
+
     pub fn symbol(&'ast self, symbol: Symbol) -> &'ast Expr<'ast, 'input> {
         self.arena.alloc(Expr::Symbol(symbol))
     }
@@ -84,11 +88,29 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
 
 #[derive(Debug)]
 pub enum Expr<'ast, 'input> {
+    Paren(Paren<'ast, 'input>),
     Symbol(Symbol),
     Lit(Lit<'input>),
     Tuple(Tuple<&'ast Expr<'ast, 'input>>),
     Closure(Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
+}
+
+#[derive(Debug)]
+pub struct Paren<'ast, 'input> {
+    pub lparen: tok::LParen,
+    pub inner: &'ast Expr<'ast, 'input>,
+    pub rparen: tok::RParen,
+}
+
+impl<'ast, 'input> Paren<'ast, 'input> {
+    pub fn new(lparen: tok::LParen, inner: &'ast Expr<'ast, 'input>, rparen: tok::RParen) -> Self {
+        Paren {
+            lparen,
+            inner,
+            rparen,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
