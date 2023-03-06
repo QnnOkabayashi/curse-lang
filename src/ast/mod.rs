@@ -143,6 +143,10 @@ impl<T> Tuple<T> {
         }
     }
 
+    pub fn unit(lparen: tok::LParen, rparen: tok::RParen) -> Self {
+        Tuple { lparen, elements: vec![], trailing: None, rparen }
+    }
+
     pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
         self.elements
             .iter()

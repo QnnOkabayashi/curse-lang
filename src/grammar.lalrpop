@@ -49,9 +49,8 @@ pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 pub Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
 
 StartType: Type<'input> = {
-    "ident literal" => Type::Named(types::Named::new(<>)),
+    Ident => Type::Named(types::Named::new(<>)),
     Tuple<Type> => Type::Tuple(types::Tuple::new(<>)),
-    "(" ")" => Type::Unit(types::Unit::new(<>)),
     "(" <Type> ")",
 };
 
@@ -67,10 +66,12 @@ Pat: Pat<'input> = {
 
 Paren: Paren<'ast, 'input> = "(" EndExpr ")" => Paren::new(<>);
 
-Tuple<T>: Tuple<T> = "(" (T ",")+ T? ")" => Tuple::new(<>);
+Tuple<T>: Tuple<T> = {
+    "(" ")" => Tuple::unit(<>),
+    "(" (T ",")+ T? ")" => Tuple::new(<>),
+}
 
 Symbol: Symbol = {
-    "(" ")" => Symbol::Unit(<>),
     "+" => Symbol::Plus(<>),
     "-" => Symbol::Minus(<>),
     "*" => Symbol::Star(<>),
@@ -98,7 +99,7 @@ Branch: Branch<'ast, 'input> = {
     "|" Pat Pat "|" InternalExpr => Branch::two(<>),
 };
 
-Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <fun:Term> <rhs:Rhs> => Appl::new(<>);
+Appl<Rhs>: Appl<'ast, 'input> = Expr Term Rhs => Appl::new(<>);
 
 Term: &'ast Expr<'ast, 'input> = {
     Paren => alloc.expr(Expr::Paren(<>)),

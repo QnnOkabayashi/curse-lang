@@ -9,7 +9,6 @@ pub enum Type<'input> {
     Named(Named<'input>),
     Tuple(Tuple<'input>),
     Function(Function<'input>),
-    Unit(Unit),
 }
 
 impl<'input> fmt::Display for Type<'input> {
@@ -18,7 +17,6 @@ impl<'input> fmt::Display for Type<'input> {
             Type::Named(name) => name.fmt(f),
             Type::Tuple(tuple) => tuple.fmt(f),
             Type::Function(function) => function.fmt(f),
-            Type::Unit(unit) => unit.fmt(f),
         }
     }
 }
@@ -92,23 +90,5 @@ impl<'input> Function<'input> {
 impl fmt::Display for Function<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} -> {}", self.lhs, self.rhs, self.ret)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Unit {
-    lparen: tok::LParen,
-    rparen: tok::RParen,
-}
-
-impl Unit {
-    pub fn new(lparen: tok::LParen, rparen: tok::RParen) -> Self {
-        Self { lparen, rparen }
-    }
-}
-
-impl fmt::Display for Unit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "()")
     }
 }
