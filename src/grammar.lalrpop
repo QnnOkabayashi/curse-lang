@@ -1,5 +1,5 @@
 use crate::ast::{
-    Appl, Arena, Branch, Closure, Expr, ItemFunction, Lit, Paren, Pat, Program, Symbol, TopLevel,
+    Appl, Arena, Branch, Closure, Expr, ItemFunction, Lit, Paren, Pat, Program, Symbol, Item,
     Tuple, types, types::Type,
 };
 use crate::lex::{tok, LexError, Token};
@@ -39,9 +39,9 @@ Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
-pub Program: Program<'ast, 'input> = TopLevel* => Program::new(<>);
+pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 
-pub TopLevel: TopLevel<'ast, 'input> = "fn" Ident ":" Type "=" Closure => TopLevel::Function(ItemFunction::new(<>));
+pub Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
 
 StartType: Type<'input> = {
     "ident literal" => Type::Named(types::Named::new(<>)),
@@ -91,33 +91,33 @@ Branch: Branch<'ast, 'input> = {
 Appl<Rhs>: Appl<'ast, 'input> = <lhs:Expr> <fun:Term> <rhs:Rhs> => Appl::new(<>);
 
 Term: &'ast Expr<'ast, 'input> = {
-    Paren => alloc.paren(<>),
-    Symbol => alloc.symbol(<>),
-    Lit => alloc.lit(<>),
-    Tuple<EndExpr> => alloc.tuple(<>),
+    Paren => alloc.expr(Expr::Paren(<>)),
+    Symbol => alloc.expr(Expr::Symbol(<>)),
+    Lit => alloc.expr(Expr::Lit(<>)),
+    Tuple<EndExpr> => alloc.expr(Expr::Tuple(<>)),
 };
 
 InternalTerm = {
     Term,
-    Branch => alloc.closure(Closure::new(vec![], <>)),
+    Branch => alloc.expr(Expr::Closure(Closure::new(vec![], <>))),
 };
 
 EndTerm = {
     Term,
-    Closure => alloc.closure(<>),
+    Closure => alloc.expr(Expr::Closure(<>)),
 };
 
 Expr = {
     Term,
-    Appl<Term> => alloc.appl(<>),
+    Appl<Term> => alloc.expr(Expr::Appl(<>)),
 };
 
 InternalExpr = {
     InternalTerm,
-    Appl<InternalTerm> => alloc.appl(<>),
+    Appl<InternalTerm> => alloc.expr(Expr::Appl(<>)),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => alloc.appl(<>),
+    Appl<EndTerm> => alloc.expr(Expr::Appl(<>)),
 };

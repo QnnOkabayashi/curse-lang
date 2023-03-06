@@ -1,4 +1,4 @@
-use crate::ast::{Branch, Closure, Expr, Lit, Params, Paren, Program, Symbol, TopLevel};
+use crate::ast::{Branch, Closure, Expr, Item, Lit, Params, Paren, Program, Symbol};
 use crate::interpreter::{
     error::EvalError,
     pattern_matching::{check_args, match_args},
@@ -29,11 +29,8 @@ pub fn eval_program<'input>(program: Program<'_, 'input>) -> Result<(), EvalErro
     // eval top level statements
     for stmt in &program.items {
         match stmt {
-            TopLevel::Function(function) => {
+            Item::Function(function) => {
                 function_definition(function.name.literal, &function.closure, &mut env);
-            }
-            TopLevel::Expr(expr) => {
-                eval_expr(expr, &mut env)?;
             }
         };
     }

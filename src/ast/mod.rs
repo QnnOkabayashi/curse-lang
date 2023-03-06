@@ -3,7 +3,7 @@ use crate::lex::tok;
 pub mod types;
 
 pub struct Arena<'ast, 'input> {
-    arena: typed_arena::Arena<Expr<'ast, 'input>>,
+    exprs: typed_arena::Arena<Expr<'ast, 'input>>,
 }
 
 impl Default for Arena<'_, '_> {
@@ -15,50 +15,29 @@ impl Default for Arena<'_, '_> {
 impl<'ast, 'input> Arena<'ast, 'input> {
     pub fn new() -> Self {
         Arena {
-            arena: typed_arena::Arena::with_capacity(1024),
+            exprs: typed_arena::Arena::with_capacity(1024),
         }
     }
 
-    pub fn paren(&'ast self, paren: Paren<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
-        self.arena.alloc(Expr::Paren(paren))
-    }
-
-    pub fn symbol(&'ast self, symbol: Symbol) -> &'ast Expr<'ast, 'input> {
-        self.arena.alloc(Expr::Symbol(symbol))
-    }
-
-    pub fn lit(&'ast self, lit: Lit<'input>) -> &'ast Expr<'ast, 'input> {
-        self.arena.alloc(Expr::Lit(lit))
-    }
-
-    pub fn tuple(&'ast self, tuple: Tuple<&'ast Expr<'ast, 'input>>) -> &'ast Expr<'ast, 'input> {
-        self.arena.alloc(Expr::Tuple(tuple))
-    }
-
-    pub fn closure(&'ast self, closure: Closure<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
-        self.arena.alloc(Expr::Closure(closure))
-    }
-
-    pub fn appl(&'ast self, appl: Appl<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
-        self.arena.alloc(Expr::Appl(appl))
+    pub fn expr(&'ast self, expr: Expr<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
+        self.exprs.alloc(expr)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Program<'ast, 'input> {
-    pub items: Vec<TopLevel<'ast, 'input>>,
+    pub items: Vec<Item<'ast, 'input>>,
 }
 
 impl<'ast, 'input> Program<'ast, 'input> {
-    pub fn new(items: Vec<TopLevel<'ast, 'input>>) -> Self {
+    pub fn new(items: Vec<Item<'ast, 'input>>) -> Self {
         Program { items }
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum TopLevel<'ast, 'input> {
+pub enum Item<'ast, 'input> {
     Function(ItemFunction<'ast, 'input>),
-    Expr(&'ast Expr<'ast, 'input>),
 }
 
 #[derive(Clone, Debug)]
