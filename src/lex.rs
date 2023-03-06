@@ -114,7 +114,6 @@ declare_tokens! {
     "," => Comma,
     "(" => LParen,
     ")" => RParen,
-    "=" => Equal,
     "+" => Plus,
     "-" => Minus,
     "*" => Star,
@@ -126,6 +125,12 @@ declare_tokens! {
     "fn" => Fn,
     "else" => Else,
     "->" => Arrow,
+
+    "=" => Equal,
+    "<" => Less,
+    ">" => Greater,
+    "<=" => LessEqual,
+    ">=" => GreaterEqual,
 }
 
 #[derive(Debug)]

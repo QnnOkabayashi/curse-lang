@@ -106,6 +106,11 @@ fn symbol<'ast, 'input>(
             Symbol::Slash(_) => Ok(Value::Integer(x / y)),
             Symbol::DotDot(_) => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
             Symbol::Semi(_) => Ok(Value::Integer(y)),
+            Symbol::Equal(_) => Ok(Value::Integer(if x == y { 1 } else { 0 })),
+            Symbol::Less(_) => Ok(Value::Integer(if x < y { 1 } else { 0 })),
+            Symbol::Greater(_) => Ok(Value::Integer(if x > y { 1 } else { 0 })),
+            Symbol::LessEqual(_) => Ok(Value::Integer(if x <= y { 1 } else { 0 })),
+            Symbol::GreaterEqual(_) => Ok(Value::Integer(if x >= y { 1 } else { 0 })),
         },
         _ => Err(EvalError::TypeMismatch),
     }

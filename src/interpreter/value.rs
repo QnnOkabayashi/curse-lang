@@ -38,6 +38,11 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Symbol(Symbol::Slash(_)) => write!(f, "/"),
             Value::Symbol(Symbol::DotDot(_)) => write!(f, ".."),
             Value::Symbol(Symbol::Semi(_)) => write!(f, ";"),
+            Value::Symbol(Symbol::Equal(_)) => write!(f, "="),
+            Value::Symbol(Symbol::Less(_)) => write!(f, "<"),
+            Value::Symbol(Symbol::Greater(_)) => write!(f, ">"),
+            Value::Symbol(Symbol::LessEqual(_)) => write!(f, "<="),
+            Value::Symbol(Symbol::GreaterEqual(_)) => write!(f, ">="),
             Value::Tuple(t) => {
                 write!(f, "(")?;
                 if let Some((first, rest)) = t.split_first() {

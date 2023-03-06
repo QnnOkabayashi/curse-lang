@@ -107,6 +107,11 @@ pub enum Symbol {
     Semi(tok::Semi),
     Percent(tok::Percent),
     Slash(tok::Slash),
+    Equal(tok::Equal),
+    Less(tok::Less),
+    Greater(tok::Greater),
+    LessEqual(tok::LessEqual),
+    GreaterEqual(tok::GreaterEqual),
 }
 
 #[derive(Copy, Clone, Debug)]

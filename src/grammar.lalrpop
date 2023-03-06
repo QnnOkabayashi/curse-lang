@@ -20,7 +20,6 @@ extern {
         "," => Token::Comma(<tok::Comma>),
         "(" => Token::LParen(<tok::LParen>),
         ")" => Token::RParen(<tok::RParen>),
-        "=" => Token::Equal(<tok::Equal>),
         "+" => Token::Plus(<tok::Plus>),
         "-" => Token::Minus(<tok::Minus>),
         "*" => Token::Star(<tok::Star>),
@@ -32,6 +31,12 @@ extern {
         "fn" => Token::Fn(<tok::Fn>),
         "else" => Token::Else(<tok::Else>),
         "->" => Token::Arrow(<tok::Arrow>),
+
+        "=" => Token::Equal(<tok::Equal>),
+        "<" => Token::Less(<tok::Less>),
+        ">" => Token::Greater(<tok::Greater>),
+        "<=" => Token::LessEqual(<tok::LessEqual>),
+        ">=" => Token::GreaterEqual(<tok::GreaterEqual>),
     }
 }
 
@@ -73,6 +78,11 @@ Symbol: Symbol = {
     ";" => Symbol::Semi(<>),
     "%" => Symbol::Percent(<>),
     "/" => Symbol::Slash(<>),
+    "=" => Symbol::Equal(<>),
+    "<" => Symbol::Less(<>),
+    ">" => Symbol::Greater(<>),
+    "<=" => Symbol::LessEqual(<>),
+    ">=" => Symbol::GreaterEqual(<>),
 };
 
 Lit: Lit<'input> = {
