@@ -1,5 +1,6 @@
+use error::SourceErrors;
 use lalrpop_util::lalrpop_mod;
-use miette::IntoDiagnostic;
+use miette::{IntoDiagnostic, NamedSource};
 use std::{fs, path::PathBuf};
 
 lalrpop_mod!(#[allow(clippy::all)] pub grammar);
@@ -25,12 +26,19 @@ struct Cli {
 fn main() -> miette::Result<()> {
     if let Some(path) = Cli::parse().file {
         // Example: cargo run -- --file examples/branching.curse
-        let input = fs::read_to_string(path).into_diagnostic()?;
+        let input = fs::read_to_string(&path).into_diagnostic()?;
         let arena = ast::Arena::new();
         let lexer = lex::Lexer::new(&input);
-        let program = grammar::ProgramParser::new().parse(&arena, lexer).unwrap();
 
-        interpreter::eval_program(program).unwrap();
+        match grammar::ProgramParser::new().parse(&arena, lexer) {
+            Ok(program) => interpreter::eval_program(program).unwrap(),
+            Err(e) => {
+                return Err(miette::Report::from(SourceErrors {
+                    source: NamedSource::new(path.to_string_lossy(), input.clone()),
+                    errors: vec![e.into()],
+                }));
+            }
+        }
     } else {
         repl::repl().unwrap();
     }

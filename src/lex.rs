@@ -1,5 +1,5 @@
 use logos::Logos;
-use std::ops::Range;
+use std::{fmt, ops::Range};
 
 type Loc = usize;
 
@@ -15,6 +15,12 @@ impl From<Range<Loc>> for Span {
     }
 }
 
+impl From<Span> for Range<Loc> {
+    fn from(Span { start, end }: Span) -> Self {
+        start..end
+    }
+}
+
 impl From<&Span> for Range<Loc> {
     fn from(Span { start, end }: &Span) -> Self {
         *start..*end
@@ -23,6 +29,7 @@ impl From<&Span> for Range<Loc> {
 
 macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
+
         #[derive(Clone, Debug, Logos)]
         #[logos(subpattern ws = r"[ \t\v\r\n\f]")]
         enum LogosToken {
@@ -68,7 +75,7 @@ macro_rules! declare_tokens {
             )*
         }
 
-        #[derive(Clone, Debug)]
+        #[derive(Copy, Clone, Debug)]
         pub enum Token<'input> {
             Ident(tok::Ident<'input>),
             Integer(tok::Integer<'input>),
@@ -76,6 +83,30 @@ macro_rules! declare_tokens {
                 $(#[$attr])*
                 $name(tok::$name),
             )*
+        }
+
+        impl Token<'_> {
+            pub fn span(&self) -> Span {
+                match self {
+                    Token::Ident(tok) => tok.span,
+                    Token::Integer(tok) => tok.span,
+                    $(
+                        Token::$name(tok) => tok.span,
+                    )*
+                }
+            }
+        }
+
+        impl fmt::Display for Token<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(match self {
+                    Token::Ident(tok) => tok.literal,
+                    Token::Integer(tok) => tok.literal,
+                    $(
+                        Token::$name(_) => $tok,
+                    )*
+                })
+            }
         }
 
         impl<'input> Iterator for Lexer<'input> {
@@ -96,7 +127,9 @@ macro_rules! declare_tokens {
                             span: self.lex.span().into(),
                         }),
                     )*
-                    LogosToken::Unknown => return Some(Err(LexError)),
+                    LogosToken::Unknown => return Some(Err(LexError {
+                        span: self.lex.span().into(),
+                    })),
                     _ => unreachable!("remaining patterns are skipped"),
                 };
 
@@ -133,8 +166,10 @@ declare_tokens! {
     ">=" => GreaterEqual,
 }
 
-#[derive(Debug)]
-pub struct LexError;
+#[derive(Copy, Clone, Debug)]
+pub struct LexError {
+    pub span: Span,
+}
 
 #[derive(Clone, Debug)]
 pub struct Lexer<'input> {
