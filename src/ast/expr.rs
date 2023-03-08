@@ -1,4 +1,5 @@
-use crate::lex::tok;
+use crate::lex::{tok, LexError, Token};
+use lalrpop_util::ErrorRecovery;
 
 #[derive(Clone, Debug)]
 pub enum Expr<'ast, 'input> {
@@ -8,6 +9,7 @@ pub enum Expr<'ast, 'input> {
     Tuple(Tuple<&'ast Expr<'ast, 'input>>),
     Closure(Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
+    Error(ErrorRecovery<usize, Token<'input>, LexError>),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -114,7 +116,7 @@ impl<'ast, 'input> Closure<'ast, 'input> {
 #[derive(Clone, Debug)]
 pub struct Branch<'ast, 'input> {
     pub open: tok::Pipe,
-    pub params: Params<'input>,
+    pub params: Params<'ast, 'input>,
     pub close: tok::Pipe,
     pub body: &'ast Expr<'ast, 'input>,
 }
@@ -131,7 +133,7 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 
     pub fn one(
         open: tok::Pipe,
-        lhs: Pat<'input>,
+        lhs: &'ast Pat<'ast, 'input>,
         close: tok::Pipe,
         body: &'ast Expr<'ast, 'input>,
     ) -> Self {
@@ -145,8 +147,8 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 
     pub fn two(
         open: tok::Pipe,
-        lhs: Pat<'input>,
-        rhs: Pat<'input>,
+        lhs: &'ast Pat<'ast, 'input>,
+        rhs: &'ast Pat<'ast, 'input>,
         close: tok::Pipe,
         body: &'ast Expr<'ast, 'input>,
     ) -> Self {
@@ -160,16 +162,16 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Pat<'input> {
+pub enum Pat<'ast, 'input> {
     Lit(Lit<'input>),
-    Tuple(Tuple<Pat<'input>>),
+    Tuple(Tuple<&'ast Pat<'ast, 'input>>),
 }
 
 #[derive(Clone, Debug)]
-pub enum Params<'input> {
+pub enum Params<'ast, 'input> {
     Zero,
-    One(Pat<'input>),
-    Two(Pat<'input>, Pat<'input>),
+    One(&'ast Pat<'ast, 'input>),
+    Two(&'ast Pat<'ast, 'input>, &'ast Pat<'ast, 'input>),
 }
 
 #[derive(Copy, Clone, Debug)]

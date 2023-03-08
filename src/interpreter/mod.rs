@@ -62,10 +62,13 @@ pub fn eval_expr<'ast, 'input>(
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match expr {
         Expr::Paren(Paren { inner, .. }) => eval_expr(inner, env),
-        Expr::Lit(Lit::Integer(tok::Integer { span, literal })) => literal
+        Expr::Lit(Lit::Integer(tok::Integer {
+            span: (start, end),
+            literal,
+        })) => literal
             .parse()
             .map(Value::Integer)
-            .map_err(|_| EvalError::ParseInt(span.into())),
+            .map_err(|_| EvalError::ParseInt(*start..*end)),
         Expr::Lit(Lit::Ident(ident)) => env
             .get(ident.literal)
             .ok_or(EvalError::UnboundVariable(ident.literal))
@@ -84,6 +87,7 @@ pub fn eval_expr<'ast, 'input>(
             let function = eval_expr(appl.function, env)?;
             call_function(left, function, right, env)
         }
+        Expr::Error(_) => Err(EvalError::LexError),
     }
 }
 

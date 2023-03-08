@@ -5,7 +5,7 @@ use std::iter;
 pub fn match_args<'ast, 'input>(
     left: Value<'ast, 'input>,
     right: Value<'ast, 'input>,
-    params: &Params<'input>,
+    params: &Params<'ast, 'input>,
     env: &mut Environment<'ast, 'input>,
 ) -> Result<(), EvalError<'input>> {
     match params {
@@ -47,7 +47,7 @@ pub fn check_args<'ast, 'input>(
 
 pub fn match_pattern<'ast, 'input>(
     value: Value<'ast, 'input>,
-    pattern: &Pat<'input>,
+    pattern: &Pat<'ast, 'input>,
     env: &mut Environment<'ast, 'input>,
 ) -> Result<(), EvalError<'input>> {
     match pattern {

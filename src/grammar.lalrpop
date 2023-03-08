@@ -59,9 +59,9 @@ Type: Type<'input> = {
     StartType,
 };
 
-Pat: Pat<'input> = {
-    Lit => Pat::Lit(<>),
-    Tuple<Pat> => Pat::Tuple(<>),
+Pat: &'ast Pat<'ast, 'input> = {
+    Lit => alloc.pat(Pat::Lit(<>)),
+    Tuple<Pat> => alloc.pat(Pat::Tuple(<>)),
 };
 
 Paren: Paren<'ast, 'input> = "(" EndExpr ")" => Paren::new(<>);
@@ -106,6 +106,7 @@ Term: &'ast Expr<'ast, 'input> = {
     Symbol => alloc.expr(Expr::Symbol(<>)),
     Lit => alloc.expr(Expr::Lit(<>)),
     Tuple<EndExpr> => alloc.expr(Expr::Tuple(<>)),
+    ! => alloc.expr(Expr::Error(<>)),
 };
 
 InternalTerm = {

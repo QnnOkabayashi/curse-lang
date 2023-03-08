@@ -1,32 +1,6 @@
 use logos::Logos;
 use std::{fmt, ops::Range};
 
-type Loc = usize;
-
-#[derive(Copy, Clone, Debug)]
-pub struct Span {
-    start: Loc,
-    end: Loc,
-}
-
-impl From<Range<Loc>> for Span {
-    fn from(Range { start, end }: Range<Loc>) -> Self {
-        Span { start, end }
-    }
-}
-
-impl From<Span> for Range<Loc> {
-    fn from(Span { start, end }: Span) -> Self {
-        start..end
-    }
-}
-
-impl From<&Span> for Range<Loc> {
-    fn from(Span { start, end }: &Span) -> Self {
-        *start..*end
-    }
-}
-
 macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
 
@@ -52,17 +26,15 @@ macro_rules! declare_tokens {
         }
 
         pub mod tok {
-            use super::Span;
-
             #[derive(Copy, Clone, Debug)]
             pub struct Ident<'input> {
-                pub span: Span,
+                pub span: (usize, usize),
                 pub literal: &'input str,
             }
 
             #[derive(Copy, Clone, Debug)]
             pub struct Integer<'input> {
-                pub span: Span,
+                pub span: (usize, usize),
                 pub literal: &'input str,
             }
 
@@ -70,7 +42,7 @@ macro_rules! declare_tokens {
                 $(#[$attr])*
                 #[derive(Copy, Clone, Debug)]
                 pub struct $name {
-                    pub span: Span,
+                    pub location: usize,
                 }
             )*
         }
@@ -86,12 +58,12 @@ macro_rules! declare_tokens {
         }
 
         impl Token<'_> {
-            pub fn span(&self) -> Span {
-                match self {
-                    Token::Ident(tok) => tok.span,
-                    Token::Integer(tok) => tok.span,
+            pub fn span(&self) -> Range<usize> {
+                match *self {
+                    Token::Ident(tok::Ident { span: (start, end), .. }) => start..end,
+                    Token::Integer(tok::Integer { span: (start, end), .. }) => start..end,
                     $(
-                        Token::$name(tok) => tok.span,
+                        Token::$name(tok::$name { location }) => location..location + $tok.len(),
                     )*
                 }
             }
@@ -110,25 +82,27 @@ macro_rules! declare_tokens {
         }
 
         impl<'input> Iterator for Lexer<'input> {
-            type Item = Result<(Loc, Token<'input>, Loc), LexError>;
+            type Item = Result<(usize, Token<'input>, usize), LexError>;
 
             fn next(&mut self) -> Option<Self::Item> {
-                let token = match self.lex.next()? {
+                let token = self.lex.next()?;
+                let Range { start, end } = self.lex.span();
+                let token = match token {
                     LogosToken::Ident => Token::Ident(tok::Ident {
-                        span: self.lex.span().into(),
+                        span: (start, end),
                         literal: self.lex.slice(),
                     }),
                     LogosToken::Integer => Token::Integer(tok::Integer {
-                        span: self.lex.span().into(),
+                        span: (start, end),
                         literal: self.lex.slice(),
                     }),
                     $(
                         LogosToken::$name => Token::$name(tok::$name {
-                            span: self.lex.span().into(),
+                            location: start,
                         }),
                     )*
                     LogosToken::Unknown => return Some(Err(LexError {
-                        span: self.lex.span().into(),
+                        span: (start, end),
                     })),
                     _ => unreachable!("remaining patterns are skipped"),
                 };
@@ -168,7 +142,7 @@ declare_tokens! {
 
 #[derive(Copy, Clone, Debug)]
 pub struct LexError {
-    pub span: Span,
+    pub span: (usize, usize),
 }
 
 #[derive(Clone, Debug)]

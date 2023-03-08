@@ -7,6 +7,7 @@ pub use expr::*;
 
 pub struct Arena<'ast, 'input> {
     exprs: typed_arena::Arena<Expr<'ast, 'input>>,
+    pats: typed_arena::Arena<Pat<'ast, 'input>>,
 }
 
 impl Default for Arena<'_, '_> {
@@ -19,11 +20,16 @@ impl<'ast, 'input> Arena<'ast, 'input> {
     pub fn new() -> Self {
         Arena {
             exprs: typed_arena::Arena::with_capacity(1024),
+            pats: typed_arena::Arena::with_capacity(1024),
         }
     }
 
     pub fn expr(&'ast self, expr: Expr<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
         self.exprs.alloc(expr)
+    }
+
+    pub fn pat(&'ast self, pat: Pat<'ast, 'input>) -> &'ast Pat<'ast, 'input> {
+        self.pats.alloc(pat)
     }
 }
 

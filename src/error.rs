@@ -77,9 +77,9 @@ impl From<LalrParseError<'_>> for ParseError {
             ExtraToken {
                 token: (start, _, end),
             } => ParseError::ExtraToken { span: start..end },
-            User { error } => ParseError::Lex {
-                span: error.span.into(),
-            },
+            User {
+                error: LexError { span: (start, end) },
+            } => ParseError::Lex { span: start..end },
         }
     }
 }
