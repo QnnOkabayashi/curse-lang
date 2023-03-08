@@ -56,7 +56,7 @@ pub enum Lit<'input> {
 pub struct Tuple<T> {
     pub lparen: tok::LParen,
     pub elements: Vec<(T, tok::Comma)>,
-    pub trailing: Option<Box<T>>,
+    pub trailing: Option<T>,
     pub rparen: tok::RParen,
 }
 
@@ -70,7 +70,7 @@ impl<T> Tuple<T> {
         Tuple {
             lparen,
             elements,
-            trailing: trailing.map(Box::new),
+            trailing,
             rparen,
         }
     }
@@ -83,7 +83,7 @@ impl<T> Tuple<T> {
         self.elements
             .iter()
             .map(|(elem, _)| elem)
-            .chain(self.trailing.as_deref())
+            .chain(self.trailing.as_ref())
     }
 
     pub fn len(&self) -> usize {

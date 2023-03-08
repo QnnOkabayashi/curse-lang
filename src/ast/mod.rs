@@ -8,6 +8,7 @@ pub use expr::*;
 pub struct Arena<'ast, 'input> {
     exprs: typed_arena::Arena<Expr<'ast, 'input>>,
     pats: typed_arena::Arena<Pat<'ast, 'input>>,
+    types: typed_arena::Arena<types::Type<'ast, 'input>>,
 }
 
 impl Default for Arena<'_, '_> {
@@ -21,6 +22,7 @@ impl<'ast, 'input> Arena<'ast, 'input> {
         Arena {
             exprs: typed_arena::Arena::with_capacity(1024),
             pats: typed_arena::Arena::with_capacity(1024),
+            types: typed_arena::Arena::with_capacity(1024),
         }
     }
 
@@ -30,6 +32,10 @@ impl<'ast, 'input> Arena<'ast, 'input> {
 
     pub fn pat(&'ast self, pat: Pat<'ast, 'input>) -> &'ast Pat<'ast, 'input> {
         self.pats.alloc(pat)
+    }
+
+    pub fn typ(&'ast self, typ: types::Type<'ast, 'input>) -> &'ast types::Type<'ast, 'input> {
+        self.types.alloc(typ)
     }
 }
 
@@ -54,7 +60,7 @@ pub struct ItemFunction<'ast, 'input> {
     pub tok_fn: tok::Fn,
     pub name: tok::Ident<'input>,
     pub tok_colon: tok::Colon,
-    pub typ: types::Type<'input>,
+    pub typ: &'ast types::Type<'ast, 'input>,
     pub tok_equal: tok::Equal,
     pub closure: Closure<'ast, 'input>,
 }
@@ -64,7 +70,7 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         tok_fn: tok::Fn,
         name: tok::Ident<'input>,
         tok_colon: tok::Colon,
-        typ: types::Type<'input>,
+        typ: &'ast types::Type<'ast, 'input>,
         tok_equal: tok::Equal,
         closure: Closure<'ast, 'input>,
     ) -> Self {

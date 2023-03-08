@@ -5,13 +5,13 @@ use crate::lex::tok;
 use std::fmt;
 
 #[derive(Debug, Clone)]
-pub enum Type<'input> {
+pub enum Type<'ast, 'input> {
     Named(Named<'input>),
-    Tuple(Tuple<'input>),
-    Function(Function<'input>),
+    Tuple(Tuple<'ast, 'input>),
+    Function(Function<'ast, 'input>),
 }
 
-impl<'input> fmt::Display for Type<'input> {
+impl fmt::Display for Type<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Named(name) => name.fmt(f),
@@ -39,17 +39,17 @@ impl fmt::Display for Named<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Tuple<'input> {
-    tuple: ast::Tuple<Type<'input>>,
+pub struct Tuple<'ast, 'input> {
+    tuple: ast::Tuple<&'ast Type<'ast, 'input>>,
 }
 
-impl<'input> Tuple<'input> {
-    pub fn new(tuple: ast::Tuple<Type<'input>>) -> Self {
+impl<'ast, 'input> Tuple<'ast, 'input> {
+    pub fn new(tuple: ast::Tuple<&'ast Type<'ast, 'input>>) -> Self {
         Self { tuple }
     }
 }
 
-impl fmt::Display for Tuple<'_> {
+impl fmt::Display for Tuple<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         if let Some((first, rest)) = self.tuple.elements.split_first() {
@@ -69,25 +69,30 @@ impl fmt::Display for Tuple<'_> {
 
 // TODO: rework arena to allocate types as well to avoid Box
 #[derive(Debug, Clone)]
-pub struct Function<'input> {
-    lhs: Box<Type<'input>>,
-    rhs: Box<Type<'input>>,
+pub struct Function<'ast, 'input> {
+    lhs: &'ast Type<'ast, 'input>,
+    rhs: &'ast Type<'ast, 'input>,
     arrow: tok::Arrow,
-    ret: Box<Type<'input>>,
+    ret: &'ast Type<'ast, 'input>,
 }
 
-impl<'input> Function<'input> {
-    pub fn new(lhs: Type<'input>, rhs: Type<'input>, arrow: tok::Arrow, ret: Type<'input>) -> Self {
+impl<'ast, 'input> Function<'ast, 'input> {
+    pub fn new(
+        lhs: &'ast Type<'ast, 'input>,
+        rhs: &'ast Type<'ast, 'input>,
+        arrow: tok::Arrow,
+        ret: &'ast Type<'ast, 'input>,
+    ) -> Self {
         Self {
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
+            lhs,
+            rhs,
             arrow,
-            ret: Box::new(ret),
+            ret,
         }
     }
 }
 
-impl fmt::Display for Function<'_> {
+impl fmt::Display for Function<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} -> {}", self.lhs, self.rhs, self.ret)
     }

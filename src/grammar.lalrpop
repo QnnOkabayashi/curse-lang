@@ -48,14 +48,14 @@ pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 
 pub Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
 
-StartType: Type<'input> = {
-    Ident => Type::Named(types::Named::new(<>)),
-    Tuple<Type> => Type::Tuple(types::Tuple::new(<>)),
+StartType: &'ast Type<'ast, 'input> = {
+    Ident => alloc.typ(Type::Named(types::Named::new(<>))),
+    Tuple<Type> => alloc.typ(Type::Tuple(types::Tuple::new(<>))),
     "(" <Type> ")",
 };
 
-Type: Type<'input> = {
-    StartType StartType "->" Type => Type::Function(types::Function::new(<>)),
+Type = {
+    StartType StartType "->" Type => alloc.typ(Type::Function(types::Function::new(<>))),
     StartType,
 };
 
