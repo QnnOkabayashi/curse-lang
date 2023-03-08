@@ -26,10 +26,18 @@ macro_rules! declare_tokens {
         }
 
         pub mod tok {
+            use std::ops::Range;
+
             #[derive(Copy, Clone, Debug)]
             pub struct Ident<'input> {
                 pub span: (usize, usize),
                 pub literal: &'input str,
+            }
+
+            impl Ident<'_> {
+                pub fn span(&self) -> Range<usize> {
+                    self.span.0..self.span.1
+                }
             }
 
             #[derive(Copy, Clone, Debug)]
@@ -38,11 +46,23 @@ macro_rules! declare_tokens {
                 pub literal: &'input str,
             }
 
+            impl Integer<'_> {
+                pub fn span(&self) -> Range<usize> {
+                    self.span.0..self.span.1
+                }
+            }
+
             $(
                 $(#[$attr])*
                 #[derive(Copy, Clone, Debug)]
                 pub struct $name {
                     pub location: usize,
+                }
+
+                impl $name {
+                    pub fn span(&self) -> Range<usize> {
+                        self.location..self.location + $tok.len()
+                    }
                 }
             )*
         }
@@ -59,11 +79,11 @@ macro_rules! declare_tokens {
 
         impl Token<'_> {
             pub fn span(&self) -> Range<usize> {
-                match *self {
-                    Token::Ident(tok::Ident { span: (start, end), .. }) => start..end,
-                    Token::Integer(tok::Integer { span: (start, end), .. }) => start..end,
+                match self {
+                    Token::Ident(tok) => tok.span(),
+                    Token::Integer(tok) => tok.span(),
                     $(
-                        Token::$name(tok::$name { location }) => location..location + $tok.len(),
+                        Token::$name(tok) => tok.span(),
                     )*
                 }
             }
@@ -107,7 +127,6 @@ macro_rules! declare_tokens {
                     _ => unreachable!("remaining patterns are skipped"),
                 };
 
-                let Range { start, end } = self.lex.span();
                 Some(Ok((start, token, end)))
             }
         }
