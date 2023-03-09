@@ -1,4 +1,5 @@
-use crate::ast::{Branch, Closure, Expr, Item, Lit, Params, Paren, Program, Symbol};
+use crate::ast::expr::{Branch, Closure, Expr, Lit, Params, Paren, Symbol};
+use crate::ast::{Item, Program};
 use crate::interpreter::{
     error::EvalError,
     pattern_matching::{check_args, match_args},

@@ -1,5 +1,5 @@
 use super::error::EvalError;
-use crate::ast::{Closure, Symbol};
+use crate::ast::expr::{Closure, Symbol};
 use std::{collections::HashMap, fmt};
 
 type BuiltinFn<'ast, 'input> = fn(

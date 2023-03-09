@@ -1,4 +1,4 @@
-use crate::ast::{Lit, Params, Pat};
+use crate::ast::expr::{Lit, Params, Pat};
 use crate::interpreter::{error::EvalError, value::Value, Environment};
 use std::iter;
 

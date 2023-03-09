@@ -1,16 +1,13 @@
 use crate::lex::tok;
 
-pub mod types;
-
+pub mod expr;
 pub mod pat;
-
-mod expr;
-pub use expr::*;
+pub mod ty;
 
 pub struct Arena<'ast, 'input> {
-    exprs: typed_arena::Arena<Expr<'ast, 'input>>,
-    pats: typed_arena::Arena<Pat<'ast, 'input>>,
-    types: typed_arena::Arena<types::Type<'ast, 'input>>,
+    exprs: typed_arena::Arena<expr::Expr<'ast, 'input>>,
+    pats: typed_arena::Arena<expr::Pat<'ast, 'input>>,
+    types: typed_arena::Arena<ty::Type<'ast, 'input>>,
 }
 
 impl Default for Arena<'_, '_> {
@@ -28,15 +25,15 @@ impl<'ast, 'input> Arena<'ast, 'input> {
         }
     }
 
-    pub fn expr(&'ast self, expr: Expr<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
+    pub fn expr(&'ast self, expr: expr::Expr<'ast, 'input>) -> &'ast expr::Expr<'ast, 'input> {
         self.exprs.alloc(expr)
     }
 
-    pub fn pat(&'ast self, pat: Pat<'ast, 'input>) -> &'ast Pat<'ast, 'input> {
+    pub fn pat(&'ast self, pat: expr::Pat<'ast, 'input>) -> &'ast expr::Pat<'ast, 'input> {
         self.pats.alloc(pat)
     }
 
-    pub fn typ(&'ast self, typ: types::Type<'ast, 'input>) -> &'ast types::Type<'ast, 'input> {
+    pub fn typ(&'ast self, typ: ty::Type<'ast, 'input>) -> &'ast ty::Type<'ast, 'input> {
         self.types.alloc(typ)
     }
 }
@@ -62,9 +59,9 @@ pub struct ItemFunction<'ast, 'input> {
     pub tok_fn: tok::Fn,
     pub name: tok::Ident<'input>,
     pub tok_colon: tok::Colon,
-    pub typ: &'ast types::Type<'ast, 'input>,
+    pub typ: &'ast ty::Type<'ast, 'input>,
     pub tok_equal: tok::Equal,
-    pub closure: Closure<'ast, 'input>,
+    pub closure: expr::Closure<'ast, 'input>,
 }
 
 impl<'ast, 'input> ItemFunction<'ast, 'input> {
@@ -72,9 +69,9 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         tok_fn: tok::Fn,
         name: tok::Ident<'input>,
         tok_colon: tok::Colon,
-        typ: &'ast types::Type<'ast, 'input>,
+        typ: &'ast ty::Type<'ast, 'input>,
         tok_equal: tok::Equal,
-        closure: Closure<'ast, 'input>,
+        closure: expr::Closure<'ast, 'input>,
     ) -> Self {
         ItemFunction {
             tok_fn,
