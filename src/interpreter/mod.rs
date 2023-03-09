@@ -78,7 +78,6 @@ pub fn eval_expr<'ast, 'input>(
             .map(|it| eval_expr(it, env))
             .collect::<Result<_, _>>()
             .map(Value::Tuple),
-        Expr::Symbol(Symbol::Unit(_, _)) => Ok(Value::default()),
         Expr::Symbol(symbol) => Ok(Value::Symbol(*symbol)),
         Expr::Closure(closure) => Ok(Value::Closure(closure)),
         Expr::Appl(appl) => {
@@ -102,7 +101,6 @@ fn symbol<'ast, 'input>(
 
     match (left, right) {
         (Value::Integer(x), Value::Integer(y)) => match op {
-            Symbol::Unit(..) => Err(EvalError::TypeMismatch),
             Symbol::Plus(_) => Ok(Value::Integer(x + y)),
             Symbol::Minus(_) => Ok(Value::Integer(x - y)),
             Symbol::Star(_) => Ok(Value::Integer(x * y)),

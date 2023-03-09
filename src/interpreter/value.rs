@@ -30,7 +30,6 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Integer(n) => write!(f, "{n}"),
             Value::Closure(_) => write!(f, "<closure>"),
             Value::Builtin(_) => write!(f, "<builtin>"),
-            Value::Symbol(Symbol::Unit(..)) => write!(f, "()"),
             Value::Symbol(Symbol::Star(_)) => write!(f, "*"),
             Value::Symbol(Symbol::Plus(_)) => write!(f, "+"),
             Value::Symbol(Symbol::Minus(_)) => write!(f, "-"),

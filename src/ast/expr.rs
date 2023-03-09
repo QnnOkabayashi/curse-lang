@@ -31,7 +31,6 @@ impl<'ast, 'input> Paren<'ast, 'input> {
 
 #[derive(Copy, Clone, Debug)]
 pub enum Symbol {
-    Unit(tok::LParen, tok::RParen),
     Plus(tok::Plus),
     Minus(tok::Minus),
     Star(tok::Star),
