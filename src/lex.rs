@@ -27,8 +27,10 @@ macro_rules! declare_tokens {
 
         pub mod tok {
             use std::ops::Range;
+            use displaydoc::Display;
 
-            #[derive(Copy, Clone, Debug)]
+            #[derive(Copy, Clone, Debug, Display)]
+            #[displaydoc("{literal}")]
             pub struct Ident<'input> {
                 pub span: (usize, usize),
                 pub literal: &'input str,
@@ -40,7 +42,8 @@ macro_rules! declare_tokens {
                 }
             }
 
-            #[derive(Copy, Clone, Debug)]
+            #[derive(Copy, Clone, Debug, Display)]
+            #[displaydoc("{literal}")]
             pub struct Integer<'input> {
                 pub span: (usize, usize),
                 pub literal: &'input str,
@@ -54,7 +57,8 @@ macro_rules! declare_tokens {
 
             $(
                 $(#[$attr])*
-                #[derive(Copy, Clone, Debug)]
+                #[derive(Copy, Clone, Debug, Display)]
+                #[displaydoc($tok)]
                 pub struct $name {
                     pub location: usize,
                 }

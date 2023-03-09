@@ -1,6 +1,6 @@
 use crate::ast::{
-    Appl, Arena, Branch, Closure, Expr, ItemFunction, Lit, Paren, Pat, Program, Symbol, Item,
-    Tuple, types, types::Type,
+    Appl, Arena, Branch, Closure, Expr, ItemFunction, Lit, Paren, Pat, pat, Program, Symbol, Item,
+    types, types::Type,
 };
 use crate::lex::{tok, LexError, Token};
 
@@ -66,9 +66,9 @@ Pat: &'ast Pat<'ast, 'input> = {
 
 Paren: Paren<'ast, 'input> = "(" EndExpr ")" => Paren::new(<>);
 
-Tuple<T>: Tuple<T> = {
-    "(" ")" => Tuple::unit(<>),
-    "(" (T ",")+ T? ")" => Tuple::new(<>),
+Tuple<T>: pat::Tuple<T> = {
+    "(" ")" => pat::Tuple::empty(<>),
+    "(" T "," (T ",")* T? ")" => pat::Tuple::nonempty(<>),
 }
 
 Symbol: Symbol = {

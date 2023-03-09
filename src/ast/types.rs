@@ -1,27 +1,19 @@
-#![allow(dead_code)]
-
-use crate::ast;
+use crate::ast::pat;
 use crate::lex::tok;
-use std::fmt;
+use displaydoc::Display;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Display)]
 pub enum Type<'ast, 'input> {
+    #[displaydoc("{0}")]
     Named(Named<'input>),
+    #[displaydoc("{0}")]
     Tuple(Tuple<'ast, 'input>),
+    #[displaydoc("{0}")]
     Function(Function<'ast, 'input>),
 }
 
-impl fmt::Display for Type<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Type::Named(name) => name.fmt(f),
-            Type::Tuple(tuple) => tuple.fmt(f),
-            Type::Function(function) => function.fmt(f),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Copy, Clone, Debug, Display)]
+#[displaydoc("{name}")]
 pub struct Named<'input> {
     name: tok::Ident<'input>,
 }
@@ -32,43 +24,20 @@ impl<'input> Named<'input> {
     }
 }
 
-impl fmt::Display for Named<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name.literal)
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Display)]
+#[displaydoc("{tuple}")]
 pub struct Tuple<'ast, 'input> {
-    tuple: ast::Tuple<&'ast Type<'ast, 'input>>,
+    tuple: pat::Tuple<&'ast Type<'ast, 'input>>,
 }
 
 impl<'ast, 'input> Tuple<'ast, 'input> {
-    pub fn new(tuple: ast::Tuple<&'ast Type<'ast, 'input>>) -> Self {
-        Self { tuple }
+    pub fn new(tuple: pat::Tuple<&'ast Type<'ast, 'input>>) -> Self {
+        Tuple { tuple }
     }
 }
 
-impl fmt::Display for Tuple<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(")?;
-        if let Some((first, rest)) = self.tuple.elements.split_first() {
-            write!(f, "{}", first.0)?;
-            for val in rest {
-                write!(f, ", {}", val.0)?;
-            }
-        }
-
-        if let Some(trailing) = &self.tuple.trailing {
-            write!(f, ", {trailing}")?;
-        }
-
-        write!(f, ")")
-    }
-}
-
-// TODO: rework arena to allocate types as well to avoid Box
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Display)]
+#[displaydoc("{lhs} {rhs} -> {ret}")]
 pub struct Function<'ast, 'input> {
     lhs: &'ast Type<'ast, 'input>,
     rhs: &'ast Type<'ast, 'input>,
@@ -89,11 +58,5 @@ impl<'ast, 'input> Function<'ast, 'input> {
             arrow,
             ret,
         }
-    }
-}
-
-impl fmt::Display for Function<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} -> {}", self.lhs, self.rhs, self.ret)
     }
 }

@@ -1,3 +1,4 @@
+use crate::ast::pat;
 use crate::lex::{tok, LexError, Token};
 use lalrpop_util::ErrorRecovery;
 
@@ -6,7 +7,7 @@ pub enum Expr<'ast, 'input> {
     Paren(Paren<'ast, 'input>),
     Symbol(Symbol),
     Lit(Lit<'input>),
-    Tuple(Tuple<&'ast Expr<'ast, 'input>>),
+    Tuple(pat::Tuple<&'ast Expr<'ast, 'input>>),
     Closure(Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
     Error(ErrorRecovery<usize, Token<'input>, LexError>),
@@ -49,45 +50,6 @@ pub enum Symbol {
 pub enum Lit<'input> {
     Integer(tok::Integer<'input>),
     Ident(tok::Ident<'input>),
-}
-
-#[derive(Clone, Debug)]
-pub struct Tuple<T> {
-    pub lparen: tok::LParen,
-    pub elements: Vec<(T, tok::Comma)>,
-    pub trailing: Option<T>,
-    pub rparen: tok::RParen,
-}
-
-impl<T> Tuple<T> {
-    pub fn new(
-        lparen: tok::LParen,
-        elements: Vec<(T, tok::Comma)>,
-        trailing: Option<T>,
-        rparen: tok::RParen,
-    ) -> Self {
-        Tuple {
-            lparen,
-            elements,
-            trailing,
-            rparen,
-        }
-    }
-
-    pub fn unit(lparen: tok::LParen, rparen: tok::RParen) -> Self {
-        Tuple::new(lparen, vec![], None, rparen)
-    }
-
-    pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
-        self.elements
-            .iter()
-            .map(|(elem, _)| elem)
-            .chain(self.trailing.as_ref())
-    }
-
-    pub fn len(&self) -> usize {
-        self.elements.len() + if self.trailing.is_some() { 1 } else { 0 }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -163,7 +125,7 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 #[derive(Clone, Debug)]
 pub enum Pat<'ast, 'input> {
     Lit(Lit<'input>),
-    Tuple(Tuple<&'ast Pat<'ast, 'input>>),
+    Tuple(pat::Tuple<&'ast Pat<'ast, 'input>>),
 }
 
 #[derive(Clone, Debug)]

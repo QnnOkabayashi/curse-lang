@@ -2,6 +2,8 @@ use crate::lex::tok;
 
 pub mod types;
 
+pub mod pat;
+
 mod expr;
 pub use expr::*;
 
