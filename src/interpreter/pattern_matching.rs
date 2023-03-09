@@ -13,13 +13,13 @@ pub fn match_args<'ast, 'input>(
             (Value::Tuple(t1), Value::Tuple(t2)) if t1.is_empty() && t2.is_empty() => Ok(()),
             _ => Err(EvalError::TypeMismatch),
         },
-        Params::One(pat) => match right {
-            Value::Tuple(t) if t.is_empty() => match_pattern(left, pat, env),
+        Params::One(param) => match right {
+            Value::Tuple(t) if t.is_empty() => match_pattern(left, param.pat, env),
             _ => Err(EvalError::TypeMismatch),
         },
-        Params::Two(pat1, pat2) => {
-            match_pattern(left, pat1, env)?;
-            match_pattern(right, pat2, env)
+        Params::Two(param1, _, param2) => {
+            match_pattern(left, param1.pat, env)?;
+            match_pattern(right, param2.pat, env)
         }
     }
 }
@@ -34,13 +34,13 @@ pub fn check_args<'ast, 'input>(
             (Value::Tuple(t1), Value::Tuple(t2)) if t1.is_empty() && t2.is_empty() => Ok(()),
             _ => Err(EvalError::TypeMismatch),
         },
-        Params::One(pat) => match right {
-            Value::Tuple(t) if t.is_empty() => check_pattern(left, pat),
+        Params::One(param) => match right {
+            Value::Tuple(t) if t.is_empty() => check_pattern(left, param.pat),
             _ => Err(EvalError::TypeMismatch),
         },
-        Params::Two(pat1, pat2) => {
-            check_pattern(left, pat1)?;
-            check_pattern(right, pat2)
+        Params::Two(param1, _, param2) => {
+            check_pattern(left, param1.pat)?;
+            check_pattern(right, param2.pat)
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::ast::pat;
+use crate::ast::{pat, ty};
 use crate::lex::{tok, LexError, Token};
 use lalrpop_util::ErrorRecovery;
 
@@ -94,7 +94,7 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 
     pub fn one(
         open: tok::Pipe,
-        lhs: &'ast Pat<'ast, 'input>,
+        lhs: Param<'ast, 'input>,
         close: tok::Pipe,
         body: &'ast Expr<'ast, 'input>,
     ) -> Self {
@@ -108,14 +108,15 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 
     pub fn two(
         open: tok::Pipe,
-        lhs: &'ast Pat<'ast, 'input>,
-        rhs: &'ast Pat<'ast, 'input>,
+        lhs: Param<'ast, 'input>,
+        comma: tok::Comma,
+        rhs: Param<'ast, 'input>,
         close: tok::Pipe,
         body: &'ast Expr<'ast, 'input>,
     ) -> Self {
         Branch {
             open,
-            params: Params::Two(lhs, rhs),
+            params: Params::Two(lhs, comma, rhs),
             close,
             body,
         }
@@ -131,8 +132,23 @@ pub enum Pat<'ast, 'input> {
 #[derive(Clone, Debug)]
 pub enum Params<'ast, 'input> {
     Zero,
-    One(&'ast Pat<'ast, 'input>),
-    Two(&'ast Pat<'ast, 'input>, &'ast Pat<'ast, 'input>),
+    One(Param<'ast, 'input>),
+    Two(Param<'ast, 'input>, tok::Comma, Param<'ast, 'input>),
+}
+
+#[derive(Clone, Debug)]
+pub struct Param<'ast, 'input> {
+    pub pat: &'ast Pat<'ast, 'input>,
+    pub ty: Option<(tok::Colon, &'ast ty::Type<'ast, 'input>)>,
+}
+
+impl<'ast, 'input> Param<'ast, 'input> {
+    pub fn new(
+        pat: &'ast Pat<'ast, 'input>,
+        ty: Option<(tok::Colon, &'ast ty::Type<'ast, 'input>)>,
+    ) -> Self {
+        Param { pat, ty }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

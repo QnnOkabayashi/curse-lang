@@ -96,9 +96,11 @@ Closure: expr::Closure<'ast, 'input> = (Branch "else")* Branch => expr::Closure:
 
 Branch: expr::Branch<'ast, 'input> = {
     "|" "|" InternalExpr => expr::Branch::zero(<>),
-    "|" Pat "|" InternalExpr => expr::Branch::one(<>),
-    "|" Pat Pat "|" InternalExpr => expr::Branch::two(<>),
+    "|" Param "|" InternalExpr => expr::Branch::one(<>),
+    "|" Param "," Param "|" InternalExpr => expr::Branch::two(<>),
 };
+
+Param: expr::Param<'ast, 'input> = Pat (":" Type)? => expr::Param::new(<>);
 
 Appl<Rhs>: expr::Appl<'ast, 'input> = Expr Term Rhs => expr::Appl::new(<>);
 
