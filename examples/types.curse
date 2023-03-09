@@ -2,16 +2,16 @@ fn square : i32 () -> i32 =
     |x| x * x
 
 fn dot : (i32, i32) (i32, i32) -> i32 =
-    |(x1, y1) (x2, y2)| x1 * x2 + (y1 * y2)
+    |(x1, y1), (x2, y2)| x1 * x2 + (y1 * y2)
 
 fn curried_sum : i32 () -> i32 () -> i32 =
     |x| |y| x + y
 
 fn map_tuple : (i32, i32) (i32 () -> i32) -> (i32, i32) =
-    |(x, y) f| (x in f, y in f)
+    |(x, y), f| (x in f, y in f)
 
 fn weird : (i32, i32) (i32 () -> (i32, i32), i32 () -> (i32, i32)) -> ((i32, i32), (i32, i32)) =
-    |(x, y) (f, g)| (x in f, y in g)
+    |(x, y), (f, g)| (x in f, y in g)
 
 fn sum : () () -> () =
-    |x y| x + y
+    |x, y| x + y
