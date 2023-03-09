@@ -27,6 +27,10 @@ extern {
         "|" => Token::Pipe(<tok::Pipe>),
         "fn" => Token::Fn(<tok::Fn>),
         "else" => Token::Else(<tok::Else>),
+        "struct" => Token::Struct(<tok::Struct>),
+        "enum" => Token::Enum(<tok::Enum>),
+        "{" => Token::LBrace(<tok::LBrace>),
+        "}" => Token::RBrace(<tok::RBrace>),
         "->" => Token::Arrow(<tok::Arrow>),
 
         "=" => Token::Equal(<tok::Equal>),

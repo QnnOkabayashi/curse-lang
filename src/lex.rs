@@ -26,7 +26,7 @@ macro_rules! declare_tokens {
         }
 
         pub mod tok {
-            use std::ops::Range;
+            use std::{fmt, ops::Range};
             use displaydoc::Display;
 
             #[derive(Copy, Clone, Debug, Display)]
@@ -57,8 +57,7 @@ macro_rules! declare_tokens {
 
             $(
                 $(#[$attr])*
-                #[derive(Copy, Clone, Debug, Display)]
-                #[displaydoc($tok)]
+                #[derive(Copy, Clone, Debug)]
                 pub struct $name {
                     pub location: usize,
                 }
@@ -66,6 +65,12 @@ macro_rules! declare_tokens {
                 impl $name {
                     pub fn span(&self) -> Range<usize> {
                         self.location..self.location + $tok.len()
+                    }
+                }
+
+                impl fmt::Display for $name {
+                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        f.write_str($tok)
                     }
                 }
             )*
@@ -154,6 +159,10 @@ declare_tokens! {
     "|" => Pipe,
     "fn" => Fn,
     "else" => Else,
+    "struct" => Struct,
+    "enum" => Enum,
+    "{" => LBrace,
+    "}" => RBrace,
     "->" => Arrow,
 
     "=" => Equal,
