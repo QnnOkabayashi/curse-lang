@@ -13,7 +13,6 @@ extern {
         // give us the rhs.
         "ident literal" => Token::Ident(<tok::Ident<'input>>),
         "integer literal" => Token::Integer(<tok::Integer<'input>>),
-        "boolean literal" => Token::Boolean(<tok::Boolean<'input>>),
         ":" => Token::Colon(<tok::Colon>),
         "," => Token::Comma(<tok::Comma>),
         "(" => Token::LParen(<tok::LParen>),
@@ -39,6 +38,8 @@ extern {
         ">" => Token::Greater(<tok::Greater>),
         "<=" => Token::LessEqual(<tok::LessEqual>),
         ">=" => Token::GreaterEqual(<tok::GreaterEqual>),
+        "true" => Token::True(<tok::True>),
+        "false" => Token::False(<tok::False>),
     }
 }
 
@@ -46,7 +47,10 @@ Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
-Boolean: tok::Boolean<'input> = "boolean literal";
+Boolean: expr::Lit<'input> = {
+    "true" => expr::Lit::Boolean(true),
+    "false" => expr::Lit::Boolean(false),
+};
 
 pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 
@@ -93,7 +97,7 @@ Symbol: expr::Symbol = {
 Lit: expr::Lit<'input> = {
     Integer => expr::Lit::Integer(<>),
     Ident => expr::Lit::Ident(<>),
-    Boolean => expr::Lit::Boolean(<>),
+    Boolean
 };
 
 Closure: expr::Closure<'ast, 'input> = (Branch "else")* Branch => expr::Closure::new(<>);

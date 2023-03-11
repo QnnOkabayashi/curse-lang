@@ -70,13 +70,7 @@ pub fn eval_expr<'ast, 'input>(
             .parse()
             .map(Value::Integer)
             .map_err(|_| EvalError::ParseInt(*start..*end)),
-        Expr::Lit(Lit::Boolean(tok::Boolean {
-            span: (start, end),
-            literal,
-        })) => literal
-            .parse()
-            .map(Value::Boolean)
-            .map_err(|_| EvalError::ParseBool(*start..*end)),
+        Expr::Lit(Lit::Boolean(boolean)) => Ok(Value::Boolean(*boolean)),
         Expr::Lit(Lit::Ident(ident)) => env
             .get(ident.literal)
             .ok_or(EvalError::UnboundVariable(ident.literal))

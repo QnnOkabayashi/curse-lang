@@ -20,10 +20,6 @@ pub enum EvalError<'input> {
     #[diagnostic(help("Use a smaller integer"))]
     ParseInt(#[label("This integer is failed to parse into an i32")] Range<usize>),
 
-    /// Bad Pattern match
-    #[diagnostic(help("How did this happen?"))]
-    ParseBool(#[label("This boolean was neither 'true' nor 'false'")] Range<usize>),
-
     /// A lexing error occurred
     #[diagnostic(help("Fix your type"))]
     LexError,

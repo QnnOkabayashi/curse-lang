@@ -11,8 +11,6 @@ macro_rules! declare_tokens {
             Ident,
             #[regex("[0-9]+")]
             Integer,
-            #[regex("(true|false)")]
-            Boolean,
 
             $(
                 #[token($tok)]
@@ -57,19 +55,6 @@ macro_rules! declare_tokens {
                 }
             }
 
-            #[derive(Copy, Clone, Debug, Display)]
-            #[displaydoc("{literal}")]
-            pub struct Boolean<'input> {
-                pub span: (usize, usize),
-                pub literal: &'input str,
-            }
-
-            impl Boolean<'_> {
-                pub fn span(&self) -> Range<usize> {
-                    self.span.0..self.span.1
-                }
-            }
-
             $(
                 $(#[$attr])*
                 #[derive(Copy, Clone, Debug)]
@@ -95,7 +80,6 @@ macro_rules! declare_tokens {
         pub enum Token<'input> {
             Ident(tok::Ident<'input>),
             Integer(tok::Integer<'input>),
-            Boolean(tok::Boolean<'input>),
             $(
                 $(#[$attr])*
                 $name(tok::$name),
@@ -107,7 +91,6 @@ macro_rules! declare_tokens {
                 match self {
                     Token::Ident(tok) => tok.span(),
                     Token::Integer(tok) => tok.span(),
-                    Token::Boolean(tok) => tok.span(),
                     $(
                         Token::$name(tok) => tok.span(),
                     )*
@@ -120,7 +103,6 @@ macro_rules! declare_tokens {
                 f.write_str(match self {
                     Token::Ident(tok) => tok.literal,
                     Token::Integer(tok) => tok.literal,
-                    Token::Boolean(tok) => tok.literal,
                     $(
                         Token::$name(_) => $tok,
                     )*
@@ -140,10 +122,6 @@ macro_rules! declare_tokens {
                         literal: self.lex.slice(),
                     }),
                     LogosToken::Integer => Token::Integer(tok::Integer {
-                        span: (start, end),
-                        literal: self.lex.slice(),
-                    }),
-                    LogosToken::Boolean => Token::Boolean(tok::Boolean {
                         span: (start, end),
                         literal: self.lex.slice(),
                     }),
@@ -192,6 +170,9 @@ declare_tokens! {
     ">" => Greater,
     "<=" => LessEqual,
     ">=" => GreaterEqual,
+
+    "true" => True,
+    "false" => False,
 }
 
 #[derive(Copy, Clone, Debug)]
