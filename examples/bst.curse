@@ -4,8 +4,8 @@
 fn insert : () () -> () =
     |(), (key, val)| (key, val, (), ()) else
     |(k, v, left, right), (key, val)| k > key in (
-        |1| (k, v, left insert (key, val), right) else
-        |x| (k, v, left, right insert (key, val))
+        |true| (k, v, left insert (key, val), right) else
+        |x|    (k, v, left, right insert (key, val))
     ) else
     |x, y| 0
 
