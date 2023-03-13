@@ -50,7 +50,8 @@ pub enum Symbol {
 pub enum Lit<'input> {
     Integer(tok::Integer<'input>),
     Ident(tok::Ident<'input>),
-    Boolean(bool),
+    True(tok::True),
+    False(tok::False),
 }
 
 #[derive(Clone, Debug)]

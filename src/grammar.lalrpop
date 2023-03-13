@@ -48,8 +48,8 @@ Ident: tok::Ident<'input> = "ident literal";
 Integer: tok::Integer<'input> = "integer literal";
 
 Boolean: expr::Lit<'input> = {
-    "true" => expr::Lit::Boolean(true),
-    "false" => expr::Lit::Boolean(false),
+    "true" => expr::Lit::True(<>),
+    "false" => expr::Lit::False(<>),
 };
 
 pub Program: Program<'ast, 'input> = Item* => Program::new(<>);

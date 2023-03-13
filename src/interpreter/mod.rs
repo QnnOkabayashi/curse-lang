@@ -70,7 +70,8 @@ pub fn eval_expr<'ast, 'input>(
             .parse()
             .map(Value::Integer)
             .map_err(|_| EvalError::ParseInt(*start..*end)),
-        Expr::Lit(Lit::Boolean(boolean)) => Ok(Value::Boolean(*boolean)),
+        Expr::Lit(Lit::True(_)) => Ok(Value::Boolean(true)),
+        Expr::Lit(Lit::False(_)) => Ok(Value::Boolean(false)),
         Expr::Lit(Lit::Ident(ident)) => env
             .get(ident.literal)
             .ok_or(EvalError::UnboundVariable(ident.literal))
@@ -127,7 +128,9 @@ pub fn call_function<'ast, 'input>(
     env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match function {
-        Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) | Value::Boolean(_) => Err(EvalError::TypeMismatch),
+        Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) | Value::Boolean(_) => {
+            Err(EvalError::TypeMismatch)
+        }
         Value::Symbol(s) => symbol(lhs, rhs, s),
         Value::Builtin(f) => f(lhs, rhs, env),
         Value::Closure(closure) => {
