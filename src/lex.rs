@@ -32,26 +32,26 @@ macro_rules! declare_tokens {
             #[derive(Copy, Clone, Debug, Display)]
             #[displaydoc("{literal}")]
             pub struct Ident<'input> {
-                pub span: (usize, usize),
+                pub location: usize,
                 pub literal: &'input str,
             }
 
             impl Ident<'_> {
                 pub fn span(&self) -> Range<usize> {
-                    self.span.0..self.span.1
+                    self.location..self.location + self.literal.len()
                 }
             }
 
             #[derive(Copy, Clone, Debug, Display)]
             #[displaydoc("{literal}")]
             pub struct Integer<'input> {
-                pub span: (usize, usize),
+                pub location: usize,
                 pub literal: &'input str,
             }
 
             impl Integer<'_> {
                 pub fn span(&self) -> Range<usize> {
-                    self.span.0..self.span.1
+                    self.location..self.location + self.literal.len()
                 }
             }
 
@@ -118,11 +118,11 @@ macro_rules! declare_tokens {
                 let Range { start, end } = self.lex.span();
                 let token = match token {
                     LogosToken::Ident => Token::Ident(tok::Ident {
-                        span: (start, end),
+                        location: start,
                         literal: self.lex.slice(),
                     }),
                     LogosToken::Integer => Token::Integer(tok::Integer {
-                        span: (start, end),
+                        location: start,
                         literal: self.lex.slice(),
                     }),
                     $(

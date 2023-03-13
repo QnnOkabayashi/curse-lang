@@ -5,7 +5,6 @@ use crate::interpreter::{
     pattern_matching::{check_args, match_args},
     value::Value,
 };
-use crate::lex::tok;
 use std::collections::HashMap;
 
 pub mod builtins;
@@ -63,13 +62,10 @@ pub fn eval_expr<'ast, 'input>(
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match expr {
         Expr::Paren(Paren { inner, .. }) => eval_expr(inner, env),
-        Expr::Lit(Lit::Integer(tok::Integer {
-            span: (start, end),
-            literal,
-        })) => literal
+        Expr::Lit(Lit::Integer(token)) => token.literal
             .parse()
             .map(Value::Integer)
-            .map_err(|_| EvalError::ParseInt(*start..*end)),
+            .map_err(|_| EvalError::ParseInt(token.span())),
         Expr::Lit(Lit::True(_)) => Ok(Value::Boolean(true)),
         Expr::Lit(Lit::False(_)) => Ok(Value::Boolean(false)),
         Expr::Lit(Lit::Ident(ident)) => env
