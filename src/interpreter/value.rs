@@ -12,6 +12,7 @@ type BuiltinFn<'ast, 'input> = fn(
 pub enum Value<'ast, 'input> {
     Integer(i32),
     Symbol(Symbol),
+    Boolean(bool),
     Closure(&'ast Closure<'ast, 'input>),
     Tuple(Vec<Value<'ast, 'input>>),
     Vector(Vec<Value<'ast, 'input>>),
@@ -28,6 +29,7 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Integer(n) => write!(f, "{n}"),
+            Value::Boolean(b) => write!(f, "{b}"),
             Value::Closure(_) => write!(f, "<closure>"),
             Value::Builtin(_) => write!(f, "<builtin>"),
             Value::Symbol(Symbol::Star(_)) => write!(f, "*"),

@@ -170,6 +170,9 @@ declare_tokens! {
     ">" => Greater,
     "<=" => LessEqual,
     ">=" => GreaterEqual,
+
+    "true" => True,
+    "false" => False,
 }
 
 #[derive(Copy, Clone, Debug)]

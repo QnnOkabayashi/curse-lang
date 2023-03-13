@@ -38,12 +38,19 @@ extern {
         ">" => Token::Greater(<tok::Greater>),
         "<=" => Token::LessEqual(<tok::LessEqual>),
         ">=" => Token::GreaterEqual(<tok::GreaterEqual>),
+        "true" => Token::True(<tok::True>),
+        "false" => Token::False(<tok::False>),
     }
 }
 
 Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
+
+Boolean: expr::Lit<'input> = {
+    "true" => expr::Lit::Boolean(true),
+    "false" => expr::Lit::Boolean(false),
+};
 
 pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 
@@ -90,6 +97,7 @@ Symbol: expr::Symbol = {
 Lit: expr::Lit<'input> = {
     Integer => expr::Lit::Integer(<>),
     Ident => expr::Lit::Ident(<>),
+    Boolean
 };
 
 Closure: expr::Closure<'ast, 'input> = (Branch "else")* Branch => expr::Closure::new(<>);

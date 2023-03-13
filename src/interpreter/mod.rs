@@ -70,6 +70,7 @@ pub fn eval_expr<'ast, 'input>(
             .parse()
             .map(Value::Integer)
             .map_err(|_| EvalError::ParseInt(*start..*end)),
+        Expr::Lit(Lit::Boolean(boolean)) => Ok(Value::Boolean(*boolean)),
         Expr::Lit(Lit::Ident(ident)) => env
             .get(ident.literal)
             .ok_or(EvalError::UnboundVariable(ident.literal))
@@ -109,11 +110,11 @@ fn symbol<'ast, 'input>(
             Symbol::Slash(_) => Ok(Value::Integer(x / y)),
             Symbol::DotDot(_) => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
             Symbol::Semi(_) => Ok(Value::Integer(y)),
-            Symbol::Equal(_) => Ok(Value::Integer(if x == y { 1 } else { 0 })),
-            Symbol::Less(_) => Ok(Value::Integer(if x < y { 1 } else { 0 })),
-            Symbol::Greater(_) => Ok(Value::Integer(if x > y { 1 } else { 0 })),
-            Symbol::LessEqual(_) => Ok(Value::Integer(if x <= y { 1 } else { 0 })),
-            Symbol::GreaterEqual(_) => Ok(Value::Integer(if x >= y { 1 } else { 0 })),
+            Symbol::Equal(_) => Ok(Value::Boolean(x == y)),
+            Symbol::Less(_) => Ok(Value::Boolean(x < y)),
+            Symbol::Greater(_) => Ok(Value::Boolean(x > y)),
+            Symbol::LessEqual(_) => Ok(Value::Boolean(x <= y)),
+            Symbol::GreaterEqual(_) => Ok(Value::Boolean(x >= y)),
         },
         _ => Err(EvalError::TypeMismatch),
     }
@@ -126,7 +127,7 @@ pub fn call_function<'ast, 'input>(
     env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match function {
-        Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) => Err(EvalError::TypeMismatch),
+        Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) | Value::Boolean(_) => Err(EvalError::TypeMismatch),
         Value::Symbol(s) => symbol(lhs, rhs, s),
         Value::Builtin(f) => f(lhs, rhs, env),
         Value::Closure(closure) => {
