@@ -70,32 +70,56 @@ fn bang<'a, T>(ref_: &'a T) -> T;
 ## Examples
 
 ```rs
-fn map<'e, 'a> : ref<Bst<i32>>!['a, 'mut] (ref<i32>!['a, 'mut], () -> ()!['e]) -> ()!['e] =
-    |(), f| () else
-    |(k, v, l, r), f| (k, v in f, l map f, r map f) else
-    |x, y| panic
+effect io {
+    fn print: T, () -> io ();
+}
+
+// need syntax for an effectful function that is a struct
+// values "on the stack" are actually in the struct.
 
 // The effects are clearly indicated by the types
-fn inc_and_print : i32 mut<'a>, () -> () = |x|
+fn inc_and_print : i32 mut, () -> io () = |x|
     // Somewhere below in the callstack, there's a handler whom I can call
     // get and set on and values will be produced and written respectively.
     x get () in |v: i32|
-    // `;` is equivalent to `>>=`/`bind`/`and_then`
-    // This should feel fairly natural since statements only exist
-    // to produce effects.
+    // when calling print, we get a special type that is capable of being yielded,
+    // kinda like a result. Then, `;` is a binary operator that takes a yieldable
+    // value and yields it, and also passes in the next closure to be resumed.
+    // Still need to think about how this would compose...
     v in print; ||
     v + 1 in |v2: i32|
     v2 in print; ||
     v2 set x // `set` evals to `()`
+
+fn echo : () () -> io () = ||
+    () in String::new in |buf: String|
+    () in io::stdin read_line buf mut; |num: usize|
+    num in print; ||
+    buf in print; ||
+    ()
 ```
 
-And just like how Haskell needs `return`, we also need something to reconstruct
-the type.
-For this, we can use the name of the effect itself as the constructor, which the compiler automatically implements.
-For example, the `io` effect would have a function with this signature.
-```rs
-fn io : T, () -> T io = /* magic */
-```
+After discussion with William, we came across the idea: what if every effect in Curse was like how `async`/`await` works in Rust?
+That is, across every "await" point, the program yields to its effect handler, which would be equivalent to an async scheduler.
+Obviously this would be ridiculous if we still considered mutable references like effects, but it does work particularly well with iterators and async code.
+However, you wouldn't really want to resume after panicking.
+But it could be nice to allocate and then resume, or do IO and then resume.
+
+One benefit of this is that all pure functions would be parallelizable by default.
+
+## Plan
+
+All pure functions are just that- pure.
+When you call it, it creates a new stack frame on top of the stack and performs as usual.
+
+On the other hand, effectful functions are state machines.
+Effects include:
+* `async`/`await`
+* panicking
+* IO
+* mutation (?)
+* nondeterminism
+* or any other globally-accessed resource.
 
 # Inspirations
 
