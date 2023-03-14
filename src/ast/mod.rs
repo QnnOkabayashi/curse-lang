@@ -60,29 +60,29 @@ pub enum Item<'ast, 'input> {
 
 #[derive(Clone, Debug)]
 pub struct ItemFunction<'ast, 'input> {
-    pub tok_fn: tok::Fn,
+    pub fn_: tok::Fn,
     pub name: tok::Ident<'input>,
-    pub tok_colon: tok::Colon,
+    pub colon: tok::Colon,
     pub typ: &'ast Type<'ast, 'input>,
-    pub tok_equal: tok::Equal,
+    pub equal: tok::Equal,
     pub closure: ExprClosure<'ast, 'input>,
 }
 
 impl<'ast, 'input> ItemFunction<'ast, 'input> {
     pub fn new(
-        tok_fn: tok::Fn,
+        fn_: tok::Fn,
         name: tok::Ident<'input>,
-        tok_colon: tok::Colon,
+        colon: tok::Colon,
         typ: &'ast Type<'ast, 'input>,
-        tok_equal: tok::Equal,
+        equal: tok::Equal,
         closure: ExprClosure<'ast, 'input>,
     ) -> Self {
         ItemFunction {
-            tok_fn,
+            fn_,
             name,
-            tok_colon,
+            colon,
             typ,
-            tok_equal,
+            equal,
             closure,
         }
     }
