@@ -29,15 +29,15 @@ impl<'ast, 'input> Arena<'ast, 'input> {
         }
     }
 
-    pub fn expr(&'ast self, expr: expr::Expr<'ast, 'input>) -> &'ast expr::Expr<'ast, 'input> {
+    pub fn expr(&'ast self, expr: Expr<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
         self.exprs.alloc(expr)
     }
 
-    pub fn pat(&'ast self, pat: expr::ExprPat<'ast, 'input>) -> &'ast expr::ExprPat<'ast, 'input> {
+    pub fn pat(&'ast self, pat: ExprPat<'ast, 'input>) -> &'ast ExprPat<'ast, 'input> {
         self.pats.alloc(pat)
     }
 
-    pub fn typ(&'ast self, typ: ty::Type<'ast, 'input>) -> &'ast ty::Type<'ast, 'input> {
+    pub fn typ(&'ast self, typ: Type<'ast, 'input>) -> &'ast Type<'ast, 'input> {
         self.types.alloc(typ)
     }
 }
@@ -63,9 +63,9 @@ pub struct ItemFunction<'ast, 'input> {
     pub tok_fn: tok::Fn,
     pub name: tok::Ident<'input>,
     pub tok_colon: tok::Colon,
-    pub typ: &'ast ty::Type<'ast, 'input>,
+    pub typ: &'ast Type<'ast, 'input>,
     pub tok_equal: tok::Equal,
-    pub closure: expr::ExprClosure<'ast, 'input>,
+    pub closure: ExprClosure<'ast, 'input>,
 }
 
 impl<'ast, 'input> ItemFunction<'ast, 'input> {
@@ -73,9 +73,9 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         tok_fn: tok::Fn,
         name: tok::Ident<'input>,
         tok_colon: tok::Colon,
-        typ: &'ast ty::Type<'ast, 'input>,
+        typ: &'ast Type<'ast, 'input>,
         tok_equal: tok::Equal,
-        closure: expr::ExprClosure<'ast, 'input>,
+        closure: ExprClosure<'ast, 'input>,
     ) -> Self {
         ItemFunction {
             tok_fn,
