@@ -121,6 +121,20 @@ Effects include:
 * nondeterminism
 * or any other globally-accessed resource.
 
+```rust
+async fn do_it() {
+    let a = do_a().await;
+    let b = do_b(a).await;
+    let c = do_c(b).await;
+    c
+}
+
+fn do_it : io e |e |x| y| y = |do_c|
+    () in do_a; |a|
+    a in do_b; |b|
+    b in do_c
+```
+
 # Inspirations
 
 * Koka
