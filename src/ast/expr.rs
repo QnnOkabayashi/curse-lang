@@ -2,27 +2,30 @@ use crate::ast::{pat, ty};
 use crate::lex::{tok, LexError, Token};
 use lalrpop_util::ErrorRecovery;
 
+pub type ExprPat<'ast, 'input> = pat::Pat<'ast, ExprLit<'input>>;
+pub type ExprTuple<'ast, 'input> = pat::PatTuple<&'ast Expr<'ast, 'input>>;
+
 #[derive(Clone, Debug)]
 pub enum Expr<'ast, 'input> {
-    Paren(Paren<'ast, 'input>),
-    Symbol(Symbol),
-    Lit(Lit<'input>),
-    Tuple(pat::Tuple<&'ast Expr<'ast, 'input>>),
-    Closure(Closure<'ast, 'input>),
-    Appl(Appl<'ast, 'input>),
+    Paren(ExprParen<'ast, 'input>),
+    Symbol(ExprSymbol),
+    Lit(ExprLit<'input>),
+    Tuple(ExprTuple<'ast, 'input>),
+    Closure(ExprClosure<'ast, 'input>),
+    Appl(ExprAppl<'ast, 'input>),
     Error(ErrorRecovery<usize, Token<'input>, LexError>),
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Paren<'ast, 'input> {
+pub struct ExprParen<'ast, 'input> {
     pub lparen: tok::LParen,
     pub inner: &'ast Expr<'ast, 'input>,
     pub rparen: tok::RParen,
 }
 
-impl<'ast, 'input> Paren<'ast, 'input> {
+impl<'ast, 'input> ExprParen<'ast, 'input> {
     pub fn new(lparen: tok::LParen, inner: &'ast Expr<'ast, 'input>, rparen: tok::RParen) -> Self {
-        Paren {
+        ExprParen {
             lparen,
             inner,
             rparen,
@@ -31,7 +34,7 @@ impl<'ast, 'input> Paren<'ast, 'input> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Symbol {
+pub enum ExprSymbol {
     Plus(tok::Plus),
     Minus(tok::Minus),
     Star(tok::Star),
@@ -47,7 +50,7 @@ pub enum Symbol {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Lit<'input> {
+pub enum ExprLit<'input> {
     Integer(tok::Integer<'input>),
     Ident(tok::Ident<'input>),
     True(tok::True),
@@ -55,20 +58,20 @@ pub enum Lit<'input> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Closure<'ast, 'input> {
-    pub branches: Vec<(Branch<'ast, 'input>, tok::Else)>,
-    pub last: Branch<'ast, 'input>,
+pub struct ExprClosure<'ast, 'input> {
+    pub branches: Vec<(ExprBranch<'ast, 'input>, tok::Else)>,
+    pub last: ExprBranch<'ast, 'input>,
 }
 
-impl<'ast, 'input> Closure<'ast, 'input> {
+impl<'ast, 'input> ExprClosure<'ast, 'input> {
     pub fn new(
-        branches: Vec<(Branch<'ast, 'input>, tok::Else)>,
-        last: Branch<'ast, 'input>,
+        branches: Vec<(ExprBranch<'ast, 'input>, tok::Else)>,
+        last: ExprBranch<'ast, 'input>,
     ) -> Self {
-        Closure { branches, last }
+        ExprClosure { branches, last }
     }
 
-    pub fn iter_branches(&self) -> impl Iterator<Item = &Branch<'ast, 'input>> {
+    pub fn iter_branches(&self) -> impl Iterator<Item = &ExprBranch<'ast, 'input>> {
         self.branches
             .iter()
             .map(|(branch, _)| branch)
@@ -77,18 +80,18 @@ impl<'ast, 'input> Closure<'ast, 'input> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Branch<'ast, 'input> {
+pub struct ExprBranch<'ast, 'input> {
     pub open: tok::Pipe,
-    pub params: Params<'ast, 'input>,
+    pub params: ExprParams<'ast, 'input>,
     pub close: tok::Pipe,
     pub body: &'ast Expr<'ast, 'input>,
 }
 
-impl<'ast, 'input> Branch<'ast, 'input> {
+impl<'ast, 'input> ExprBranch<'ast, 'input> {
     pub fn zero(open: tok::Pipe, close: tok::Pipe, body: &'ast Expr<'ast, 'input>) -> Self {
-        Branch {
+        ExprBranch {
             open,
-            params: Params::Zero,
+            params: ExprParams::Zero,
             close,
             body,
         }
@@ -96,13 +99,13 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 
     pub fn one(
         open: tok::Pipe,
-        lhs: Param<'ast, 'input>,
+        lhs: ExprParam<'ast, 'input>,
         close: tok::Pipe,
         body: &'ast Expr<'ast, 'input>,
     ) -> Self {
-        Branch {
+        ExprBranch {
             open,
-            params: Params::One(lhs),
+            params: ExprParams::One(lhs),
             close,
             body,
         }
@@ -110,15 +113,15 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 
     pub fn two(
         open: tok::Pipe,
-        lhs: Param<'ast, 'input>,
+        lhs: ExprParam<'ast, 'input>,
         comma: tok::Comma,
-        rhs: Param<'ast, 'input>,
+        rhs: ExprParam<'ast, 'input>,
         close: tok::Pipe,
         body: &'ast Expr<'ast, 'input>,
     ) -> Self {
-        Branch {
+        ExprBranch {
             open,
-            params: Params::Two(lhs, comma, rhs),
+            params: ExprParams::Two(lhs, comma, rhs),
             close,
             body,
         }
@@ -126,46 +129,40 @@ impl<'ast, 'input> Branch<'ast, 'input> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Pat<'ast, 'input> {
-    Lit(Lit<'input>),
-    Tuple(pat::Tuple<&'ast Pat<'ast, 'input>>),
-}
-
-#[derive(Clone, Debug)]
-pub enum Params<'ast, 'input> {
+pub enum ExprParams<'ast, 'input> {
     Zero,
-    One(Param<'ast, 'input>),
-    Two(Param<'ast, 'input>, tok::Comma, Param<'ast, 'input>),
+    One(ExprParam<'ast, 'input>),
+    Two(ExprParam<'ast, 'input>, tok::Comma, ExprParam<'ast, 'input>),
 }
 
 #[derive(Clone, Debug)]
-pub struct Param<'ast, 'input> {
-    pub pat: &'ast Pat<'ast, 'input>,
+pub struct ExprParam<'ast, 'input> {
+    pub pat: &'ast ExprPat<'ast, 'input>,
     pub ty: Option<(tok::Colon, &'ast ty::Type<'ast, 'input>)>,
 }
 
-impl<'ast, 'input> Param<'ast, 'input> {
+impl<'ast, 'input> ExprParam<'ast, 'input> {
     pub fn new(
-        pat: &'ast Pat<'ast, 'input>,
+        pat: &'ast ExprPat<'ast, 'input>,
         ty: Option<(tok::Colon, &'ast ty::Type<'ast, 'input>)>,
     ) -> Self {
-        Param { pat, ty }
+        ExprParam { pat, ty }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Appl<'ast, 'input> {
+pub struct ExprAppl<'ast, 'input> {
     pub lhs: &'ast Expr<'ast, 'input>,
     pub function: &'ast Expr<'ast, 'input>,
     pub rhs: &'ast Expr<'ast, 'input>,
 }
 
-impl<'ast, 'input> Appl<'ast, 'input> {
+impl<'ast, 'input> ExprAppl<'ast, 'input> {
     pub fn new(
         lhs: &'ast Expr<'ast, 'input>,
         function: &'ast Expr<'ast, 'input>,
         rhs: &'ast Expr<'ast, 'input>,
     ) -> Self {
-        Appl { lhs, function, rhs }
+        ExprAppl { lhs, function, rhs }
     }
 }

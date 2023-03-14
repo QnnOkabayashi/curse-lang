@@ -1,5 +1,4 @@
-use crate::ast::expr::{Branch, Closure, Expr, Lit, Params, Paren, Symbol};
-use crate::ast::{Item, Program};
+use crate::ast::*;
 use crate::interpreter::{
     error::EvalError,
     pattern_matching::{check_args, match_args},
@@ -17,7 +16,7 @@ pub type Environment<'ast, 'input> = HashMap<&'input str, Value<'ast, 'input>>;
 
 pub fn function_definition<'ast, 'input>(
     name: &'input str,
-    closure: &'ast Closure<'ast, 'input>,
+    closure: &'ast ExprClosure<'ast, 'input>,
     env: &mut Environment<'ast, 'input>,
 ) {
     env.insert(name, Value::Closure(closure));
@@ -38,11 +37,11 @@ pub fn eval_program<'input>(program: Program<'_, 'input>) -> Result<(), EvalErro
     // find and execute `main`
     if let Some(Value::Closure(closure)) = env.get("main") {
         match closure {
-            Closure {
+            ExprClosure {
                 branches,
                 last:
-                    Branch {
-                        params: Params::Zero,
+                    ExprBranch {
+                        params: ExprParams::Zero,
                         body,
                         ..
                     },
@@ -61,18 +60,19 @@ pub fn eval_expr<'ast, 'input>(
     env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
     match expr {
-        Expr::Paren(Paren { inner, .. }) => eval_expr(inner, env),
-        Expr::Lit(Lit::Integer(token)) => token.literal
+        Expr::Paren(ExprParen { inner, .. }) => eval_expr(inner, env),
+        Expr::Lit(ExprLit::Integer(token)) => token
+            .literal
             .parse()
             .map(Value::Integer)
             .map_err(|_| EvalError::ParseInt(token.span())),
-        Expr::Lit(Lit::True(_)) => Ok(Value::Boolean(true)),
-        Expr::Lit(Lit::False(_)) => Ok(Value::Boolean(false)),
-        Expr::Lit(Lit::Ident(ident)) => env
+        Expr::Lit(ExprLit::True(_)) => Ok(Value::Boolean(true)),
+        Expr::Lit(ExprLit::False(_)) => Ok(Value::Boolean(false)),
+        Expr::Lit(ExprLit::Ident(ident)) => env
             .get(ident.literal)
             .ok_or(EvalError::UnboundVariable(ident.literal))
             .cloned(),
-        Expr::Tuple(items) => items
+        Expr::Tuple(tuple) => tuple
             .iter_elements()
             .map(|it| eval_expr(it, env))
             .collect::<Result<_, _>>()
@@ -92,26 +92,26 @@ pub fn eval_expr<'ast, 'input>(
 fn symbol<'ast, 'input>(
     left: Value<'ast, 'input>,
     right: Value<'ast, 'input>,
-    op: Symbol,
+    op: ExprSymbol,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
-    if let Symbol::Semi(_) = op {
+    if let ExprSymbol::Semi(_) = op {
         return Ok(right);
     }
 
     match (left, right) {
         (Value::Integer(x), Value::Integer(y)) => match op {
-            Symbol::Plus(_) => Ok(Value::Integer(x + y)),
-            Symbol::Minus(_) => Ok(Value::Integer(x - y)),
-            Symbol::Star(_) => Ok(Value::Integer(x * y)),
-            Symbol::Percent(_) => Ok(Value::Integer(x % y)),
-            Symbol::Slash(_) => Ok(Value::Integer(x / y)),
-            Symbol::DotDot(_) => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
-            Symbol::Semi(_) => Ok(Value::Integer(y)),
-            Symbol::Equal(_) => Ok(Value::Boolean(x == y)),
-            Symbol::Less(_) => Ok(Value::Boolean(x < y)),
-            Symbol::Greater(_) => Ok(Value::Boolean(x > y)),
-            Symbol::LessEqual(_) => Ok(Value::Boolean(x <= y)),
-            Symbol::GreaterEqual(_) => Ok(Value::Boolean(x >= y)),
+            ExprSymbol::Plus(_) => Ok(Value::Integer(x + y)),
+            ExprSymbol::Minus(_) => Ok(Value::Integer(x - y)),
+            ExprSymbol::Star(_) => Ok(Value::Integer(x * y)),
+            ExprSymbol::Percent(_) => Ok(Value::Integer(x % y)),
+            ExprSymbol::Slash(_) => Ok(Value::Integer(x / y)),
+            ExprSymbol::DotDot(_) => Ok(Value::Vector((x..y).map(Value::Integer).collect())),
+            ExprSymbol::Semi(_) => Ok(Value::Integer(y)),
+            ExprSymbol::Equal(_) => Ok(Value::Boolean(x == y)),
+            ExprSymbol::Less(_) => Ok(Value::Boolean(x < y)),
+            ExprSymbol::Greater(_) => Ok(Value::Boolean(x > y)),
+            ExprSymbol::LessEqual(_) => Ok(Value::Boolean(x <= y)),
+            ExprSymbol::GreaterEqual(_) => Ok(Value::Boolean(x >= y)),
         },
         _ => Err(EvalError::TypeMismatch),
     }

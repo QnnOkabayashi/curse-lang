@@ -2,7 +2,13 @@ use crate::lex::tok;
 use std::fmt;
 
 #[derive(Clone, Debug)]
-pub struct Tuple<T> {
+pub enum Pat<'arena, Lit> {
+    Lit(Lit),
+    Tuple(PatTuple<&'arena Pat<'arena, Lit>>),
+}
+
+#[derive(Clone, Debug)]
+pub struct PatTuple<T> {
     pub lparen: tok::LParen,
     pub kind: Option<TupleNonempty<T>>,
     pub rparen: tok::RParen,
@@ -16,7 +22,7 @@ pub struct TupleNonempty<T> {
     pub trailing: Option<T>,
 }
 
-impl<T> Tuple<T> {
+impl<T> PatTuple<T> {
     pub fn nonempty(
         lparen: tok::LParen,
         first: T,
@@ -25,7 +31,7 @@ impl<T> Tuple<T> {
         trailing: Option<T>,
         rparen: tok::RParen,
     ) -> Self {
-        Tuple {
+        PatTuple {
             lparen,
             kind: Some(TupleNonempty {
                 first,
@@ -38,7 +44,7 @@ impl<T> Tuple<T> {
     }
 
     pub fn empty(lparen: tok::LParen, rparen: tok::RParen) -> Self {
-        Tuple {
+        PatTuple {
             lparen,
             kind: None,
             rparen,
@@ -66,7 +72,7 @@ impl<T> Tuple<T> {
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Tuple<T> {
+impl<T: fmt::Display> fmt::Display for PatTuple<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         if let Some(inner) = self.kind.as_ref() {

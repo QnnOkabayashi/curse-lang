@@ -1,5 +1,5 @@
 use super::error::EvalError;
-use crate::ast::expr::{Closure, Symbol};
+use crate::ast::*;
 use std::{collections::HashMap, fmt};
 
 type BuiltinFn<'ast, 'input> = fn(
@@ -11,9 +11,9 @@ type BuiltinFn<'ast, 'input> = fn(
 #[derive(Clone)]
 pub enum Value<'ast, 'input> {
     Integer(i32),
-    Symbol(Symbol),
+    Symbol(ExprSymbol),
     Boolean(bool),
-    Closure(&'ast Closure<'ast, 'input>),
+    Closure(&'ast ExprClosure<'ast, 'input>),
     Tuple(Vec<Value<'ast, 'input>>),
     Vector(Vec<Value<'ast, 'input>>),
     Builtin(BuiltinFn<'ast, 'input>),
@@ -32,18 +32,18 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Boolean(b) => write!(f, "{b}"),
             Value::Closure(_) => write!(f, "<closure>"),
             Value::Builtin(_) => write!(f, "<builtin>"),
-            Value::Symbol(Symbol::Star(_)) => write!(f, "*"),
-            Value::Symbol(Symbol::Plus(_)) => write!(f, "+"),
-            Value::Symbol(Symbol::Minus(_)) => write!(f, "-"),
-            Value::Symbol(Symbol::Percent(_)) => write!(f, "%"),
-            Value::Symbol(Symbol::Slash(_)) => write!(f, "/"),
-            Value::Symbol(Symbol::DotDot(_)) => write!(f, ".."),
-            Value::Symbol(Symbol::Semi(_)) => write!(f, ";"),
-            Value::Symbol(Symbol::Equal(_)) => write!(f, "="),
-            Value::Symbol(Symbol::Less(_)) => write!(f, "<"),
-            Value::Symbol(Symbol::Greater(_)) => write!(f, ">"),
-            Value::Symbol(Symbol::LessEqual(_)) => write!(f, "<="),
-            Value::Symbol(Symbol::GreaterEqual(_)) => write!(f, ">="),
+            Value::Symbol(ExprSymbol::Star(_)) => write!(f, "*"),
+            Value::Symbol(ExprSymbol::Plus(_)) => write!(f, "+"),
+            Value::Symbol(ExprSymbol::Minus(_)) => write!(f, "-"),
+            Value::Symbol(ExprSymbol::Percent(_)) => write!(f, "%"),
+            Value::Symbol(ExprSymbol::Slash(_)) => write!(f, "/"),
+            Value::Symbol(ExprSymbol::DotDot(_)) => write!(f, ".."),
+            Value::Symbol(ExprSymbol::Semi(_)) => write!(f, ";"),
+            Value::Symbol(ExprSymbol::Equal(_)) => write!(f, "="),
+            Value::Symbol(ExprSymbol::Less(_)) => write!(f, "<"),
+            Value::Symbol(ExprSymbol::Greater(_)) => write!(f, ">"),
+            Value::Symbol(ExprSymbol::LessEqual(_)) => write!(f, "<="),
+            Value::Symbol(ExprSymbol::GreaterEqual(_)) => write!(f, ">="),
             Value::Tuple(t) => {
                 write!(f, "(")?;
                 if let Some((first, rest)) = t.split_first() {

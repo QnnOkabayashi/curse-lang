@@ -1,5 +1,4 @@
-use crate::ast::{expr, pat, ty, Arena, Item, ItemFunction, Program};
-use crate::lex::{tok, LexError, Token};
+use crate::{ast::*, lex::*};
 
 grammar<'ast, 'input>(alloc: &'ast Arena<'ast, 'input>);
 
@@ -47,100 +46,96 @@ Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
-Boolean: expr::Lit<'input> = {
-    "true" => expr::Lit::True(<>),
-    "false" => expr::Lit::False(<>),
-};
-
 pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 
 pub Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
 
-StartType: &'ast ty::Type<'ast, 'input> = {
-    Ident => alloc.typ(ty::Type::Named(ty::Named::new(<>))),
-    Tuple<Type> => alloc.typ(ty::Type::Tuple(ty::Tuple::new(<>))),
+StartType: &'ast Type<'ast, 'input> = {
+    Ident => alloc.typ(Type::Named(TypeNamed::new(<>))),
+    Tuple<Type> => alloc.typ(Type::Tuple(<>)),
     "(" <Type> ")",
 };
 
 Type = {
-    StartType StartType "->" Type => alloc.typ(ty::Type::Function(ty::Function::new(<>))),
+    StartType StartType "->" Type => alloc.typ(Type::Function(TypeFunction::new(<>))),
     StartType,
 };
 
-Pat: &'ast expr::Pat<'ast, 'input> = {
-    Lit => alloc.pat(expr::Pat::Lit(<>)),
-    Tuple<Pat> => alloc.pat(expr::Pat::Tuple(<>)),
+Pat: &'ast ExprPat<'ast, 'input> = {
+    Lit => alloc.pat(ExprPat::Lit(<>)),
+    Tuple<Pat> => alloc.pat(ExprPat::Tuple(<>)),
 };
 
-Paren: expr::Paren<'ast, 'input> = "(" EndExpr ")" => expr::Paren::new(<>);
+Paren: ExprParen<'ast, 'input> = "(" EndExpr ")" => ExprParen::new(<>);
 
-Tuple<T>: pat::Tuple<T> = {
-    "(" ")" => pat::Tuple::empty(<>),
-    "(" T "," (T ",")* T? ")" => pat::Tuple::nonempty(<>),
+Tuple<T>: PatTuple<T> = {
+    "(" ")" => PatTuple::empty(<>),
+    "(" T "," (T ",")* T? ")" => PatTuple::nonempty(<>),
 }
 
-Symbol: expr::Symbol = {
-    "+" => expr::Symbol::Plus(<>),
-    "-" => expr::Symbol::Minus(<>),
-    "*" => expr::Symbol::Star(<>),
-    ".." => expr::Symbol::DotDot(<>),
-    ";" => expr::Symbol::Semi(<>),
-    "%" => expr::Symbol::Percent(<>),
-    "/" => expr::Symbol::Slash(<>),
-    "=" => expr::Symbol::Equal(<>),
-    "<" => expr::Symbol::Less(<>),
-    ">" => expr::Symbol::Greater(<>),
-    "<=" => expr::Symbol::LessEqual(<>),
-    ">=" => expr::Symbol::GreaterEqual(<>),
+Symbol: ExprSymbol = {
+    "+" => ExprSymbol::Plus(<>),
+    "-" => ExprSymbol::Minus(<>),
+    "*" => ExprSymbol::Star(<>),
+    ".." => ExprSymbol::DotDot(<>),
+    ";" => ExprSymbol::Semi(<>),
+    "%" => ExprSymbol::Percent(<>),
+    "/" => ExprSymbol::Slash(<>),
+    "=" => ExprSymbol::Equal(<>),
+    "<" => ExprSymbol::Less(<>),
+    ">" => ExprSymbol::Greater(<>),
+    "<=" => ExprSymbol::LessEqual(<>),
+    ">=" => ExprSymbol::GreaterEqual(<>),
 };
 
-Lit: expr::Lit<'input> = {
-    Integer => expr::Lit::Integer(<>),
-    Ident => expr::Lit::Ident(<>),
-    Boolean
+Lit: ExprLit<'input> = {
+    Integer => ExprLit::Integer(<>),
+    Ident => ExprLit::Ident(<>),
+    "true" => ExprLit::True(<>),
+    "false" => ExprLit::False(<>),
 };
 
-Closure: expr::Closure<'ast, 'input> = (Branch "else")* Branch => expr::Closure::new(<>);
+Closure: ExprClosure<'ast, 'input> = (Branch "else")* Branch => ExprClosure::new(<>);
 
-Branch: expr::Branch<'ast, 'input> = {
-    "|" "|" InternalExpr => expr::Branch::zero(<>),
-    "|" Param "|" InternalExpr => expr::Branch::one(<>),
-    "|" Param "," Param "|" InternalExpr => expr::Branch::two(<>),
+Branch: ExprBranch<'ast, 'input> = {
+    "|" "|" InternalExpr => ExprBranch::zero(<>),
+    "|" Param "|" InternalExpr => ExprBranch::one(<>),
+    "|" Param "," Param "|" InternalExpr => ExprBranch::two(<>),
 };
 
-Param: expr::Param<'ast, 'input> = Pat (":" Type)? => expr::Param::new(<>);
+Param: ExprParam<'ast, 'input> = Pat (":" Type)? => ExprParam::new(<>);
 
-Appl<Rhs>: expr::Appl<'ast, 'input> = Expr Term Rhs => expr::Appl::new(<>);
+Appl<Rhs>: ExprAppl<'ast, 'input> = Expr Term Rhs => ExprAppl::new(<>);
 
-Term: &'ast expr::Expr<'ast, 'input> = {
-    Paren => alloc.expr(expr::Expr::Paren(<>)),
-    Symbol => alloc.expr(expr::Expr::Symbol(<>)),
-    Lit => alloc.expr(expr::Expr::Lit(<>)),
-    Tuple<EndExpr> => alloc.expr(expr::Expr::Tuple(<>)),
-    ! => alloc.expr(expr::Expr::Error(<>)),
+Term: &'ast Expr<'ast, 'input> = {
+    Paren => alloc.expr(Expr::Paren(<>)),
+    Symbol => alloc.expr(Expr::Symbol(<>)),
+    Lit => alloc.expr(Expr::Lit(<>)),
+    Tuple<EndExpr> => alloc.expr(Expr::Tuple(<>)),
+    ! => alloc.expr(Expr::Error(<>)),
 };
 
 InternalTerm = {
     Term,
-    Branch => alloc.expr(expr::Expr::Closure(expr::Closure::new(vec![], <>))),
+    Branch => alloc.expr(Expr::Closure(ExprClosure::new(vec![], <>))),
 };
 
 EndTerm = {
     Term,
-    Closure => alloc.expr(expr::Expr::Closure(<>)),
+    Closure => alloc.expr(Expr::Closure(<>)),
 };
 
 Expr = {
     Term,
-    Appl<Term> => alloc.expr(expr::Expr::Appl(<>)),
+    Appl<Term> => alloc.expr(Expr::Appl(<>)),
 };
 
 InternalExpr = {
     InternalTerm,
-    Appl<InternalTerm> => alloc.expr(expr::Expr::Appl(<>)),
+    Appl<InternalTerm> => alloc.expr(Expr::Appl(<>)),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => alloc.expr(expr::Expr::Appl(<>)),
+    Appl<EndTerm> => alloc.expr(Expr::Appl(<>)),
 };

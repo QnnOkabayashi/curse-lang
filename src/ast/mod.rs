@@ -1,12 +1,16 @@
 use crate::lex::tok;
 
-pub mod expr;
-pub mod pat;
-pub mod ty;
+mod expr;
+mod pat;
+mod ty;
+
+pub use expr::*;
+pub use pat::*;
+pub use ty::*;
 
 pub struct Arena<'ast, 'input> {
     exprs: typed_arena::Arena<expr::Expr<'ast, 'input>>,
-    pats: typed_arena::Arena<expr::Pat<'ast, 'input>>,
+    pats: typed_arena::Arena<expr::ExprPat<'ast, 'input>>,
     types: typed_arena::Arena<ty::Type<'ast, 'input>>,
 }
 
@@ -29,7 +33,7 @@ impl<'ast, 'input> Arena<'ast, 'input> {
         self.exprs.alloc(expr)
     }
 
-    pub fn pat(&'ast self, pat: expr::Pat<'ast, 'input>) -> &'ast expr::Pat<'ast, 'input> {
+    pub fn pat(&'ast self, pat: expr::ExprPat<'ast, 'input>) -> &'ast expr::ExprPat<'ast, 'input> {
         self.pats.alloc(pat)
     }
 
@@ -61,7 +65,7 @@ pub struct ItemFunction<'ast, 'input> {
     pub tok_colon: tok::Colon,
     pub typ: &'ast ty::Type<'ast, 'input>,
     pub tok_equal: tok::Equal,
-    pub closure: expr::Closure<'ast, 'input>,
+    pub closure: expr::ExprClosure<'ast, 'input>,
 }
 
 impl<'ast, 'input> ItemFunction<'ast, 'input> {
@@ -71,7 +75,7 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         tok_colon: tok::Colon,
         typ: &'ast ty::Type<'ast, 'input>,
         tok_equal: tok::Equal,
-        closure: expr::Closure<'ast, 'input>,
+        closure: expr::ExprClosure<'ast, 'input>,
     ) -> Self {
         ItemFunction {
             tok_fn,
