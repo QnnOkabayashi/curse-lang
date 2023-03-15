@@ -70,6 +70,10 @@ impl<T> PatTuple<T> {
             None => 0,
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<T: fmt::Display> fmt::Display for PatTuple<T> {

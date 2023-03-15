@@ -49,7 +49,7 @@ Integer: tok::Integer<'input> = "integer literal";
 
 pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 
-pub Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
+Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
 
 StartType: &'ast Type<'ast, 'input> = {
     Ident => ctx.typ(Type::Named(TypeNamed::new(<>))),
