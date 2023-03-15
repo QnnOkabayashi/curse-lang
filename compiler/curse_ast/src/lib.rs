@@ -1,28 +1,27 @@
-use crate::lex::tok;
-
 mod expr;
 mod pat;
+pub mod tok;
 mod ty;
 
 pub use expr::*;
 pub use pat::*;
 pub use ty::*;
 
-pub struct Arena<'ast, 'input> {
-    exprs: typed_arena::Arena<expr::Expr<'ast, 'input>>,
-    pats: typed_arena::Arena<expr::ExprPat<'ast, 'input>>,
-    types: typed_arena::Arena<ty::Type<'ast, 'input>>,
+pub struct Context<'ast, 'input> {
+    exprs: typed_arena::Arena<Expr<'ast, 'input>>,
+    pats: typed_arena::Arena<ExprPat<'ast, 'input>>,
+    types: typed_arena::Arena<Type<'ast, 'input>>,
 }
 
-impl Default for Arena<'_, '_> {
+impl Default for Context<'_, '_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'ast, 'input> Arena<'ast, 'input> {
+impl<'ast, 'input> Context<'ast, 'input> {
     pub fn new() -> Self {
-        Arena {
+        Context {
             exprs: typed_arena::Arena::with_capacity(1024),
             pats: typed_arena::Arena::with_capacity(1024),
             types: typed_arena::Arena::with_capacity(1024),

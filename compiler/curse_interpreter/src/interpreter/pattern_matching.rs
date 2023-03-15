@@ -1,5 +1,5 @@
-use crate::ast::*;
 use crate::interpreter::{error::EvalError, value::Value, Environment};
+use curse_ast::*;
 use std::iter;
 
 pub fn match_args<'ast, 'input>(

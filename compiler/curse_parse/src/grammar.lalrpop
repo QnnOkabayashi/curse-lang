@@ -1,6 +1,7 @@
-use crate::{ast::*, lex::*};
+use crate::lexer::*;
+use curse_ast::*;
 
-grammar<'ast, 'input>(alloc: &'ast Arena<'ast, 'input>);
+grammar<'ast, 'input>(ctx: &'ast Context<'ast, 'input>);
 
 extern {
     type Location = usize;
@@ -48,22 +49,22 @@ Integer: tok::Integer<'input> = "integer literal";
 
 pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
 
-pub Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
+Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
 
 StartType: &'ast Type<'ast, 'input> = {
-    Ident => alloc.typ(Type::Named(TypeNamed::new(<>))),
-    Tuple<Type> => alloc.typ(Type::Tuple(<>)),
+    Ident => ctx.typ(Type::Named(TypeNamed::new(<>))),
+    Tuple<Type> => ctx.typ(Type::Tuple(<>)),
     "(" <Type> ")",
 };
 
 Type = {
-    StartType StartType "->" Type => alloc.typ(Type::Function(TypeFunction::new(<>))),
+    StartType StartType "->" Type => ctx.typ(Type::Function(TypeFunction::new(<>))),
     StartType,
 };
 
 Pat: &'ast ExprPat<'ast, 'input> = {
-    Lit => alloc.pat(ExprPat::Lit(<>)),
-    Tuple<Pat> => alloc.pat(ExprPat::Tuple(<>)),
+    Lit => ctx.pat(ExprPat::Lit(<>)),
+    Tuple<Pat> => ctx.pat(ExprPat::Tuple(<>)),
 };
 
 Paren: ExprParen<'ast, 'input> = "(" EndExpr ")" => ExprParen::new(<>);
@@ -108,34 +109,36 @@ Param: ExprParam<'ast, 'input> = Pat (":" Type)? => ExprParam::new(<>);
 Appl<Rhs>: ExprAppl<'ast, 'input> = Expr Term Rhs => ExprAppl::new(<>);
 
 Term: &'ast Expr<'ast, 'input> = {
-    Paren => alloc.expr(Expr::Paren(<>)),
-    Symbol => alloc.expr(Expr::Symbol(<>)),
-    Lit => alloc.expr(Expr::Lit(<>)),
-    Tuple<EndExpr> => alloc.expr(Expr::Tuple(<>)),
-    ! => alloc.expr(Expr::Error(<>)),
+    Paren => ctx.expr(Expr::Paren(<>)),
+    Symbol => ctx.expr(Expr::Symbol(<>)),
+    Lit => ctx.expr(Expr::Lit(<>)),
+    Tuple<EndExpr> => ctx.expr(Expr::Tuple(<>)),
+    ! => {
+        ctx.expr(Expr::Invalid)
+    }
 };
 
 InternalTerm = {
     Term,
-    Branch => alloc.expr(Expr::Closure(ExprClosure::new(vec![], <>))),
+    Branch => ctx.expr(Expr::Closure(ExprClosure::new(vec![], <>))),
 };
 
 EndTerm = {
     Term,
-    Closure => alloc.expr(Expr::Closure(<>)),
+    Closure => ctx.expr(Expr::Closure(<>)),
 };
 
 Expr = {
     Term,
-    Appl<Term> => alloc.expr(Expr::Appl(<>)),
+    Appl<Term> => ctx.expr(Expr::Appl(<>)),
 };
 
 InternalExpr = {
     InternalTerm,
-    Appl<InternalTerm> => alloc.expr(Expr::Appl(<>)),
+    Appl<InternalTerm> => ctx.expr(Expr::Appl(<>)),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => alloc.expr(Expr::Appl(<>)),
+    Appl<EndTerm> => ctx.expr(Expr::Appl(<>)),
 };

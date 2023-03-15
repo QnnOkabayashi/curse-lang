@@ -1,6 +1,4 @@
-use crate::ast::{pat, ty};
-use crate::lex::{tok, LexError, Token};
-use lalrpop_util::ErrorRecovery;
+use crate::{pat, tok, ty};
 
 pub type ExprPat<'ast, 'input> = pat::Pat<'ast, ExprLit<'input>>;
 pub type ExprTuple<'ast, 'input> = pat::PatTuple<&'ast Expr<'ast, 'input>>;
@@ -13,7 +11,7 @@ pub enum Expr<'ast, 'input> {
     Tuple(ExprTuple<'ast, 'input>),
     Closure(ExprClosure<'ast, 'input>),
     Appl(ExprAppl<'ast, 'input>),
-    Error(ErrorRecovery<usize, Token<'input>, LexError>),
+    Invalid,
 }
 
 #[derive(Copy, Clone, Debug)]

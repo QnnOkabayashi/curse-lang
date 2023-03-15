@@ -1,13 +1,9 @@
-use error::SourceErrors;
-use lalrpop_util::lalrpop_mod;
+use curse_ast::Context;
+use curse_parse::{parse_program, SourceErrors};
 use miette::{IntoDiagnostic, NamedSource};
 use std::{fs, path::PathBuf};
 
-lalrpop_mod!(#[allow(clippy::all)] pub grammar);
-mod ast;
-mod error;
 mod interpreter;
-mod lex;
 mod repl;
 
 use clap::Parser;
@@ -27,10 +23,9 @@ fn main() -> miette::Result<()> {
     if let Some(path) = Cli::parse().file {
         // Example: cargo run -- --file examples/branching.curse
         let input = fs::read_to_string(&path).into_diagnostic()?;
-        let arena = ast::Arena::new();
-        let lexer = lex::Lexer::new(&input);
+        let arena = Context::new();
 
-        match grammar::ProgramParser::new().parse(&arena, lexer) {
+        match parse_program(&arena, &input) {
             Ok(program) => interpreter::eval_program(program).unwrap(),
             Err(e) => {
                 return Err(miette::Report::from(SourceErrors {

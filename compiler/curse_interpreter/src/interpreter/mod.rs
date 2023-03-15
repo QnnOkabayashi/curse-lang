@@ -1,9 +1,9 @@
-use crate::ast::*;
 use crate::interpreter::{
     error::EvalError,
     pattern_matching::{check_args, match_args},
     value::Value,
 };
+use curse_ast::*;
 use std::collections::HashMap;
 
 pub mod builtins;
@@ -85,7 +85,7 @@ pub fn eval_expr<'ast, 'input>(
             let function = eval_expr(appl.function, env)?;
             call_function(left, function, right, env)
         }
-        Expr::Error(_) => Err(EvalError::LexError),
+        Expr::Invalid => Err(EvalError::LexError),
     }
 }
 
