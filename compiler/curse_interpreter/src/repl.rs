@@ -19,11 +19,9 @@ pub fn repl() -> rustyline::Result<()> {
                 let mut env = default_env();
                 let arena = Context::new();
 
-                let expr = parse_expr(&arena, &line).map_err(|e| {
-                    SourceErrors {
-                        source: NamedSource::new("test", line.to_string()),
-                        errors: vec![e.into()],
-                    }
+                let expr = parse_expr(&arena, &line).map_err(|e| SourceErrors {
+                    source: NamedSource::new("test", line.to_string()),
+                    errors: vec![e.into()],
                 });
 
                 let expr = match expr {
