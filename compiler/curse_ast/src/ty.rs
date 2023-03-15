@@ -1,5 +1,4 @@
-use crate::ast::pat;
-use crate::lex::tok;
+use crate::{pat, tok};
 use displaydoc::Display;
 
 pub type TypeTuple<'ast, 'input> = pat::PatTuple<&'ast Type<'ast, 'input>>;
@@ -27,7 +26,7 @@ impl<'input> TypeNamed<'input> {
 }
 
 #[derive(Clone, Debug, Display)]
-#[displaydoc("{lhs} {rhs} -> {ret}")]
+#[displaydoc("{lhs}, {rhs} -> {ret}")]
 pub struct TypeFunction<'ast, 'input> {
     lhs: &'ast Type<'ast, 'input>,
     rhs: &'ast Type<'ast, 'input>,

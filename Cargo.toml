@@ -1,17 +1,6 @@
-[package]
-name = "curse"
-version = "0.1.0"
-edition = "2021"
-
-[build-dependencies]
-lalrpop = "0.19.7"
-
-[dependencies]
-clap = { version = "4.1.8", features = ["derive"] }
-displaydoc = "0.2.3"
-lalrpop-util = { version = "0.19.7", features = ["lexer"] }
-miette = { version = "5.5.0", features = ["fancy"] }
-regex = "1"
-rustyline = "11.0.0"
-typed-arena = "2.0.2"
-logos = "0.12.1"
+[workspace]
+members = [
+    "compiler/curse_ast",
+    "compiler/curse_parse",
+    "compiler/curse_interpreter"
+]

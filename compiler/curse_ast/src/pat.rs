@@ -1,4 +1,4 @@
-use crate::lex::tok;
+use crate::tok;
 use std::fmt;
 
 #[derive(Clone, Debug)]
