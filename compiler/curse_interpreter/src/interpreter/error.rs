@@ -7,7 +7,7 @@ pub enum EvalError<'input> {
     #[diagnostic(help("Wrong types"))]
     TypeMismatch,
 
-    /// Identifier not defined
+    /// Identifier not defined: {0}
     #[diagnostic(help("Unbound variable"))]
     UnboundVariable(&'input str),
 
@@ -24,4 +24,4 @@ pub enum EvalError<'input> {
     LexError,
 }
 
-impl<'input> std::error::Error for EvalError<'input> {}
+impl std::error::Error for EvalError<'_> {}
