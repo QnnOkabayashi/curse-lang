@@ -1,5 +1,5 @@
 use displaydoc::Display;
-use std::{fmt, ops::Range};
+use std::fmt;
 
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("{literal}")]
@@ -9,8 +9,8 @@ pub struct Ident<'input> {
 }
 
 impl Ident<'_> {
-    pub fn span(&self) -> Range<usize> {
-        self.location..self.location + self.literal.len()
+    pub fn span(&self) -> (usize, usize) {
+        (self.location, self.location + self.literal.len())
     }
 }
 
@@ -22,8 +22,8 @@ pub struct Integer<'input> {
 }
 
 impl Integer<'_> {
-    pub fn span(&self) -> Range<usize> {
-        self.location..self.location + self.literal.len()
+    pub fn span(&self) -> (usize, usize) {
+        (self.location, self.location + self.literal.len())
     }
 }
 
@@ -37,8 +37,8 @@ macro_rules! declare_tokens {
             }
 
             impl $name {
-                pub fn span(&self) -> Range<usize> {
-                    self.location..self.location + $tok.len()
+                pub fn span(&self) -> (usize, usize) {
+                    (self.location, self.location + $tok.len())
                 }
             }
 

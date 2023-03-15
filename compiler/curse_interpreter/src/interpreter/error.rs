@@ -1,6 +1,5 @@
 use displaydoc::Display;
-use miette::Diagnostic;
-use std::ops::Range;
+use miette::{Diagnostic, SourceSpan};
 
 #[derive(Debug, Diagnostic, Display)]
 pub enum EvalError<'input> {
@@ -18,7 +17,7 @@ pub enum EvalError<'input> {
 
     /// Bad Pattern match
     #[diagnostic(help("Use a smaller integer"))]
-    ParseInt(#[label("This integer is failed to parse into an i32")] Range<usize>),
+    ParseInt(#[label("This integer is failed to parse into an i32")] SourceSpan),
 
     /// A lexing error occurred
     #[diagnostic(help("Fix your type"))]

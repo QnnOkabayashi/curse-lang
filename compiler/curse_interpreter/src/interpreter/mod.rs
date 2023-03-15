@@ -65,7 +65,7 @@ pub fn eval_expr<'ast, 'input>(
             .literal
             .parse()
             .map(Value::Integer)
-            .map_err(|_| EvalError::ParseInt(token.span())),
+            .map_err(|_| EvalError::ParseInt(token.span().into())),
         Expr::Lit(ExprLit::True(_)) => Ok(Value::Boolean(true)),
         Expr::Lit(ExprLit::False(_)) => Ok(Value::Boolean(false)),
         Expr::Lit(ExprLit::Ident(ident)) => env

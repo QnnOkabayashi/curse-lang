@@ -1,6 +1,6 @@
 use curse_ast::tok;
 use logos::Logos;
-use std::{fmt, ops::Range};
+use std::fmt;
 
 macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
@@ -37,7 +37,7 @@ macro_rules! declare_tokens {
         }
 
         impl Token<'_> {
-            pub fn span(&self) -> Range<usize> {
+            pub fn span(&self) -> (usize, usize) {
                 match self {
                     Token::Ident(tok) => tok.span(),
                     Token::Integer(tok) => tok.span(),
@@ -78,7 +78,7 @@ macro_rules! declare_tokens {
 
             fn next(&mut self) -> Option<Self::Item> {
                 let token = self.lex.next()?;
-                let Range { start, end } = self.lex.span();
+                let std::ops::Range { start, end } = self.lex.span();
                 let token = match token {
                     LogosToken::Ident => Token::Ident(tok::Ident {
                         location: start,

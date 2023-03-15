@@ -1,7 +1,6 @@
 use crate::lexer::{LexError, Token};
 use displaydoc::Display;
-use miette::{Diagnostic, NamedSource};
-use std::ops::Range;
+use miette::{Diagnostic, NamedSource, SourceSpan};
 
 #[derive(Debug, Diagnostic, Display)]
 #[displaydoc("A parsing error occurred.")]
@@ -38,21 +37,21 @@ pub enum ParseError {
         expected: Vec<String>,
 
         #[label("The token isn't recognized")]
-        span: Range<usize>,
+        span: SourceSpan,
     },
 
     #[displaydoc("Extra token")]
     #[diagnostic(help("Remove this token."))]
     ExtraToken {
         #[label("This token is extra")]
-        span: Range<usize>,
+        span: SourceSpan,
     },
 
     #[displaydoc("Lexing error")]
     #[diagnostic(help("Fix your code"))]
     Lex {
         #[label("This isn't recognized by the lexer")]
-        span: Range<usize>,
+        span: SourceSpan,
     },
 }
 
@@ -68,18 +67,20 @@ impl From<LalrParseError<'_>> for ParseError {
             InvalidToken { location } => ParseError::InvalidToken { location },
             UnrecognizedEOF { location, .. } => ParseError::UnrecognizedEOF { location },
             UnrecognizedToken {
-                token: (start, _, end),
+                token: (_, token, _),
                 expected,
             } => ParseError::UnrecognizedToken {
                 expected,
-                span: start..end,
+                span: token.span().into(),
             },
             ExtraToken {
-                token: (start, _, end),
-            } => ParseError::ExtraToken { span: start..end },
+                token: (_, token, _),
+            } => ParseError::ExtraToken {
+                span: token.span().into(),
+            },
             User {
-                error: LexError { span: (start, end) },
-            } => ParseError::Lex { span: start..end },
+                error: LexError { span },
+            } => ParseError::Lex { span: span.into() },
         }
     }
 }
