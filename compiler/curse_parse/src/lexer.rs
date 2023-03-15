@@ -1,3 +1,4 @@
+use curse_ast::tok;
 use logos::Logos;
 use std::{fmt, ops::Range};
 
@@ -25,57 +26,6 @@ macro_rules! declare_tokens {
             Unknown,
         }
 
-        pub mod tok {
-            use std::{fmt, ops::Range};
-            use displaydoc::Display;
-
-            #[derive(Copy, Clone, Debug, Display)]
-            #[displaydoc("{literal}")]
-            pub struct Ident<'input> {
-                pub location: usize,
-                pub literal: &'input str,
-            }
-
-            impl Ident<'_> {
-                pub fn span(&self) -> Range<usize> {
-                    self.location..self.location + self.literal.len()
-                }
-            }
-
-            #[derive(Copy, Clone, Debug, Display)]
-            #[displaydoc("{literal}")]
-            pub struct Integer<'input> {
-                pub location: usize,
-                pub literal: &'input str,
-            }
-
-            impl Integer<'_> {
-                pub fn span(&self) -> Range<usize> {
-                    self.location..self.location + self.literal.len()
-                }
-            }
-
-            $(
-                $(#[$attr])*
-                #[derive(Copy, Clone, Debug)]
-                pub struct $name {
-                    pub location: usize,
-                }
-
-                impl $name {
-                    pub fn span(&self) -> Range<usize> {
-                        self.location..self.location + $tok.len()
-                    }
-                }
-
-                impl fmt::Display for $name {
-                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                        f.write_str($tok)
-                    }
-                }
-            )*
-        }
-
         #[derive(Copy, Clone, Debug)]
         pub enum Token<'input> {
             Ident(tok::Ident<'input>),
@@ -100,13 +50,26 @@ macro_rules! declare_tokens {
 
         impl fmt::Display for Token<'_> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(match self {
-                    Token::Ident(tok) => tok.literal,
-                    Token::Integer(tok) => tok.literal,
+                match self {
+                    Token::Ident(tok) => f.write_str(tok.literal),
+                    Token::Integer(tok) => f.write_str(tok.literal),
                     $(
-                        Token::$name(_) => $tok,
+                        Token::$name(_) => f.write_str($tok),
                     )*
-                })
+                }
+            }
+        }
+
+        #[derive(Clone, Debug)]
+        pub struct Lexer<'input> {
+            lex: logos::Lexer<'input, LogosToken>,
+        }
+
+        impl<'input> Lexer<'input> {
+            pub fn new(input: &'input str) -> Self {
+                Lexer {
+                    lex: Logos::lexer(input),
+                }
             }
         }
 
@@ -142,8 +105,6 @@ macro_rules! declare_tokens {
     }
 }
 
-// Make sure to update the `extern` block in `src/grammar.lalrpop`
-// if you make any changes here.
 declare_tokens! {
     ":" => Colon,
     "," => Comma,
@@ -178,17 +139,4 @@ declare_tokens! {
 #[derive(Copy, Clone, Debug)]
 pub struct LexError {
     pub span: (usize, usize),
-}
-
-#[derive(Clone, Debug)]
-pub struct Lexer<'input> {
-    lex: logos::Lexer<'input, LogosToken>,
-}
-
-impl<'input> Lexer<'input> {
-    pub fn new(input: &'input str) -> Self {
-        Lexer {
-            lex: Logos::lexer(input),
-        }
-    }
 }

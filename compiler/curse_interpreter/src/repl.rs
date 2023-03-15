@@ -1,5 +1,6 @@
 use crate::interpreter::{builtins::default_env, eval_expr};
-use crate::{ast, error, grammar, lex::Lexer};
+use curse_ast::Context;
+use curse_parse::{parse_expr, SourceErrors};
 use miette::NamedSource;
 use rustyline::error::ReadlineError;
 
@@ -13,17 +14,14 @@ pub fn repl() -> rustyline::Result<()> {
                 rl.add_history_entry(&line)?;
 
                 let mut env = default_env();
-                let arena = ast::Arena::new();
-                let lexer = Lexer::new(&line);
+                let arena = Context::new();
 
-                let expr = grammar::EndExprParser::new()
-                    .parse(&arena, lexer)
-                    .map_err(|e| {
-                        miette::Report::from(error::SourceErrors {
-                            source: NamedSource::new("test", line.to_string()),
-                            errors: vec![e.into()],
-                        })
-                    });
+                let expr = parse_expr(&arena, &line).map_err(|e| {
+                    miette::Report::from(SourceErrors {
+                        source: NamedSource::new("test", line.to_string()),
+                        errors: vec![e.into()],
+                    })
+                });
 
                 let expr = match expr {
                     Ok(ast) => ast,

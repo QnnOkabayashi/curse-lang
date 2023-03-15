@@ -1,4 +1,4 @@
-use crate::lex::{LexError, Token};
+use crate::lexer::{LexError, Token};
 use displaydoc::Display;
 use miette::{Diagnostic, NamedSource};
 use std::ops::Range;
@@ -18,21 +18,21 @@ impl std::error::Error for SourceErrors {}
 #[allow(dead_code)]
 #[derive(Debug, Diagnostic, Display)]
 pub enum ParseError {
-    /// Invalid token
     #[diagnostic(help("Try using a valid token instead."))]
+    #[displaydoc("Invalid token")]
     InvalidToken {
         #[label("This token isn't valid")]
         location: usize,
     },
 
-    /// Unrecognized end-of-file
+    #[displaydoc("Unrecognized end-of-file")]
     #[diagnostic(help("Put more in the file?"))]
     UnrecognizedEOF {
         #[label("The files ends here...")]
         location: usize,
     },
 
-    /// Unrecognized token
+    #[displaydoc("Unrecognized token")]
     #[diagnostic(help("Use an expected token instead: {expected:?}"))]
     UnrecognizedToken {
         expected: Vec<String>,
@@ -41,14 +41,14 @@ pub enum ParseError {
         span: Range<usize>,
     },
 
-    /// Extra token
+    #[displaydoc("Extra token")]
     #[diagnostic(help("Remove this token."))]
     ExtraToken {
         #[label("This token is extra")]
         span: Range<usize>,
     },
 
-    /// Lexing error
+    #[displaydoc("Lexing error")]
     #[diagnostic(help("Fix your code"))]
     Lex {
         #[label("This isn't recognized by the lexer")]

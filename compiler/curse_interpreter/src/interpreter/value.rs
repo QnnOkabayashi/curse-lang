@@ -1,5 +1,5 @@
-use super::error::EvalError;
-use crate::ast::*;
+use super::EvalError;
+use curse_ast::*;
 use std::{collections::HashMap, fmt};
 
 type BuiltinFn<'ast, 'input> = fn(

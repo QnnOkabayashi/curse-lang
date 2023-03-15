@@ -1,4 +1,4 @@
-use crate::lex::tok;
+use crate::tok;
 use std::fmt;
 
 #[derive(Clone, Debug)]
@@ -69,6 +69,10 @@ impl<T> PatTuple<T> {
             Some(inner) => 1 + inner.remaining.len() + if inner.trailing.is_some() { 1 } else { 0 },
             None => 0,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
