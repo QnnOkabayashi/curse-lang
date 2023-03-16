@@ -28,7 +28,7 @@ fn main() -> miette::Result<()> {
             Ok(program) => interpreter::eval_program(program).unwrap(),
             Err(errors) => {
                 return Err(miette::Report::from(SourceErrors {
-                    source: NamedSource::new(path.to_string_lossy(), input.clone()),
+                    code: NamedSource::new(path.to_string_lossy(), input.clone()),
                     errors,
                 }));
             }

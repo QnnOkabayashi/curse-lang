@@ -19,7 +19,7 @@ pub fn repl() -> rustyline::Result<()> {
                 let arena = Context::new();
 
                 let expr = parse_expr(&arena, &line).map_err(|errors| SourceErrors {
-                    source: NamedSource::new("test", line.to_string()),
+                    code: NamedSource::new("test", line.to_string()),
                     errors,
                 });
 

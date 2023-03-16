@@ -185,9 +185,9 @@ dependencies = [
  "clap",
  "curse_ast",
  "curse_parse",
- "displaydoc",
  "miette",
  "rustyline",
+ "thiserror",
 ]
 
 [[package]]
@@ -195,11 +195,11 @@ name = "curse_parse"
 version = "0.1.0"
 dependencies = [
  "curse_ast",
- "displaydoc",
  "lalrpop",
  "lalrpop-util",
  "logos",
  "miette",
+ "thiserror",
  "typed-arena",
 ]
 

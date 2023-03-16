@@ -85,7 +85,6 @@ pub fn eval_expr<'ast, 'input>(
             let function = eval_expr(appl.function, env)?;
             call_function(left, function, right, env)
         }
-        Expr::Invalid => Err(EvalError::LexError),
     }
 }
 

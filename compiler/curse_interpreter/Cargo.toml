@@ -9,4 +9,4 @@ miette = { version = "5.5.0", features = ["fancy"] }
 rustyline = "11.0.0"
 curse_parse = { path = "../curse_parse" }
 curse_ast = { path = "../curse_ast" }
-displaydoc = "0.2.3"
+thiserror = "1.0.39"

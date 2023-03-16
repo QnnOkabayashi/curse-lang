@@ -11,7 +11,6 @@ pub enum Expr<'ast, 'input> {
     Tuple(ExprTuple<'ast, 'input>),
     Closure(ExprClosure<'ast, 'input>),
     Appl(ExprAppl<'ast, 'input>),
-    Invalid,
 }
 
 #[derive(Copy, Clone, Debug)]

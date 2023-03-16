@@ -1,27 +1,21 @@
-use displaydoc::Display;
 use miette::{Diagnostic, SourceSpan};
+use thiserror::Error;
 
-#[derive(Debug, Diagnostic, Display)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum EvalError<'input> {
-    /// Type mismatch
+    #[error("Type mismatch")]
     #[diagnostic(help("Wrong types"))]
     TypeMismatch,
 
-    /// Identifier not defined: {0}
+    #[error("Identifier not defined: {0}")]
     #[diagnostic(help("Unbound variable"))]
     UnboundVariable(&'input str),
 
-    /// Bad Pattern match
+    #[error("Bad pattern match")]
     #[diagnostic(help("idk"))]
     FailedPatternMatch,
 
-    /// Bad Pattern match
+    #[error("Parse int error")]
     #[diagnostic(help("Use a smaller integer"))]
     ParseInt(#[label("This integer is failed to parse into an i32")] SourceSpan),
-
-    /// A lexing error occurred
-    #[diagnostic(help("Fix your type"))]
-    LexError,
 }
-
-impl std::error::Error for EvalError<'_> {}

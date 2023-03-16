@@ -1,38 +1,35 @@
 use crate::lexer::{LexError, Token};
-use displaydoc::Display;
 use lalrpop_util::ParseError;
 use miette::{Diagnostic, NamedSource};
+use thiserror::Error;
 
-#[derive(Debug, Diagnostic, Display)]
-#[displaydoc("A parsing error occurred.")]
+#[derive(Debug, Diagnostic, Error)]
+#[error("A parsing error occurred.")]
 pub struct SourceErrors {
     #[source_code]
-    pub source: NamedSource,
+    pub code: NamedSource,
 
     #[related]
     pub errors: Vec<Error>,
 }
 
-impl std::error::Error for SourceErrors {}
-
-#[allow(dead_code)]
-#[derive(Debug, Diagnostic, Display)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum Error {
+    #[error("Invalid token")]
     #[diagnostic(help("Try using a valid token instead."))]
-    #[displaydoc("Invalid token")]
     InvalidToken {
         #[label("This token isn't valid")]
         location: usize,
     },
 
-    #[displaydoc("Unrecognized end-of-file")]
+    #[error("Unrecognized end-of-file")]
     #[diagnostic(help("Put more in the file?"))]
     UnrecognizedEOF {
         #[label("The files ends here...")]
         location: usize,
     },
 
-    #[displaydoc("Unrecognized token")]
+    #[error("Unrecognized token")]
     #[diagnostic(help("Use an expected token instead: {expected:?}"))]
     UnrecognizedToken {
         expected: Vec<String>,
@@ -41,22 +38,20 @@ pub enum Error {
         span: (usize, usize),
     },
 
-    #[displaydoc("Extra token")]
+    #[error("Extra token")]
     #[diagnostic(help("Remove this token."))]
     ExtraToken {
         #[label("This token is extra")]
         span: (usize, usize),
     },
 
-    #[displaydoc("Lexing error")]
+    #[error("Lexing error")]
     #[diagnostic(help("Fix your code"))]
     Lex {
         #[label("This isn't recognized by the lexer")]
         span: (usize, usize),
     },
 }
-
-impl std::error::Error for Error {}
 
 type LalrParseError<'input> = ParseError<usize, Token<'input>, LexError>;
 
