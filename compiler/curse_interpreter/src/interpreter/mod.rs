@@ -38,14 +38,14 @@ pub fn eval_program<'input>(program: Program<'_, 'input>) -> Result<(), EvalErro
     if let Some(Value::Closure(closure)) = env.get("main") {
         match closure {
             ExprClosure {
-                branches,
-                last:
+                head:
                     ExprBranch {
                         params: ExprParams::Zero,
                         body,
                         ..
                     },
-            } if branches.is_empty() => {
+                tail,
+            } if tail.is_empty() => {
                 let mut new_env = env.clone();
                 eval_expr(body, &mut new_env)?;
             }

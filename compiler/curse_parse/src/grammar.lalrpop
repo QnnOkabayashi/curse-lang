@@ -100,7 +100,16 @@ Lit: ExprLit<'input> = {
     "false" => ExprLit::False(<>),
 };
 
-Closure: Option<ExprClosure<'ast, 'input>> = (Branch "else")* Branch => ExprClosure::new(<>);
+Closure: Option<ExprClosure<'ast, 'input>> = {
+    Branch => <>.map(|head| ExprClosure { head, tail: vec![] }),
+    Closure "else" Branch => match (<>) {
+        (Some(mut closure), els, Some(branch)) => {
+            closure.tail.push((els, branch));
+            Some(closure)
+        }
+        _ => None
+    }
+}
 
 Branch: Option<ExprBranch<'ast, 'input>> = {
     "|" "|" InternalExpr => ExprBranch::zero(<>),
@@ -125,7 +134,7 @@ Term: Option<&'ast Expr<'ast, 'input>> = {
 
 InternalTerm = {
     Term,
-    Branch => ExprClosure::new(vec![], <>).map(|closure| ctx.expr(Expr::Closure(closure))),
+    Branch => <>.map(|head| ctx.expr(Expr::Closure(ExprClosure { head, tail: vec![] }))),
 };
 
 EndTerm = {

@@ -60,30 +60,15 @@ pub enum ExprLit<'input> {
 
 #[derive(Clone, Debug)]
 pub struct ExprClosure<'ast, 'input> {
-    pub branches: Vec<(ExprBranch<'ast, 'input>, tok::Else)>,
-    pub last: ExprBranch<'ast, 'input>,
+    pub head: ExprBranch<'ast, 'input>,
+    pub tail: Vec<(tok::Else, ExprBranch<'ast, 'input>)>,
 }
 
 impl<'ast, 'input> ExprClosure<'ast, 'input> {
-    pub fn new(
-        branches: Vec<(Option<ExprBranch<'ast, 'input>>, tok::Else)>,
-        last: Option<ExprBranch<'ast, 'input>>,
-    ) -> Option<Self> {
-        // This is pain.
-        Some(ExprClosure {
-            last: last?,
-            branches: branches
-                .into_iter()
-                .map(|(branch, els)| branch.map(|branch| (branch, els)))
-                .collect::<Option<_>>()?,
-        })
-    }
-
     pub fn iter_branches(&self) -> impl Iterator<Item = &ExprBranch<'ast, 'input>> {
-        self.branches
-            .iter()
-            .map(|(branch, _)| branch)
-            .chain(Some(&self.last))
+        Some(&self.head)
+            .into_iter()
+            .chain(self.tail.iter().map(|(_, branch)| branch))
     }
 }
 
