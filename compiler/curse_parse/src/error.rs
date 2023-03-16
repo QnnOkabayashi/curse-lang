@@ -45,7 +45,7 @@ pub enum Error {
         span: (usize, usize),
     },
 
-    #[error("Lexing error at {span:?}")]
+    #[error("Lexing error")]
     #[diagnostic(help("Fix your code"))]
     Lex {
         #[label("This isn't recognized by the lexer")]
