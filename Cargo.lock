@@ -176,7 +176,6 @@ name = "curse_ast"
 version = "0.1.0"
 dependencies = [
  "displaydoc",
- "typed-arena",
 ]
 
 [[package]]
@@ -201,6 +200,7 @@ dependencies = [
  "lalrpop-util",
  "logos",
  "miette",
+ "typed-arena",
 ]
 
 [[package]]

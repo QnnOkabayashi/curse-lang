@@ -43,6 +43,9 @@ impl<T> PatTuple<T> {
         }
     }
 
+    // IN THE MIDDLE OF CHANGING EVERYTHING TO OPTION
+    // SO WE WE CAN RETURN A FAT `NONE` IF THERE WAS AN ERROR
+
     pub fn empty(lparen: tok::LParen, rparen: tok::RParen) -> Self {
         PatTuple {
             lparen,
@@ -73,6 +76,33 @@ impl<T> PatTuple<T> {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl<T> PatTuple<Option<T>> {
+    pub fn fold(self) -> Option<PatTuple<T>> {
+        let kind = self.kind.and_then(|nonempty| {
+            Some(TupleNonempty {
+                first: nonempty.first?,
+                comma: nonempty.comma,
+                remaining: nonempty
+                    .remaining
+                    .into_iter()
+                    .map(|(t, comma)| t.map(|t| (t, comma)))
+                    .collect::<Option<_>>()?,
+                trailing: match nonempty.trailing {
+                    Some(Some(t)) => Some(t),
+                    Some(None) => return None,
+                    None => None,
+                },
+            })
+        });
+
+        Some(PatTuple {
+            lparen: self.lparen,
+            kind,
+            rparen: self.rparen,
+        })
     }
 }
 

@@ -16,36 +16,36 @@ pub enum Type<'ast, 'input> {
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("{name}")]
 pub struct TypeNamed<'input> {
-    name: tok::Ident<'input>,
+    pub name: tok::Ident<'input>,
 }
 
 impl<'input> TypeNamed<'input> {
     pub fn new(name: tok::Ident<'input>) -> Self {
-        Self { name }
+        TypeNamed { name }
     }
 }
 
 #[derive(Clone, Debug, Display)]
 #[displaydoc("{lhs}, {rhs} -> {ret}")]
 pub struct TypeFunction<'ast, 'input> {
-    lhs: &'ast Type<'ast, 'input>,
-    rhs: &'ast Type<'ast, 'input>,
-    arrow: tok::Arrow,
-    ret: &'ast Type<'ast, 'input>,
+    pub lhs: &'ast Type<'ast, 'input>,
+    pub rhs: &'ast Type<'ast, 'input>,
+    pub arrow: tok::Arrow,
+    pub ret: &'ast Type<'ast, 'input>,
 }
 
 impl<'ast, 'input> TypeFunction<'ast, 'input> {
     pub fn new(
-        lhs: &'ast Type<'ast, 'input>,
-        rhs: &'ast Type<'ast, 'input>,
+        lhs: Option<&'ast Type<'ast, 'input>>,
+        rhs: Option<&'ast Type<'ast, 'input>>,
         arrow: tok::Arrow,
-        ret: &'ast Type<'ast, 'input>,
-    ) -> Self {
-        Self {
-            lhs,
-            rhs,
+        ret: Option<&'ast Type<'ast, 'input>>,
+    ) -> Option<Self> {
+        Some(TypeFunction {
+            lhs: lhs?,
+            rhs: rhs?,
             arrow,
-            ret,
-        }
+            ret: ret?,
+        })
     }
 }

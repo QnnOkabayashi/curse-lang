@@ -1,7 +1,7 @@
-use crate::lexer::*;
+use crate::{lexer::*, Context, Error};
 use curse_ast::*;
 
-grammar<'ast, 'input>(ctx: &'ast Context<'ast, 'input>);
+grammar<'ast, 'input>(ctx: &'ast Context<'ast, 'input>, errors: &mut Vec<Error>);
 
 extern {
     type Location = usize;
@@ -47,18 +47,22 @@ Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
-pub Program: Program<'ast, 'input> = Item* => Program::new(<>);
+pub Program: Option<Program<'ast, 'input>> = Item* => Program::new(<>);
 
-Item: Item<'ast, 'input> = "fn" Ident ":" Type "=" Closure => Item::Function(ItemFunction::new(<>));
+Item: Option<Item<'ast, 'input>> = "fn" Ident ":" Type "=" Closure => Some(Item::Function(ItemFunction::new(<>)?));
 
-StartType: &'ast Type<'ast, 'input> = {
-    Ident => ctx.typ(Type::Named(TypeNamed::new(<>))),
-    Tuple<Type> => ctx.typ(Type::Tuple(<>)),
+StartType: Option<&'ast Type<'ast, 'input>> = {
+    Ident => Some(ctx.typ(Type::Named(TypeNamed::new(<>)))),
+    Tuple<Type> => Some(ctx.typ(Type::Tuple(<>.fold()?))),
     "(" <Type> ")",
+    ! => {
+        errors.push(<>.error.into());
+        None
+    }
 };
 
 Type = {
-    StartType StartType "->" Type => ctx.typ(Type::Function(TypeFunction::new(<>))),
+    StartType StartType "->" Type => Some(ctx.typ(Type::Function(TypeFunction::new(<>)?))),
     StartType,
 };
 
@@ -67,7 +71,7 @@ Pat: &'ast ExprPat<'ast, 'input> = {
     Tuple<Pat> => ctx.pat(ExprPat::Tuple(<>)),
 };
 
-Paren: ExprParen<'ast, 'input> = "(" EndExpr ")" => ExprParen::new(<>);
+Paren: Option<ExprParen<'ast, 'input>> = "(" EndExpr ")" => ExprParen::new(<>);
 
 Tuple<T>: PatTuple<T> = {
     "(" ")" => PatTuple::empty(<>),
@@ -96,9 +100,9 @@ Lit: ExprLit<'input> = {
     "false" => ExprLit::False(<>),
 };
 
-Closure: ExprClosure<'ast, 'input> = (Branch "else")* Branch => ExprClosure::new(<>);
+Closure: Option<ExprClosure<'ast, 'input>> = (Branch "else")* Branch => ExprClosure::new(<>);
 
-Branch: ExprBranch<'ast, 'input> = {
+Branch: Option<ExprBranch<'ast, 'input>> = {
     "|" "|" InternalExpr => ExprBranch::zero(<>),
     "|" Param "|" InternalExpr => ExprBranch::one(<>),
     "|" Param "," Param "|" InternalExpr => ExprBranch::two(<>),
@@ -106,39 +110,40 @@ Branch: ExprBranch<'ast, 'input> = {
 
 Param: ExprParam<'ast, 'input> = Pat (":" Type)? => ExprParam::new(<>);
 
-Appl<Rhs>: ExprAppl<'ast, 'input> = Expr Term Rhs => ExprAppl::new(<>);
+Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Term Rhs => ExprAppl::new(<>);
 
-Term: &'ast Expr<'ast, 'input> = {
-    Paren => ctx.expr(Expr::Paren(<>)),
-    Symbol => ctx.expr(Expr::Symbol(<>)),
-    Lit => ctx.expr(Expr::Lit(<>)),
-    Tuple<EndExpr> => ctx.expr(Expr::Tuple(<>)),
+Term: Option<&'ast Expr<'ast, 'input>> = {
+    Paren => Some(ctx.expr(Expr::Paren(<>?))),
+    Symbol => Some(ctx.expr(Expr::Symbol(<>))),
+    Lit => Some(ctx.expr(Expr::Lit(<>))),
+    Tuple<EndExpr> => Some(ctx.expr(Expr::Tuple(<>.fold()?))),
     ! => {
-        ctx.expr(Expr::Invalid)
+        errors.push(<>.error.into());
+        None
     }
 };
 
 InternalTerm = {
     Term,
-    Branch => ctx.expr(Expr::Closure(ExprClosure::new(vec![], <>))),
+    Branch => Some(ctx.expr(Expr::Closure(ExprClosure::new(vec![], <>)?))),
 };
 
 EndTerm = {
     Term,
-    Closure => ctx.expr(Expr::Closure(<>)),
+    Closure => Some(ctx.expr(Expr::Closure(<>?))),
 };
 
 Expr = {
     Term,
-    Appl<Term> => ctx.expr(Expr::Appl(<>)),
+    Appl<Term> => Some(ctx.expr(Expr::Appl(<>?))),
 };
 
 InternalExpr = {
     InternalTerm,
-    Appl<InternalTerm> => ctx.expr(Expr::Appl(<>)),
+    Appl<InternalTerm> => Some(ctx.expr(Expr::Appl(<>?))),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => ctx.expr(Expr::Appl(<>)),
+    Appl<EndTerm> => Some(ctx.expr(Expr::Appl(<>?))),
 };

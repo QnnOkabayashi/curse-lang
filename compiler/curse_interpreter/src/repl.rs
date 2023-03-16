@@ -1,6 +1,5 @@
 use crate::interpreter::{builtins::default_env, eval_expr};
-use curse_ast::Context;
-use curse_parse::{parse_expr, SourceErrors};
+use curse_parse::{parse_expr, Context, SourceErrors};
 use miette::NamedSource;
 use rustyline::error::ReadlineError;
 
@@ -19,9 +18,9 @@ pub fn repl() -> rustyline::Result<()> {
                 let mut env = default_env();
                 let arena = Context::new();
 
-                let expr = parse_expr(&arena, &line).map_err(|e| SourceErrors {
+                let expr = parse_expr(&arena, &line).map_err(|errors| SourceErrors {
                     source: NamedSource::new("test", line.to_string()),
-                    errors: vec![e.into()],
+                    errors,
                 });
 
                 let expr = match expr {

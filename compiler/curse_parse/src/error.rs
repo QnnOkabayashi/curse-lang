@@ -1,6 +1,7 @@
 use crate::lexer::{LexError, Token};
 use displaydoc::Display;
-use miette::{Diagnostic, NamedSource, SourceSpan};
+use lalrpop_util::ParseError;
+use miette::{Diagnostic, NamedSource};
 
 #[derive(Debug, Diagnostic, Display)]
 #[displaydoc("A parsing error occurred.")]
@@ -9,14 +10,14 @@ pub struct SourceErrors {
     pub source: NamedSource,
 
     #[related]
-    pub errors: Vec<ParseError>,
+    pub errors: Vec<Error>,
 }
 
 impl std::error::Error for SourceErrors {}
 
 #[allow(dead_code)]
 #[derive(Debug, Diagnostic, Display)]
-pub enum ParseError {
+pub enum Error {
     #[diagnostic(help("Try using a valid token instead."))]
     #[displaydoc("Invalid token")]
     InvalidToken {
@@ -37,50 +38,48 @@ pub enum ParseError {
         expected: Vec<String>,
 
         #[label("The token isn't recognized")]
-        span: SourceSpan,
+        span: (usize, usize),
     },
 
     #[displaydoc("Extra token")]
     #[diagnostic(help("Remove this token."))]
     ExtraToken {
         #[label("This token is extra")]
-        span: SourceSpan,
+        span: (usize, usize),
     },
 
     #[displaydoc("Lexing error")]
     #[diagnostic(help("Fix your code"))]
     Lex {
         #[label("This isn't recognized by the lexer")]
-        span: SourceSpan,
+        span: (usize, usize),
     },
 }
 
-impl std::error::Error for ParseError {}
+impl std::error::Error for Error {}
 
-type LalrParseError<'input> = lalrpop_util::ParseError<usize, Token<'input>, LexError>;
+type LalrParseError<'input> = ParseError<usize, Token<'input>, LexError>;
 
-impl From<LalrParseError<'_>> for ParseError {
+impl From<LalrParseError<'_>> for Error {
     fn from(value: LalrParseError<'_>) -> Self {
-        use lalrpop_util::ParseError::*;
+        use ParseError::*;
 
         match value {
-            InvalidToken { location } => ParseError::InvalidToken { location },
-            UnrecognizedEOF { location, .. } => ParseError::UnrecognizedEOF { location },
+            InvalidToken { location } => Error::InvalidToken { location },
+            UnrecognizedEOF { location, .. } => Error::UnrecognizedEOF { location },
             UnrecognizedToken {
                 token: (_, token, _),
                 expected,
-            } => ParseError::UnrecognizedToken {
+            } => Error::UnrecognizedToken {
                 expected,
-                span: token.span().into(),
+                span: token.span(),
             },
             ExtraToken {
                 token: (_, token, _),
-            } => ParseError::ExtraToken {
-                span: token.span().into(),
-            },
+            } => Error::ExtraToken { span: token.span() },
             User {
                 error: LexError { span },
-            } => ParseError::Lex { span: span.into() },
+            } => Error::Lex { span },
         }
     }
 }

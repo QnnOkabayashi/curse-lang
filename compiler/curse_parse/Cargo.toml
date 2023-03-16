@@ -12,3 +12,4 @@ curse_ast = { path = "../curse_ast" }
 logos = "0.12.1"
 miette = "5.6.0"
 displaydoc = "0.2.3"
+typed-arena = "2.0.2"

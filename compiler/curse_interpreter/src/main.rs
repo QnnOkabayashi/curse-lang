@@ -1,5 +1,4 @@
-use curse_ast::Context;
-use curse_parse::{parse_program, SourceErrors};
+use curse_parse::{parse_program, Context, SourceErrors};
 use miette::{IntoDiagnostic, NamedSource};
 use std::{fs, path::PathBuf};
 
@@ -27,10 +26,10 @@ fn main() -> miette::Result<()> {
 
         match parse_program(&arena, &input) {
             Ok(program) => interpreter::eval_program(program).unwrap(),
-            Err(e) => {
+            Err(errors) => {
                 return Err(miette::Report::from(SourceErrors {
                     source: NamedSource::new(path.to_string_lossy(), input.clone()),
-                    errors: vec![e.into()],
+                    errors,
                 }));
             }
         }
