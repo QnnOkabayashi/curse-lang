@@ -73,7 +73,12 @@ StartType: Option<&'ast Type<'ast, 'input>> = {
 };
 
 Type = {
-    StartType StartType "->" Type => TypeFunction::new(<>).map(|f| ctx.typ(Type::Function(f))),
+    StartType StartType "->" Type => match (<>) {
+        (Some(lhs), Some(rhs), arrow, Some(res)) => {
+            Some(ctx.typ(Type::Function(TypeFunction::new(lhs, rhs, arrow, res))))
+        }
+        _ => None,
+    },
     StartType,
 };
 

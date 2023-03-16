@@ -36,16 +36,16 @@ pub struct TypeFunction<'ast, 'input> {
 
 impl<'ast, 'input> TypeFunction<'ast, 'input> {
     pub fn new(
-        lhs: Option<&'ast Type<'ast, 'input>>,
-        rhs: Option<&'ast Type<'ast, 'input>>,
+        lhs: &'ast Type<'ast, 'input>,
+        rhs: &'ast Type<'ast, 'input>,
         arrow: tok::Arrow,
-        ret: Option<&'ast Type<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(TypeFunction {
-            lhs: lhs?,
-            rhs: rhs?,
+        ret: &'ast Type<'ast, 'input>,
+    ) -> Self {
+        TypeFunction {
+            lhs,
+            rhs,
             arrow,
-            ret: ret?,
-        })
+            ret,
+        }
     }
 }
