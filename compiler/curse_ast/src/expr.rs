@@ -142,10 +142,14 @@ impl<'ast, 'input> ExprParam<'ast, 'input> {
     pub fn new(
         pat: &'ast ExprPat<'ast, 'input>,
         ty: Option<(tok::Colon, Option<&'ast ty::Type<'ast, 'input>>)>,
-    ) -> Self {
-        ExprParam {
-            pat,
-            ty: ty.and_then(|(colon, ty)| Some((colon, ty?))),
+    ) -> Option<Self> {
+        match ty {
+            Some((_, None)) => None,
+            Some((colon, Some(ty))) => Some(ExprParam {
+                pat,
+                ty: Some((colon, ty)),
+            }),
+            None => Some(ExprParam { pat, ty: None }),
         }
     }
 }
