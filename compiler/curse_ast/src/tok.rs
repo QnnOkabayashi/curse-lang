@@ -1,8 +1,6 @@
-use displaydoc::Display;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, Display)]
-#[displaydoc("{literal}")]
+#[derive(Copy, Clone, Debug)]
 pub struct Ident<'input> {
     pub location: usize,
     pub literal: &'input str,
@@ -14,8 +12,13 @@ impl Ident<'_> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Display)]
-#[displaydoc("{literal}")]
+impl fmt::Display for Ident<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.literal)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct Integer<'input> {
     pub location: usize,
     pub literal: &'input str,
@@ -24,6 +27,12 @@ pub struct Integer<'input> {
 impl Integer<'_> {
     pub fn span(&self) -> (usize, usize) {
         (self.location, self.literal.len())
+    }
+}
+
+impl fmt::Display for Integer<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.literal)
     }
 }
 
