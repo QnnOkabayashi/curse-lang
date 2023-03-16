@@ -49,11 +49,11 @@ Integer: tok::Integer<'input> = "integer literal";
 
 pub Program: Option<Program<'ast, 'input>> = Item* => Program::new(<>);
 
-Item: Option<Item<'ast, 'input>> = "fn" Ident ":" Type "=" Closure => Some(Item::Function(ItemFunction::new(<>)?));
+Item: Option<Item<'ast, 'input>> = "fn" Ident ":" Type "=" Closure => ItemFunction::new(<>).map(Item::Function);
 
 StartType: Option<&'ast Type<'ast, 'input>> = {
     Ident => Some(ctx.typ(Type::Named(TypeNamed::new(<>)))),
-    Tuple<Type> => Some(ctx.typ(Type::Tuple(<>.fold()?))),
+    Tuple<Type> => <>.fold().map(|tup| ctx.typ(Type::Tuple(tup))),
     "(" <Type> ")",
     ! => {
         errors.push(<>.error.into());
@@ -62,7 +62,7 @@ StartType: Option<&'ast Type<'ast, 'input>> = {
 };
 
 Type = {
-    StartType StartType "->" Type => Some(ctx.typ(Type::Function(TypeFunction::new(<>)?))),
+    StartType StartType "->" Type => TypeFunction::new(<>).map(|f| ctx.typ(Type::Function(f))),
     StartType,
 };
 
@@ -113,10 +113,10 @@ Param: ExprParam<'ast, 'input> = Pat (":" Type)? => ExprParam::new(<>);
 Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Term Rhs => ExprAppl::new(<>);
 
 Term: Option<&'ast Expr<'ast, 'input>> = {
-    Paren => Some(ctx.expr(Expr::Paren(<>?))),
+    Paren => <>.map(|paren| ctx.expr(Expr::Paren(paren))),
     Symbol => Some(ctx.expr(Expr::Symbol(<>))),
     Lit => Some(ctx.expr(Expr::Lit(<>))),
-    Tuple<EndExpr> => Some(ctx.expr(Expr::Tuple(<>.fold()?))),
+    Tuple<EndExpr> => <>.fold().map(|tup| ctx.expr(Expr::Tuple(tup))),
     ! => {
         errors.push(<>.error.into());
         None
@@ -125,25 +125,25 @@ Term: Option<&'ast Expr<'ast, 'input>> = {
 
 InternalTerm = {
     Term,
-    Branch => Some(ctx.expr(Expr::Closure(ExprClosure::new(vec![], <>)?))),
+    Branch => ExprClosure::new(vec![], <>).map(|closure| ctx.expr(Expr::Closure(closure))),
 };
 
 EndTerm = {
     Term,
-    Closure => Some(ctx.expr(Expr::Closure(<>?))),
+    Closure => <>.map(|closure| ctx.expr(Expr::Closure(closure))),
 };
 
 Expr = {
     Term,
-    Appl<Term> => Some(ctx.expr(Expr::Appl(<>?))),
+    Appl<Term> => <>.map(|appl| ctx.expr(Expr::Appl(appl))),
 };
 
 InternalExpr = {
     InternalTerm,
-    Appl<InternalTerm> => Some(ctx.expr(Expr::Appl(<>?))),
+    Appl<InternalTerm> => <>.map(|appl| ctx.expr(Expr::Appl(appl))),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => Some(ctx.expr(Expr::Appl(<>?))),
+    Appl<EndTerm> => <>.map(|appl| ctx.expr(Expr::Appl(appl))),
 };
