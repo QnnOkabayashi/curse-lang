@@ -13,10 +13,13 @@ pub struct Program<'ast, 'input> {
 }
 
 impl<'ast, 'input> Program<'ast, 'input> {
-    pub fn new(items: Vec<Option<Item<'ast, 'input>>>) -> Option<Self> {
-        Some(Program {
-            items: items.into_iter().collect::<Option<_>>()?,
-        })
+    pub fn new(item: Item<'ast, 'input>) -> Self {
+        Program { items: vec![item] }
+    }
+
+    pub fn with_item(mut self, item: Item<'ast, 'input>) -> Self {
+        self.items.push(item);
+        self
     }
 }
 
@@ -40,17 +43,17 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         fn_: tok::Fn,
         name: tok::Ident<'input>,
         colon: tok::Colon,
-        typ: Option<&'ast Type<'ast, 'input>>,
+        typ: &'ast Type<'ast, 'input>,
         equal: tok::Equal,
-        closure: Option<ExprClosure<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(ItemFunction {
+        closure: ExprClosure<'ast, 'input>,
+    ) -> Self {
+        ItemFunction {
             fn_,
             name,
             colon,
-            typ: typ?,
+            typ,
             equal,
-            closure: closure?,
-        })
+            closure,
+        }
     }
 }

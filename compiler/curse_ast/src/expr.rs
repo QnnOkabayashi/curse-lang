@@ -23,14 +23,14 @@ pub struct ExprParen<'ast, 'input> {
 impl<'ast, 'input> ExprParen<'ast, 'input> {
     pub fn new(
         lparen: tok::LParen,
-        inner: Option<&'ast Expr<'ast, 'input>>,
+        inner: &'ast Expr<'ast, 'input>,
         rparen: tok::RParen,
-    ) -> Option<Self> {
-        inner.map(|inner| ExprParen {
+    ) -> Self {
+        ExprParen {
             lparen,
             inner,
             rparen,
-        })
+        }
     }
 }
 
@@ -65,6 +65,15 @@ pub struct ExprClosure<'ast, 'input> {
 }
 
 impl<'ast, 'input> ExprClosure<'ast, 'input> {
+    pub fn new(head: ExprBranch<'ast, 'input>) -> Self {
+        ExprClosure { head, tail: vec![] }
+    }
+
+    pub fn with_branch(mut self, els: tok::Else, branch: ExprBranch<'ast, 'input>) -> Self {
+        self.tail.push((els, branch));
+        self
+    }
+
     pub fn iter_branches(&self) -> impl Iterator<Item = &ExprBranch<'ast, 'input>> {
         Some(&self.head)
             .into_iter()
@@ -81,47 +90,18 @@ pub struct ExprBranch<'ast, 'input> {
 }
 
 impl<'ast, 'input> ExprBranch<'ast, 'input> {
-    pub fn zero(
+    pub fn new(
         open: tok::Pipe,
+        params: ExprParams<'ast, 'input>,
         close: tok::Pipe,
-        body: Option<&'ast Expr<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(ExprBranch {
+        body: &'ast Expr<'ast, 'input>,
+    ) -> Self {
+        ExprBranch {
             open,
-            params: ExprParams::Zero,
+            params,
             close,
-            body: body?,
-        })
-    }
-
-    pub fn one(
-        open: tok::Pipe,
-        lhs: ExprParam<'ast, 'input>,
-        close: tok::Pipe,
-        body: Option<&'ast Expr<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(ExprBranch {
-            open,
-            params: ExprParams::One(lhs),
-            close,
-            body: body?,
-        })
-    }
-
-    pub fn two(
-        open: tok::Pipe,
-        lhs: ExprParam<'ast, 'input>,
-        comma: tok::Comma,
-        rhs: ExprParam<'ast, 'input>,
-        close: tok::Pipe,
-        body: Option<&'ast Expr<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(ExprBranch {
-            open,
-            params: ExprParams::Two(lhs, comma, rhs),
-            close,
-            body: body?,
-        })
+            body,
+        }
     }
 }
 
@@ -141,15 +121,11 @@ pub struct ExprParam<'ast, 'input> {
 impl<'ast, 'input> ExprParam<'ast, 'input> {
     pub fn new(
         pat: &'ast ExprPat<'ast, 'input>,
-        ty: Option<(tok::Colon, Option<&'ast ty::Type<'ast, 'input>>)>,
-    ) -> Option<Self> {
-        match ty {
-            Some((_, None)) => None,
-            Some((colon, Some(ty))) => Some(ExprParam {
-                pat,
-                ty: Some((colon, ty)),
-            }),
-            None => Some(ExprParam { pat, ty: None }),
+        ty: Option<(tok::Colon, &'ast ty::Type<'ast, 'input>)>,
+    ) -> Self {
+        ExprParam {
+            pat,
+            ty,
         }
     }
 }
@@ -163,14 +139,14 @@ pub struct ExprAppl<'ast, 'input> {
 
 impl<'ast, 'input> ExprAppl<'ast, 'input> {
     pub fn new(
-        lhs: Option<&'ast Expr<'ast, 'input>>,
-        function: Option<&'ast Expr<'ast, 'input>>,
-        rhs: Option<&'ast Expr<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(ExprAppl {
-            lhs: lhs?,
-            function: function?,
-            rhs: rhs?,
-        })
+        lhs: &'ast Expr<'ast, 'input>,
+        function: &'ast Expr<'ast, 'input>,
+        rhs: &'ast Expr<'ast, 'input>,
+    ) -> Self {
+        ExprAppl {
+            lhs,
+            function,
+            rhs,
+        }
     }
 }

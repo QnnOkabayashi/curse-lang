@@ -47,9 +47,20 @@ Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
-pub Program: Option<Program<'ast, 'input>> = Item* => Program::new(<>);
+pub Program: Option<Program<'ast, 'input>> = {
+    Item => <>.map(Program::new),
+    Program Item => match (<>) {
+        (Some(program), Some(item)) => Some(program.with_item(item)),
+        _ => None,
+    },
+};
 
-Item: Option<Item<'ast, 'input>> = "fn" Ident ":" Type "=" Closure => ItemFunction::new(<>).map(Item::Function);
+Item: Option<Item<'ast, 'input>> = "fn" Ident ":" Type "=" Closure => match (<>) {
+    (fn_, ident, colon, Some(typ), equal, Some(closure)) => {
+        Some(Item::Function(ItemFunction::new(fn_, ident, colon, typ, equal, closure)))
+    }
+    _ => None,
+};
 
 StartType: Option<&'ast Type<'ast, 'input>> = {
     Ident => Some(ctx.typ(Type::Named(TypeNamed::new(<>)))),
@@ -71,12 +82,15 @@ Pat: &'ast ExprPat<'ast, 'input> = {
     Tuple<Pat> => ctx.pat(ExprPat::Tuple(<>)),
 };
 
-Paren: Option<ExprParen<'ast, 'input>> = "(" EndExpr ")" => ExprParen::new(<>);
+Paren: Option<ExprParen<'ast, 'input>> = "(" EndExpr ")" => match (<>) {
+    (lparen, Some(expr), rparen) => Some(ExprParen::new(lparen, expr, rparen)),
+    _ => None,
+};
 
 Tuple<T>: PatTuple<T> = {
     "(" ")" => PatTuple::empty(<>),
     "(" T "," (T ",")* T? ")" => PatTuple::nonempty(<>),
-}
+};
 
 Symbol: ExprSymbol = {
     "+" => ExprSymbol::Plus(<>),
@@ -101,25 +115,42 @@ Lit: ExprLit<'input> = {
 };
 
 Closure: Option<ExprClosure<'ast, 'input>> = {
-    Branch => <>.map(|head| ExprClosure { head, tail: vec![] }),
+    Branch => <>.map(ExprClosure::new),
     Closure "else" Branch => match (<>) {
-        (Some(mut closure), els, Some(branch)) => {
-            closure.tail.push((els, branch));
-            Some(closure)
-        }
+        (Some(closure), els, Some(branch)) => Some(closure.with_branch(els, branch)),
         _ => None
     }
-}
-
-Branch: Option<ExprBranch<'ast, 'input>> = {
-    "|" "|" InternalExpr => ExprBranch::zero(<>),
-    "|" Param "|" InternalExpr => ExprBranch::one(<>),
-    "|" Param "," Param "|" InternalExpr => ExprBranch::two(<>),
 };
 
-Param: ExprParam<'ast, 'input> = Pat (":" Type)? => ExprParam::new(<>);
+Branch: Option<ExprBranch<'ast, 'input>> = {
+    "|" "|" InternalExpr => match (<>) {
+        (open, close, Some(body)) => Some(ExprBranch::new(open, ExprParams::Zero, close, body)),
+        _ => None,
+    },
+    "|" Param "|" InternalExpr => match (<>) {
+        (open, Some(lhs), close, Some(body)) => Some(ExprBranch::new(open, ExprParams::One(lhs), close, body)),
+        _ => None,
+    },
+    "|" Param "," Param "|" InternalExpr => match (<>) {
+        (open, Some(lhs), comma, Some(rhs), close, Some(body)) => Some(ExprBranch::new(open, ExprParams::Two(lhs, comma, rhs), close, body)),
+        _ => None,
+    },
+};
 
-Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Term Rhs => ExprAppl::new(<>);
+Param: Option<ExprParam<'ast, 'input>> = Pat (":" Type)? => match (<>) {
+    (pat, Some((colon, Some(ty)))) => {
+        Some(ExprParam::new(pat, Some((colon, ty))))
+    },
+    (pat, None) => {
+        Some(ExprParam::new(pat, None))
+    }
+    _ => None,
+};
+
+Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Term Rhs => match (<>) {
+    (Some(lhs), Some(function), Some(rhs)) => Some(ExprAppl::new(lhs, function, rhs)),
+    _ => None,
+};
 
 Term: Option<&'ast Expr<'ast, 'input>> = {
     Paren => <>.map(|paren| ctx.expr(Expr::Paren(paren))),
@@ -134,7 +165,7 @@ Term: Option<&'ast Expr<'ast, 'input>> = {
 
 InternalTerm = {
     Term,
-    Branch => <>.map(|head| ctx.expr(Expr::Closure(ExprClosure { head, tail: vec![] }))),
+    Branch => <>.map(|branch| ctx.expr(Expr::Closure(ExprClosure::new(branch)))),
 };
 
 EndTerm = {
