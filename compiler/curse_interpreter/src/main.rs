@@ -34,7 +34,7 @@ fn main() -> miette::Result<()> {
             }
         }
     } else {
-        repl::repl().unwrap();
+        repl::repl()?;
     }
     Ok(())
 }

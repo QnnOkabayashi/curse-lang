@@ -70,7 +70,10 @@ pub fn eval_expr<'ast, 'input>(
         Expr::Lit(ExprLit::False(_)) => Ok(Value::Boolean(false)),
         Expr::Lit(ExprLit::Ident(ident)) => env
             .get(ident.literal)
-            .ok_or(EvalError::UnboundVariable(ident.literal))
+            .ok_or(EvalError::UnboundVariable {
+                var: ident.literal,
+                span: ident.span(),
+            })
             .cloned(),
         Expr::Tuple(tuple) => tuple
             .iter_elements()

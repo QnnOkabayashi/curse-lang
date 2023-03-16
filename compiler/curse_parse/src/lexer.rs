@@ -94,7 +94,7 @@ macro_rules! declare_tokens {
                         }),
                     )*
                     LogosToken::Unknown => return Some(Err(LexError {
-                        span: (start, end),
+                        span: (start, end - start),
                     })),
                     _ => unreachable!("remaining patterns are skipped"),
                 };

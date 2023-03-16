@@ -51,9 +51,8 @@ pub fn parse_program<'ast, 'input>(
     context: &'ast Context<'ast, 'input>,
     input: &'input str,
 ) -> Result<Program<'ast, 'input>, Vec<Error>> {
-    let lex = Lexer::new(input);
     let mut errors = Vec::with_capacity(0);
-    match grammar::ProgramParser::new().parse(context, &mut errors, lex) {
+    match grammar::ProgramParser::new().parse(context, &mut errors, Lexer::new(input)) {
         Ok(Some(program)) => Ok(program),
         Ok(None) => Err(errors),
         Err(err) => {
@@ -67,9 +66,8 @@ pub fn parse_expr<'ast, 'input>(
     context: &'ast Context<'ast, 'input>,
     input: &'input str,
 ) -> Result<&'ast Expr<'ast, 'input>, Vec<Error>> {
-    let lex = Lexer::new(input);
     let mut errors = Vec::with_capacity(0);
-    match grammar::EndExprParser::new().parse(context, &mut errors, lex) {
+    match grammar::EndExprParser::new().parse(context, &mut errors, Lexer::new(input)) {
         Ok(Some(expr)) => Ok(expr),
         Ok(None) => Err(errors),
         Err(err) => {

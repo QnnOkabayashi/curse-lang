@@ -10,7 +10,7 @@ pub struct Ident<'input> {
 
 impl Ident<'_> {
     pub fn span(&self) -> (usize, usize) {
-        (self.location, self.location + self.literal.len())
+        (self.location, self.literal.len())
     }
 }
 
@@ -23,7 +23,7 @@ pub struct Integer<'input> {
 
 impl Integer<'_> {
     pub fn span(&self) -> (usize, usize) {
-        (self.location, self.location + self.literal.len())
+        (self.location, self.literal.len())
     }
 }
 
@@ -38,7 +38,7 @@ macro_rules! declare_tokens {
 
             impl $name {
                 pub fn span(&self) -> (usize, usize) {
-                    (self.location, self.location + $tok.len())
+                    (self.location, $tok.len())
                 }
             }
 
