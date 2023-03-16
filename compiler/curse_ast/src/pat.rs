@@ -43,9 +43,6 @@ impl<T> PatTuple<T> {
         }
     }
 
-    // IN THE MIDDLE OF CHANGING EVERYTHING TO OPTION
-    // SO WE WE CAN RETURN A FAT `NONE` IF THERE WAS AN ERROR
-
     pub fn empty(lparen: tok::LParen, rparen: tok::RParen) -> Self {
         PatTuple {
             lparen,
