@@ -1,14 +1,14 @@
 // Note: if parser panics at unexpected pipe,
 // it usually means we're missing an `else`
 
-fn insert : () () -> () =
+let insert : () () -> () =
     |(), (key, val)| (key, val, (), ()) // doesn't say `else` here
     |(k, v, left, right), (key, val)| k > key in (
         |1| (k, v, left insert (key, val), right) else
         |x| (k, v, left, right insert (key, val))
     )
 
-fn main : () () -> () = ||
+let main : () () -> () = ||
     () insert (2, 4) in |bst|
     bst insert (3, 6) in |bst|
     bst in print

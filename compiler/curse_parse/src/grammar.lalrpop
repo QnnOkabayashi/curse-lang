@@ -26,7 +26,7 @@ extern {
         "%" => Token::Percent(<tok::Percent>),
         "/" => Token::Slash(<tok::Slash>),
         "|" => Token::Pipe(<tok::Pipe>),
-        "fn" => Token::Fn(<tok::Fn>),
+        "let" => Token::Let(<tok::Let>),
         "else" => Token::Else(<tok::Else>),
         "struct" => Token::Struct(<tok::Struct>),
         "enum" => Token::Enum(<tok::Enum>),
@@ -56,9 +56,9 @@ pub Program: Option<Program<'ast, 'input>> = {
     },
 };
 
-Item: Option<Item<'ast, 'input>> = "fn" Ident ":" Type "=" Closure => match (<>) {
-    (fn_, ident, colon, Some(typ), equal, Some(closure)) => {
-        Some(Item::Function(ItemFunction::new(fn_, ident, colon, typ, equal, closure)))
+Item: Option<Item<'ast, 'input>> = "let" Ident ":" Type "=" Closure => match (<>) {
+    (let_, ident, colon, Some(typ), equal, Some(closure)) => {
+        Some(Item::Function(ItemFunction::new(let_, ident, colon, typ, equal, closure)))
     }
     _ => None,
 };

@@ -1,7 +1,7 @@
 // Note: if parser panics at unexpected pipe,
 // it usually means we're missing an `else`
 
-fn insert : () () -> () =
+let insert : () () -> () =
     |(), (key, val)| (key, val, (), ()) else
     |(k, v, left, right), (key, val)| k > key . (
         |true| (k, v, left insert (key, val), right) else
@@ -9,7 +9,7 @@ fn insert : () () -> () =
     ) else
     |x, y| 0
 
-fn main : () () -> () = ||
+let main : () () -> () = ||
     () insert (2, 4) . |bst|
     bst insert (3, 6) . |bst|
     bst . print

@@ -119,7 +119,7 @@ declare_tokens! {
     "%" => Percent,
     "/" => Slash,
     "|" => Pipe,
-    "fn" => Fn,
+    "let" => Let,
     "else" => Else,
     "struct" => Struct,
     "enum" => Enum,

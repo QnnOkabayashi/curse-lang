@@ -1,0 +1,7 @@
+[package]
+name = "curse_hir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+curse_ast = { path = "../curse_ast" }

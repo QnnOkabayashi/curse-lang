@@ -30,7 +30,7 @@ pub enum Item<'ast, 'input> {
 
 #[derive(Clone, Debug)]
 pub struct ItemFunction<'ast, 'input> {
-    pub fn_: tok::Fn,
+    pub let_: tok::Let,
     pub name: tok::Ident<'input>,
     pub colon: tok::Colon,
     pub typ: &'ast Type<'ast, 'input>,
@@ -40,7 +40,7 @@ pub struct ItemFunction<'ast, 'input> {
 
 impl<'ast, 'input> ItemFunction<'ast, 'input> {
     pub fn new(
-        fn_: tok::Fn,
+        let_: tok::Let,
         name: tok::Ident<'input>,
         colon: tok::Colon,
         typ: &'ast Type<'ast, 'input>,
@@ -48,7 +48,7 @@ impl<'ast, 'input> ItemFunction<'ast, 'input> {
         closure: ExprClosure<'ast, 'input>,
     ) -> Self {
         ItemFunction {
-            fn_,
+            let_,
             name,
             colon,
             typ,

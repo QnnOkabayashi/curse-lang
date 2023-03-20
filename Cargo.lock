@@ -179,6 +179,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "curse_hir"
+version = "0.1.0"
+dependencies = [
+ "curse_ast",
+]
+
+[[package]]
 name = "curse_interpreter"
 version = "0.1.0"
 dependencies = [
