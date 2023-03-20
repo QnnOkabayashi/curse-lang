@@ -21,11 +21,7 @@ pub struct ExprParen<'ast, 'input> {
 }
 
 impl<'ast, 'input> ExprParen<'ast, 'input> {
-    pub fn new(
-        lparen: tok::LParen,
-        inner: &'ast Expr<'ast, 'input>,
-        rparen: tok::RParen,
-    ) -> Self {
+    pub fn new(lparen: tok::LParen, inner: &'ast Expr<'ast, 'input>, rparen: tok::RParen) -> Self {
         ExprParen {
             lparen,
             inner,
@@ -39,6 +35,7 @@ pub enum ExprSymbol {
     Plus(tok::Plus),
     Minus(tok::Minus),
     Star(tok::Star),
+    Dot(tok::Dot),
     DotDot(tok::DotDot),
     Semi(tok::Semi),
     Percent(tok::Percent),
@@ -123,10 +120,7 @@ impl<'ast, 'input> ExprParam<'ast, 'input> {
         pat: &'ast ExprPat<'ast, 'input>,
         ty: Option<(tok::Colon, &'ast ty::Type<'ast, 'input>)>,
     ) -> Self {
-        ExprParam {
-            pat,
-            ty,
-        }
+        ExprParam { pat, ty }
     }
 }
 
@@ -143,10 +137,6 @@ impl<'ast, 'input> ExprAppl<'ast, 'input> {
         function: &'ast Expr<'ast, 'input>,
         rhs: &'ast Expr<'ast, 'input>,
     ) -> Self {
-        ExprAppl {
-            lhs,
-            function,
-            rhs,
-        }
+        ExprAppl { lhs, function, rhs }
     }
 }

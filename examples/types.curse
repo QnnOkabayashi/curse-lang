@@ -11,7 +11,7 @@ fn map_tuple : (i32, i32) (i32 () -> i32) -> (i32, i32) =
     |(x, y), f| (x in f, y in f)
 
 fn weird : (i32, i32) (i32 () -> (i32, i32), i32 () -> (i32, i32)) -> ((i32, i32), (i32, i32)) =
-    |(x, y), (f, g)| (x in f, y in g)
+    |(x, y), (f, g)| (x . f, y . g)
 
 fn sum : () () -> () =
     |x, y| x + y

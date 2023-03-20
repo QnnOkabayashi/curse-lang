@@ -3,13 +3,13 @@
 
 fn insert : () () -> () =
     |(), (key, val)| (key, val, (), ()) else
-    |(k, v, left, right), (key, val)| k > key in (
+    |(k, v, left, right), (key, val)| k > key . (
         |true| (k, v, left insert (key, val), right) else
         |x|    (k, v, left, right insert (key, val))
     ) else
     |x, y| 0
 
 fn main : () () -> () = ||
-    () insert (2, 4) in |bst|
-    bst insert (3, 6) in |bst|
-    bst in print
+    () insert (2, 4) . |bst|
+    bst insert (3, 6) . |bst|
+    bst . print

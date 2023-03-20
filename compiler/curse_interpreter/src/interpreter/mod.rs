@@ -95,9 +95,12 @@ fn symbol<'ast, 'input>(
     left: Value<'ast, 'input>,
     right: Value<'ast, 'input>,
     op: ExprSymbol,
+    env: &mut Environment<'ast, 'input>,
 ) -> Result<Value<'ast, 'input>, EvalError<'input>> {
-    if let ExprSymbol::Semi(_) = op {
-        return Ok(right);
+    match op {
+        ExprSymbol::Semi(_) => return Ok(right),
+        ExprSymbol::Dot(_) => return call_function(left, right, Value::default(), env),
+        _ => {}
     }
 
     match (left, right) {
@@ -114,6 +117,7 @@ fn symbol<'ast, 'input>(
             ExprSymbol::Greater(_) => Ok(Value::Boolean(x > y)),
             ExprSymbol::LessEqual(_) => Ok(Value::Boolean(x <= y)),
             ExprSymbol::GreaterEqual(_) => Ok(Value::Boolean(x >= y)),
+            _ => unreachable!("Dot handled above"),
         },
         _ => Err(EvalError::TypeMismatch),
     }
@@ -129,7 +133,7 @@ pub fn call_function<'ast, 'input>(
         Value::Integer(_) | Value::Tuple(_) | Value::Vector(_) | Value::Boolean(_) => {
             Err(EvalError::TypeMismatch)
         }
-        Value::Symbol(s) => symbol(lhs, rhs, s),
+        Value::Symbol(s) => symbol(lhs, rhs, s, env),
         Value::Builtin(f) => f(lhs, rhs, env),
         Value::Closure(closure) => {
             let mut new_env = env.clone();

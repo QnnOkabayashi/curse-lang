@@ -113,6 +113,7 @@ declare_tokens! {
     "+" => Plus,
     "-" => Minus,
     "*" => Star,
+    "." => Dot,
     ".." => DotDot,
     ";" => Semi,
     "%" => Percent,

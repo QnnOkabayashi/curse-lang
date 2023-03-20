@@ -37,6 +37,7 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Symbol(ExprSymbol::Minus(_)) => write!(f, "-"),
             Value::Symbol(ExprSymbol::Percent(_)) => write!(f, "%"),
             Value::Symbol(ExprSymbol::Slash(_)) => write!(f, "/"),
+            Value::Symbol(ExprSymbol::Dot(_)) => write!(f, "."),
             Value::Symbol(ExprSymbol::DotDot(_)) => write!(f, ".."),
             Value::Symbol(ExprSymbol::Semi(_)) => write!(f, ";"),
             Value::Symbol(ExprSymbol::Equal(_)) => write!(f, "="),
