@@ -56,9 +56,9 @@ pub Program: Option<Program<'ast, 'input>> = {
     },
 };
 
-Item: Option<Item<'ast, 'input>> = "let" Ident ":" Type "=" Closure => match (<>) {
-    (let_, ident, colon, Some(typ), equal, Some(closure)) => {
-        Some(Item::Function(ItemFunction::new(let_, ident, colon, typ, equal, closure)))
+Item: Option<Item<'ast, 'input>> = "let" Ident ":" Type "=" EndExpr => match (<>) {
+    (let_, ident, colon, Some(typ), equal, Some(expr)) => {
+        Some(Item::new(let_, ident, colon, typ, equal, expr))
     }
     _ => None,
 };

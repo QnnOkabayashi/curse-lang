@@ -16,10 +16,11 @@ pub type Environment<'ast, 'input> = HashMap<&'input str, Value<'ast, 'input>>;
 
 pub fn function_definition<'ast, 'input>(
     name: &'input str,
-    closure: &'ast ExprClosure<'ast, 'input>,
+    expr: &'ast Expr<'ast, 'input>,
     env: &mut Environment<'ast, 'input>,
-) {
-    env.insert(name, Value::Closure(closure));
+) -> Result<(), EvalError<'input>> {
+    env.insert(name, eval_expr(expr, env)?);
+    Ok(())
 }
 
 pub fn eval_program<'input>(program: Program<'_, 'input>) -> Result<(), EvalError<'input>> {

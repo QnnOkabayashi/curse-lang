@@ -1,7 +1,7 @@
 let fib : i32 () -> i32 =
     |0| 0 else
     |1| 1 else
-    |n| n - 1 . fib + (n - 2 . fib)
+    |n| n - 1 fib () + (n - 2 fib ())
 
 let main : () () -> () = ||
-    10 . fib . print
+    10 fib () print ()

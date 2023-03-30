@@ -16,15 +16,15 @@ pub enum Expr<'ast, 'input> {
 #[derive(Copy, Clone, Debug)]
 pub struct ExprParen<'ast, 'input> {
     pub lparen: tok::LParen,
-    pub inner: &'ast Expr<'ast, 'input>,
+    pub expr: &'ast Expr<'ast, 'input>,
     pub rparen: tok::RParen,
 }
 
 impl<'ast, 'input> ExprParen<'ast, 'input> {
-    pub fn new(lparen: tok::LParen, inner: &'ast Expr<'ast, 'input>, rparen: tok::RParen) -> Self {
+    pub fn new(lparen: tok::LParen, expr: &'ast Expr<'ast, 'input>, rparen: tok::RParen) -> Self {
         ExprParen {
             lparen,
-            inner,
+            expr,
             rparen,
         }
     }
@@ -107,6 +107,20 @@ pub enum ExprParams<'ast, 'input> {
     Zero,
     One(ExprParam<'ast, 'input>),
     Two(ExprParam<'ast, 'input>, tok::Comma, ExprParam<'ast, 'input>),
+}
+
+impl<'ast, 'input> ExprParams<'ast, 'input> {
+    pub fn map<'a, T, F, D>(&'a self, mut f: F, mut default: D) -> Option<(T, T)>
+    where
+        F: FnMut(&'a ExprParam<'ast, 'input>) -> Option<T>,
+        D: FnMut() -> T,
+    {
+        match self {
+            ExprParams::Zero => Some((default(), default())),
+            ExprParams::One(lhs) => Some((f(lhs)?, default())),
+            ExprParams::Two(lhs, _, rhs) => f(lhs).zip(f(rhs)),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

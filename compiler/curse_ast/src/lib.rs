@@ -24,36 +24,31 @@ impl<'ast, 'input> Program<'ast, 'input> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Item<'ast, 'input> {
-    Function(ItemFunction<'ast, 'input>),
-}
-
-#[derive(Clone, Debug)]
-pub struct ItemFunction<'ast, 'input> {
+pub struct Item<'ast, 'input> {
     pub let_: tok::Let,
     pub name: tok::Ident<'input>,
     pub colon: tok::Colon,
     pub typ: &'ast Type<'ast, 'input>,
     pub equal: tok::Equal,
-    pub closure: ExprClosure<'ast, 'input>,
+    pub expr: &'ast Expr<'ast, 'input>,
 }
 
-impl<'ast, 'input> ItemFunction<'ast, 'input> {
+impl<'ast, 'input> Item<'ast, 'input> {
     pub fn new(
         let_: tok::Let,
         name: tok::Ident<'input>,
         colon: tok::Colon,
         typ: &'ast Type<'ast, 'input>,
         equal: tok::Equal,
-        closure: ExprClosure<'ast, 'input>,
+        expr: &'ast Expr<'ast, 'input>,
     ) -> Self {
-        ItemFunction {
+        Item {
             let_,
             name,
             colon,
             typ,
             equal,
-            closure,
+            expr,
         }
     }
 }
