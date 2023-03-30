@@ -85,6 +85,7 @@ dependencies = [
  "curse_ast",
  "curse_parse",
  "displaydoc",
+ "petgraph",
  "thiserror",
  "typed-arena",
 ]

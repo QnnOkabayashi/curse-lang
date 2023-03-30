@@ -1,15 +1,13 @@
 #![allow(dead_code)]
 use curse_ast as ast;
 use displaydoc::Display;
+use equations::Equations;
 use expr::*;
-use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-    fmt, num,
-};
+use std::{cell::Cell, collections::HashMap, fmt, num};
 use thiserror::Error;
 use typed_arena::Arena;
 
+mod equations;
 mod expr;
 mod hm;
 mod hm2;
@@ -32,7 +30,7 @@ pub struct VarPtr(usize);
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ConflictPtr(usize);
 
-#[derive(Clone, Debug, Display, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type<'hir> {
     // Type representing integer literals that don't explicitly
     // have a size. For example, `5` could be `i32` or `i64`,
@@ -53,7 +51,7 @@ pub enum Type<'hir> {
     Function(TypeFunction<'hir>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeTuple<'hir>(Vec<&'hir Type<'hir>>);
 
 impl fmt::Display for TypeTuple<'_> {
@@ -70,14 +68,14 @@ impl fmt::Display for TypeTuple<'_> {
 }
 
 #[derive(Clone, Debug, PartialEq, Display)]
-enum Typevar<'hir> {
+pub enum Typevar<'hir> {
     #[displaydoc("{0}")]
     Bound(&'hir Type<'hir>),
     #[displaydoc("{0}")]
     Unbound(UnboundVar),
 }
 
-#[derive(Copy, Clone, Debug, Display, PartialEq)]
+#[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[displaydoc("{lhs}, {rhs} -> {output}")]
 pub struct TypeFunction<'hir> {
     lhs: &'hir Type<'hir>,
@@ -110,7 +108,7 @@ impl<'scope, 'hir> Bindings<'scope, 'hir> {
     }
 
     /// Search through local variables first, then search through global variables.
-    pub fn get(&self, var: &str, env: &'hir Env<'hir, '_>) -> Option<&'hir Type<'hir>> {
+    pub fn get(&self, var: &str, env: &mut Env<'hir, '_>) -> Option<&'hir Type<'hir>> {
         self.locals
             .iter()
             .rev()
@@ -165,37 +163,43 @@ static UNIT_PAT: ExprPat<'static, 'static> = ExprPat::Tuple(ExprTuple {
     ty: &UNIT_TY,
 });
 
-#[derive(Default)]
 pub struct Env<'hir, 'input> {
     next_id: Cell<u64>,
-    types: Arena<Type<'hir>>,
-    typevars: RefCell<Vec<Typevar<'hir>>>,
-    exprs: Arena<Expr<'hir, 'input>>,
-    expr_pats: Arena<ExprPat<'hir, 'input>>,
-    expr_branches: Arena<ExprBranch<'hir, 'input>>,
+    types: &'hir Arena<Type<'hir>>,
+    typevars: &'hir mut Vec<Typevar<'hir>>,
+    exprs: &'hir Arena<Expr<'hir, 'input>>,
+    expr_pats: &'hir Arena<ExprPat<'hir, 'input>>,
+    expr_branches: &'hir Arena<ExprBranch<'hir, 'input>>,
+    equations: &'hir mut Equations<'hir>,
 }
 
 impl<'hir, 'input> Env<'hir, 'input> {
-    pub fn new() -> Self {
+    pub fn new(
+        types: &'hir Arena<Type<'hir>>,
+        typevars: &'hir mut Vec<Typevar<'hir>>,
+        exprs: &'hir Arena<Expr<'hir, 'input>>,
+        expr_pats: &'hir Arena<ExprPat<'hir, 'input>>,
+        expr_branches: &'hir Arena<ExprBranch<'hir, 'input>>,
+        equations: &'hir mut Equations<'hir>,
+    ) -> Self {
         Env {
             next_id: Cell::new(0),
-            types: Arena::new(),
-            typevars: RefCell::new(Vec::new()),
-            exprs: Arena::new(),
-            expr_pats: Arena::new(),
-            expr_branches: Arena::new(),
+            types,
+            typevars,
+            exprs,
+            expr_pats,
+            expr_branches,
+            equations,
         }
     }
 
-    pub fn new_typevar(&'hir self) -> (UnboundVar, &'hir Type<'hir>) {
+    pub fn new_typevar(&mut self) -> (UnboundVar, &'hir Type<'hir>) {
         let var = self.next_id.get();
         self.next_id.set(var + 1);
         let unbound_var = UnboundVar(var);
 
-        let mut typevars = self.typevars.borrow_mut();
-
-        let var_ptr = VarPtr(typevars.len());
-        typevars.push(Typevar::Unbound(unbound_var));
+        let var_ptr = VarPtr(self.typevars.len());
+        self.typevars.push(Typevar::Unbound(unbound_var));
         let typ = Type::Var(var_ptr);
         (unbound_var, self.types.alloc(typ))
     }
@@ -208,7 +212,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
     /// and
     ///
     /// `print`: `x () -> ()`
-    pub fn default_globals(&'hir self) -> HashMap<String, Polytype<'hir>> {
+    pub fn default_globals(&mut self) -> HashMap<String, Polytype<'hir>> {
         HashMap::from([
             ("in".to_string(), {
                 let (x, x_type) = self.new_typevar();
@@ -242,7 +246,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
         ])
     }
 
-    pub fn monomorphize(&'hir self, polytype: &Polytype<'hir>) -> &'hir Type<'hir> {
+    pub fn monomorphize(&mut self, polytype: &Polytype<'hir>) -> &'hir Type<'hir> {
         // Takes a polymorphic type and replaces all instances of generics
         // with a fixed, unbound type.
         // For example, id: T -> T is a polymorphic type, so it goes through
@@ -250,11 +254,11 @@ impl<'hir, 'input> Env<'hir, 'input> {
         // which is then bound later on.
         fn replace_unbound_typevars<'hir>(
             tbl: &HashMap<UnboundVar, &'hir Type<'hir>>,
-            env: &'hir Env<'hir, '_>,
+            env: &mut Env<'hir, '_>,
             ty: &'hir Type<'hir>,
         ) -> &'hir Type<'hir> {
             match ty {
-                Type::Var(var_ptr) => match env.typevars.borrow()[var_ptr.0] {
+                Type::Var(var_ptr) => match env.typevars[var_ptr.0] {
                     Typevar::Bound(t) => replace_unbound_typevars(tbl, env, t),
                     Typevar::Unbound(typevar_id) => match tbl.get(&typevar_id) {
                         Some(t) => t,
@@ -282,7 +286,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
     }
 
     pub fn lower(
-        &'hir self,
+        &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         expr: &ast::Expr<'_, 'input>,
         errors: &mut Vec<TypeError<'hir>>,
@@ -362,9 +366,6 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
                 let mut branches = Some(Vec::with_capacity(tail.len()));
 
-                let mut typevars = self.typevars.borrow_mut();
-                let typevars = typevars.as_mut_slice();
-
                 for (_, branch) in tail {
                     let mut scoped_bindings = bindings.enter_scope();
                     let Some((lhs, rhs)) = self.type_of_many_params(&mut scoped_bindings, &branch.params, errors) else {
@@ -374,15 +375,19 @@ impl<'hir, 'input> Env<'hir, 'input> {
                         continue;
                     };
 
-                    if let Err(e) = unify(typevars, head.lhs.ty(), lhs.ty()) {
+                    // This has to go here (not outside the loop) to avoid making
+                    // borrow checker sad
+                    let typevars = self.typevars.as_mut_slice();
+
+                    if let Err(e) = unify(typevars, head.lhs.ty(), lhs.ty(), self.equations) {
                         errors.push(e);
                         branches = None;
                     }
-                    if let Err(e) = unify(typevars, head.rhs.ty(), rhs.ty()) {
+                    if let Err(e) = unify(typevars, head.rhs.ty(), rhs.ty(), self.equations) {
                         errors.push(e);
                         branches = None;
                     }
-                    if let Err(e) = unify(typevars, head.body.ty(), body.ty()) {
+                    if let Err(e) = unify(typevars, head.body.ty(), body.ty(), self.equations) {
                         errors.push(e);
                         branches = None;
                     }
@@ -410,8 +415,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 let function = self.lower(bindings, appl.function, errors)?;
                 let ty = self.new_typevar().1;
 
-                let mut typevars = self.typevars.borrow_mut();
-                let typevars = typevars.as_mut_slice();
+                let typevars = self.typevars.as_mut_slice();
                 match unify(
                     typevars,
                     function.ty(),
@@ -420,6 +424,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                         rhs: rhs.ty(),
                         output: ty,
                     })),
+                    self.equations,
                 ) {
                     Ok(()) => Some(self.exprs.alloc(Expr::Appl(ExprAppl {
                         ty,
@@ -438,7 +443,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
     /// Returns the [`Type`] of an [`ast::ExprPat`].
     fn lower_pat(
-        &'hir self,
+        &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         pat: &ast::ExprPat<'_, 'input>,
         errors: &mut Vec<TypeError<'hir>>,
@@ -496,16 +501,17 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
     /// Returns the [`Type`] of a single [`ast::ExprParam`].
     fn lower_param(
-        &'hir self,
+        &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         param: &ast::ExprParam<'_, 'input>,
         errors: &mut Vec<TypeError<'hir>>,
     ) -> Option<&'hir ExprPat<'hir, 'input>> {
         let pat_type = self.lower_pat(bindings, param.pat, errors)?; // dont short circuit here
         if let Some((_, annotation)) = param.ty {
-            let mut typevars = self.typevars.borrow_mut();
-            let typevars = typevars.as_mut_slice();
-            if let Err(e) = unify(typevars, pat_type.ty(), self.type_from_ast(annotation)) {
+            // this has to go here to avoid double borrowing
+            let t2 = self.type_from_ast(annotation);
+            let typevars = self.typevars.as_mut_slice();
+            if let Err(e) = unify(typevars, pat_type.ty(), t2, self.equations) {
                 errors.push(e);
                 return None;
             }
@@ -516,7 +522,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
     /// Returns the [`Type`]s of various [`ast::ExprParams`].
     fn type_of_many_params(
-        &'hir self,
+        &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         params: &ast::ExprParams<'_, 'input>,
         errors: &mut Vec<TypeError<'hir>>,
@@ -536,7 +542,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
     }
 
     /// Convert an [`ast::Type`] annotation into an HIR [`Type`].
-    pub fn type_from_ast(&'hir self, typ: &ast::Type<'_, '_>) -> &'hir Type<'hir> {
+    pub fn type_from_ast(&self, typ: &ast::Type<'_, '_>) -> &'hir Type<'hir> {
         match typ {
             ast::Type::Named(named) => match named.name.literal {
                 "i32" => &Type::I32,
@@ -559,22 +565,24 @@ impl<'hir, 'input> Env<'hir, 'input> {
     }
 }
 
-// TODO: better error messages. For example, it would be really nice to have
-// a way to interactively look at all the types within the source code and see
-// where each inference comes from.
 fn unify<'hir>(
     typevars: &mut [Typevar<'hir>],
     t1: &'hir Type<'hir>,
     t2: &'hir Type<'hir>,
+    equations: &mut Equations<'hir>,
 ) -> Result<(), TypeError<'hir>> {
     match (t1, t2) {
         (Type::I32, Type::I32) => Ok(()),
         (Type::Bool, Type::Bool) => Ok(()),
         (Type::Tuple(TypeTuple(tuple_a)), Type::Tuple(TypeTuple(tuple_b))) => {
+            // don't care about two units being the same type lmao
+            if !tuple_a.is_empty() || !tuple_b.is_empty() {
+                equations.unify(t1, t2);
+            }
             if tuple_a.len() == tuple_b.len() {
                 let mut errors = Vec::with_capacity(0);
                 for (a, b) in std::iter::zip(tuple_a, tuple_b) {
-                    if let Err(e) = unify(typevars, a, b) {
+                    if let Err(e) = unify(typevars, a, b, equations) {
                         errors.push(e);
                     }
                 }
@@ -588,25 +596,33 @@ fn unify<'hir>(
                 Err(TypeError::Unify(t1, t2))
             }
         }
-        (Type::Var(typevar), a) | (a, Type::Var(typevar)) => match typevars[typevar.0] {
-            Typevar::Bound(b) => unify(typevars, a, b),
-            Typevar::Unbound(a_id) => {
-                if t1 == t2 {
-                    Ok(())
-                } else if occurs(typevars, a_id, a) {
-                    Err(TypeError::CyclicType(a_id, a))
-                } else {
-                    typevars[typevar.0] = Typevar::Bound(a);
-                    Ok(())
+        (Type::Var(typevar), a) | (a, Type::Var(typevar)) => {
+            equations.unify(t1, t2);
+
+            match typevars[typevar.0] {
+                Typevar::Bound(b) => unify(typevars, a, b, equations),
+                Typevar::Unbound(a_id) => {
+                    if t1 == t2 {
+                        Ok(())
+                    } else if occurs(typevars, a_id, a) {
+                        Err(TypeError::CyclicType(a_id, a))
+                    } else {
+                        typevars[typevar.0] = Typevar::Bound(a);
+                        Ok(())
+                    }
                 }
             }
-        },
-        (Type::Function(f1), Type::Function(f2)) => {
-            unify(typevars, f1.lhs, f2.lhs)?;
-            unify(typevars, f1.rhs, f2.rhs)?;
-            unify(typevars, f1.output, f2.output)
         }
-        _ => Err(TypeError::Unify(t1, t2)),
+        (Type::Function(f1), Type::Function(f2)) => {
+            equations.unify(t1, t2);
+            unify(typevars, f1.lhs, f2.lhs, equations)?;
+            unify(typevars, f1.rhs, f2.rhs, equations)?;
+            unify(typevars, f1.output, f2.output, equations)
+        }
+        _ => {
+            equations.unify(t1, t2);
+            Err(TypeError::Unify(t1, t2))
+        }
     }
 }
 

@@ -13,7 +13,22 @@ let main : () () -> () = ||
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, PROGRAM).unwrap();
-    let env = Env::new();
+
+    let types = Arena::new();
+    let mut typevars = Vec::new();
+    let exprs = Arena::new();
+    let expr_pats = Arena::new();
+    let expr_branches = Arena::new();
+    let mut equations = Equations::new();
+
+    let mut env = Env::new(
+        &types,
+        &mut typevars,
+        &exprs,
+        &expr_pats,
+        &expr_branches,
+        &mut equations,
+    );
 
     let mut globals = env.default_globals();
     globals.extend(program.items.iter().map(|item| {
@@ -31,15 +46,18 @@ let main : () () -> () = ||
 
     let mut errors = vec![];
 
-    let main = program
+    let fib = program
         .items
         .iter()
-        .find(|item| item.name.literal == "main")
+        .find(|item| item.name.literal == "fib")
         .unwrap()
         .expr;
-    let t = env.lower(&mut bindings, main, &mut errors).unwrap();
-    println!("{:?}", env.typevars.borrow());
-    println!("{t:#?}");
+    let _t = env.lower(&mut bindings, fib, &mut errors).unwrap();
+    // Put the result into: https://dreampuf.github.io/GraphvizOnline/
+    println!("{}", env.equations);
+
+    // println!("{:?}", env.typevars.borrow());
+    // println!("{t:#?}");
 }
 
 const PROG2: &str = r#"
