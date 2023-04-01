@@ -30,7 +30,7 @@ let supercharge: (i32 () -> i32) () -> i32 () -> i32 = |f|
     |x| x f () f ()
 
 let main: () () -> () = ||
-    5 in (inc supercharge ()) in print
+    5 (inc supercharge ()) () print ()
 "#;
 
 const INVALID: &str = r#"
@@ -48,16 +48,24 @@ let main: () () -> () = ||
 "#;
 
 const ADDING: &str = r#"
-let apply: (i32 i32 -> i32) (i32, i32) -> i32 = |f, (a, b)|
+let apply a b c: (a b -> c) (a, b) -> c = |f, (a, b)|
     a f b
 
 let main: () () -> () = ||
     (+) apply (4, 5) in print
 "#;
 
+const IN2: &str = r#"
+let in2 a b: a (a () -> b) -> b = |x, f|
+    x f ()
+
+let main: () () -> () = ||
+    5 in2 print
+"#;
+
 #[test]
 fn test_branching_typeck() {
-    let program = SUPERCHARGE;
+    let program = ADDING;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
@@ -65,14 +73,31 @@ fn test_branching_typeck() {
     let mut allocations = Allocations::default();
     let mut env = Env::new(&mut allocations);
 
+    // temporary for now until we can have custom named types
+    let type_scope = HashMap::new();
+
     let globals = env
         .default_globals()
         .chain(program.items.iter().map(|item| {
+            // Since items (e.g. functions for now) can be generic over types,
+            // we need to extend the set of currently in-scope types with the
+            // generics that this item introduces. To avoid bringing the types
+            // into the global program scope, we'll create a temporary inner scope
+            let mut inner_type_scope = type_scope.clone();
+
+            let mut typevars = Vec::with_capacity(item.generics.len());
+
+            for generic in item.generics.iter() {
+                let (var, ty) = env.new_typevar();
+                typevars.push(var);
+                inner_type_scope.insert(generic.literal, ty);
+            }
+
             (
                 item.name.literal.to_string(),
                 Polytype {
-                    typevars: vec![],
-                    typ: env.type_from_ast(item.typ),
+                    typevars,
+                    typ: env.type_from_ast(item.typ, &inner_type_scope),
                 },
             )
         }))
@@ -90,10 +115,11 @@ fn test_branching_typeck() {
         .unwrap()
         .expr;
 
-    let expr = env.lower(&mut bindings, main, &mut errors);
+    // Right now this won't work for finding the types of generic functions.
+    // We need some way to preserve their scope.
+    let result = env.lower(&mut bindings, main, &type_scope, &mut errors);
     if errors.is_empty() {
-        // success
-        let _ = expr;
+        let _expr = result.expect("no errors");
     } else {
         println!("failed");
     }

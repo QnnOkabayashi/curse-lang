@@ -22,7 +22,7 @@ pub type Typevar<'hir> = Option<(&'hir Type<'hir>, NodeIndex)>;
 
 /// Newtype around a `usize` used to index into the `typevars` field of `Env`.
 #[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[displaydoc("a{0}")]
+#[displaydoc("T{0}")]
 pub struct Var(usize);
 
 #[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -66,6 +66,15 @@ pub struct TypeFunction<'hir> {
 pub struct Polytype<'hir> {
     typevars: Vec<Var>,
     typ: &'hir Type<'hir>,
+}
+
+impl<'hir> Polytype<'hir> {
+    pub fn new(ty: &'hir Type<'hir>) -> Self {
+        Polytype {
+            typevars: vec![],
+            typ: ty,
+        }
+    }
 }
 
 pub struct Bindings<'scope, 'hir> {
@@ -126,8 +135,6 @@ impl Drop for Bindings<'_, '_> {
 pub enum TypeError<'hir> {
     #[error("Cannot unify types")]
     Unify(&'hir Type<'hir>, &'hir Type<'hir>),
-    #[error("Cannot unify types in tuple")]
-    UnifyTuple(Vec<TypeError<'hir>>),
     #[error("Cyclic type")]
     CyclicType(Var, &'hir Type<'hir>),
     #[error("Type not found")]
@@ -275,10 +282,13 @@ impl<'hir, 'input> Env<'hir, 'input> {
         &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         expr: &ast::Expr<'_, 'input>,
+        map: &HashMap<&str, &'hir Type<'hir>>,
         errors: &mut Vec<TypeError<'hir>>,
     ) -> Option<&'hir Expr<'hir, 'input>> {
         match expr {
-            ast::Expr::Paren(parenthesized) => self.lower(bindings, parenthesized.expr, errors),
+            ast::Expr::Paren(parenthesized) => {
+                self.lower(bindings, parenthesized.expr, map, errors)
+            }
             ast::Expr::Symbol(symbol) => match symbol {
                 ast::ExprSymbol::Plus(_) => Some(&Expr::Builtin(Builtin::Add)),
                 ast::ExprSymbol::Minus(_) => Some(&Expr::Builtin(Builtin::Sub)),
@@ -323,7 +333,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 ));
 
                 for expr in tuple.iter_elements() {
-                    match (&mut results, self.lower(bindings, expr, errors)) {
+                    match (&mut results, self.lower(bindings, expr, map, errors)) {
                         (Some((exprs, types)), Some(expr)) => {
                             exprs.push(expr);
                             types.push(expr.ty());
@@ -340,29 +350,38 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 let head = {
                     let mut scoped_bindings = bindings.enter_scope();
 
-                    let body = self.lower(&mut scoped_bindings, head.body, errors)?;
+                    let body = self.lower(&mut scoped_bindings, head.body, map, errors)?;
                     let (lhs, rhs) =
-                        self.type_of_many_params(&mut scoped_bindings, &head.params, errors)?;
+                        self.type_of_many_params(&mut scoped_bindings, &head.params, map, errors)?;
                     ExprBranch { lhs, rhs, body }
                 };
 
-                let mut branches = Vec::with_capacity(tail.len());
+                let branches = tail
+                    .iter()
+                    .map(|(_, branch)| {
+                        let mut scoped_bindings = bindings.enter_scope();
 
-                for (_, branch) in tail {
-                    let mut scoped_bindings = bindings.enter_scope();
+                        let body = self.lower(&mut scoped_bindings, branch.body, map, errors)?;
+                        let (lhs, rhs) = self.type_of_many_params(
+                            &mut scoped_bindings,
+                            &branch.params,
+                            map,
+                            errors,
+                        )?;
 
-                    let body = self.lower(&mut scoped_bindings, branch.body, errors)?;
-                    let (lhs, rhs) =
-                        self.type_of_many_params(&mut scoped_bindings, &branch.params, errors)?;
+                        let typevars = self.typevars.as_mut_slice();
 
-                    let typevars = self.typevars.as_mut_slice();
-
-                    unify(typevars, head.lhs.ty(), lhs.ty(), self.equations, errors);
-                    unify(typevars, head.rhs.ty(), rhs.ty(), self.equations, errors);
-                    unify(typevars, head.body.ty(), body.ty(), self.equations, errors);
-
-                    branches.push(ExprBranch { lhs, rhs, body });
-                }
+                        let original_error_count = errors.len();
+                        unify(typevars, head.lhs.ty(), lhs.ty(), self.equations, errors);
+                        unify(typevars, head.rhs.ty(), rhs.ty(), self.equations, errors);
+                        unify(typevars, head.body.ty(), body.ty(), self.equations, errors);
+                        if errors.len() == original_error_count {
+                            Some(ExprBranch { lhs, rhs, body })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Option<_>>()?;
 
                 let ty = self.types.alloc(Type::Function(TypeFunction {
                     lhs: head.lhs.ty(),
@@ -377,15 +396,16 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 })))
             }
             ast::Expr::Appl(appl) => {
-                let lhs = self.lower(bindings, appl.lhs, errors);
-                let rhs = self.lower(bindings, appl.rhs, errors);
-                let function = self.lower(bindings, appl.function, errors);
+                let lhs = self.lower(bindings, appl.lhs, map, errors);
+                let rhs = self.lower(bindings, appl.rhs, map, errors);
+                let function = self.lower(bindings, appl.function, map, errors);
 
                 let (lhs, rhs, function) = (lhs?, rhs?, function?);
 
                 let ty = self.new_typevar().1;
 
                 let typevars = self.typevars.as_mut_slice();
+                let original_error_count = errors.len();
                 unify(
                     typevars,
                     function.ty(),
@@ -398,12 +418,16 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     errors,
                 );
 
-                Some(self.exprs.alloc(Expr::Appl(ExprAppl {
-                    ty,
-                    lhs,
-                    function,
-                    rhs,
-                })))
+                if errors.len() == original_error_count {
+                    Some(self.exprs.alloc(Expr::Appl(ExprAppl {
+                        ty,
+                        lhs,
+                        function,
+                        rhs,
+                    })))
+                } else {
+                    None
+                }
             }
         }
     }
@@ -470,17 +494,19 @@ impl<'hir, 'input> Env<'hir, 'input> {
         &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         param: &ast::ExprParam<'_, 'input>,
+        map: &HashMap<&str, &'hir Type<'hir>>,
         errors: &mut Vec<TypeError<'hir>>,
     ) -> Option<&'hir ExprPat<'hir, 'input>> {
         let pat_type = self.lower_pat(bindings, param.pat, errors)?;
         if let Some((_, annotation)) = param.ty {
-            let t2 = self.type_from_ast(annotation);
+            let t2 = self.type_from_ast(annotation, map);
             let typevars = self.typevars.as_mut_slice();
-            // let original_error_count = errors.len();
+
+            let original_error_count = errors.len();
             unify(typevars, pat_type.ty(), t2, self.equations, errors);
-            // if errors.len() != original_error_count {
-            //     return None;
-            // }
+            if errors.len() != original_error_count {
+                return None;
+            }
         }
 
         Some(pat_type)
@@ -491,41 +517,47 @@ impl<'hir, 'input> Env<'hir, 'input> {
         &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         params: &ast::ExprParams<'_, 'input>,
+        map: &HashMap<&str, &'hir Type<'hir>>,
         errors: &mut Vec<TypeError<'hir>>,
     ) -> Option<(&'hir ExprPat<'hir, 'input>, &'hir ExprPat<'hir, 'input>)> {
         match params {
             ast::ExprParams::Zero => Some((&UNIT_PAT, &UNIT_PAT)),
             ast::ExprParams::One(lhs) => {
-                let lhs_type = self.lower_param(bindings, lhs, errors);
+                let lhs_type = self.lower_param(bindings, lhs, map, errors);
                 Some((lhs_type?, &UNIT_PAT))
             }
             ast::ExprParams::Two(lhs, _, rhs) => {
-                let lhs_type = self.lower_param(bindings, lhs, errors);
-                let rhs_type = self.lower_param(bindings, rhs, errors);
+                let lhs_type = self.lower_param(bindings, lhs, map, errors);
+                let rhs_type = self.lower_param(bindings, rhs, map, errors);
                 Some((lhs_type?, rhs_type?))
             }
         }
     }
 
     /// Convert an [`ast::Type`] annotation into an HIR [`Type`].
-    pub fn type_from_ast(&self, typ: &ast::Type<'_, '_>) -> &'hir Type<'hir> {
+    pub fn type_from_ast(
+        &self,
+        typ: &ast::Type<'_, '_>,
+        map: &HashMap<&str, &'hir Type<'hir>>,
+    ) -> &'hir Type<'hir> {
+        // this function needs to fundamentally change...
         match typ {
             ast::Type::Named(named) => match named.name.literal {
                 "i32" => &Type::I32,
                 "bool" => &Type::Bool,
-                other => todo!("name resolution (type is {other})"),
+                other => map.get(other).expect("type not found"),
             },
             ast::Type::Tuple(tuple) => {
                 let mut elements = Vec::with_capacity(tuple.len());
-                for typ in tuple.iter_elements() {
-                    elements.push(self.type_from_ast(typ));
+                for ty in tuple.iter_elements() {
+                    elements.push(self.type_from_ast(ty, map));
                 }
                 self.types.alloc(Type::Tuple(TypeTuple(elements)))
             }
             ast::Type::Function(function) => self.types.alloc(Type::Function(TypeFunction {
-                lhs: self.type_from_ast(function.lhs),
-                rhs: self.type_from_ast(function.rhs),
-                output: self.type_from_ast(function.ret),
+                lhs: self.type_from_ast(function.lhs, map),
+                rhs: self.type_from_ast(function.rhs, map),
+                output: self.type_from_ast(function.ret, map),
             })),
         }
     }
@@ -542,9 +574,10 @@ fn unify<'hir>(
         (Type::I32, Type::I32) => equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes)),
         (Type::Bool, Type::Bool) => equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes)),
         (Type::Tuple(TypeTuple(tuple_a)), Type::Tuple(TypeTuple(tuple_b))) => {
-            let conclusion = equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes));
             if tuple_a.len() == tuple_b.len() {
+                let conclusion = equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes));
                 for (i, (a, b)) in std::iter::zip(tuple_a, tuple_b).enumerate() {
+                    // Always doing this `original_error_count` right after we unify...
                     let original_error_count = errors.len();
                     let proof = unify(typevars, a, b, equations, errors);
                     if errors.len() != original_error_count {
@@ -555,9 +588,8 @@ fn unify<'hir>(
                 conclusion
             } else {
                 // different length tuples
-                equations.graph[conclusion] = Rule::Equivalent(t1, t2, Equiv::No);
                 errors.push(TypeError::Unify(t1, t2));
-                conclusion
+                equations.add_rule(Rule::Equivalent(t1, t2, Equiv::No))
             }
         }
         (Type::Var(var), a) | (a, Type::Var(var)) => {
