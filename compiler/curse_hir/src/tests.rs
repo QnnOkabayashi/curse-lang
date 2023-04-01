@@ -1,59 +1,103 @@
 use super::*;
 
-#[test]
-fn test_branching_typeck() {
-    const PROGRAM: &str = r#"
+const FIB: &str = r#"
 let fib : i32 () -> i32 =
     |0| 0 else
     |1| 1 else
     |n| n - 1 fib () + (n - 2 fib ())
 
 let main : () () -> () = ||
-    10 fib () print ()"#;
+    10 fib () print ()
+"#;
+
+const TWICE: &str = r#"
+let inc: i32 () -> i32 = |n|
+    n + 1
+
+let twice: (i32 () -> i32) i32 -> i32 = |f, x|
+    x f () f ()
+
+let main: () () -> () = ||
+    inc twice 5 in print
+"#;
+
+const SUPERCHARGE: &str = r#"
+let inc: i32 () -> i32 = |n|
+    n + 1
+
+// Given a function, return a function thats like it but calls the provided fn twice!
+let supercharge: (i32 () -> i32) () -> i32 () -> i32 = |f|
+    |x| x f () f ()
+
+let main: () () -> () = ||
+    5 in (inc supercharge ()) in print
+"#;
+
+const INVALID: &str = r#"
+let inc: i32 () -> i32 = |n|
+    n + 1
+
+// Given a function, return a function thats like it but calls the provided fn twice!
+let supercharge: (i32 () -> i32) () -> i32 () -> i32 = |f|
+    |x| x f () f ()
+
+let main: () () -> () = ||
+    // should be:
+    // 5 in (inc supercharge ()) in print
+    inc supercharge () in 5 in print
+"#;
+
+const ADDING: &str = r#"
+let apply: (i32 i32 -> i32) (i32, i32) -> i32 = |f, (a, b)|
+    a f b
+
+let main: () () -> () = ||
+    (+) apply (4, 5) in print
+"#;
+
+#[test]
+fn test_branching_typeck() {
+    let program = SUPERCHARGE;
 
     let ctx = curse_parse::Context::new();
-    let program = curse_parse::parse_program(&ctx, PROGRAM).unwrap();
+    let program = curse_parse::parse_program(&ctx, program).unwrap();
 
-    let types = Arena::new();
-    let mut typevars = Vec::new();
-    let exprs = Arena::new();
-    let expr_pats = Arena::new();
-    let expr_branches = Arena::new();
-    let mut equations = Equations::new();
+    let mut allocations = Allocations::default();
+    let mut env = Env::new(&mut allocations);
 
-    let mut env = Env::new(
-        &types,
-        &mut typevars,
-        &exprs,
-        &expr_pats,
-        &expr_branches,
-        &mut equations,
-    );
-
-    let mut globals = env.default_globals();
-    globals.extend(program.items.iter().map(|item| {
-        (
-            item.name.literal.to_string(),
-            Polytype {
-                typevars: vec![],
-                typ: env.type_from_ast(item.typ),
-            },
-        )
-    }));
+    let globals = env
+        .default_globals()
+        .chain(program.items.iter().map(|item| {
+            (
+                item.name.literal.to_string(),
+                Polytype {
+                    typevars: vec![],
+                    typ: env.type_from_ast(item.typ),
+                },
+            )
+        }))
+        .collect();
 
     let mut locals = Vec::with_capacity(16);
     let mut bindings = Bindings::new(&globals, &mut locals);
 
     let mut errors = vec![];
 
-    let fib = program
+    let main = program
         .items
         .iter()
-        .find(|item| item.name.literal == "fib")
+        .find(|item| item.name.literal == "main")
         .unwrap()
         .expr;
-    let _t = env.lower(&mut bindings, fib, &mut errors).unwrap();
-    // Put the result into: https://dreampuf.github.io/GraphvizOnline/
+
+    let expr = env.lower(&mut bindings, main, &mut errors);
+    if errors.is_empty() {
+        // success
+        let _ = expr;
+    } else {
+        println!("failed");
+    }
+    // Put the result into: https://edotor.net/
     println!("{}", env.equations);
 
     // println!("{:?}", env.typevars.borrow());
