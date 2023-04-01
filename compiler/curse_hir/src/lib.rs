@@ -8,7 +8,7 @@ use thiserror::Error;
 use typed_arena::Arena;
 
 mod equations;
-use equations::{Equations, Equiv, Reason, Rule};
+use equations::{Edge, Equations, Node};
 mod expr;
 mod hm;
 mod hm2;
@@ -63,6 +63,7 @@ pub struct TypeFunction<'hir> {
     output: &'hir Type<'hir>,
 }
 
+#[derive(Clone)]
 pub struct Polytype<'hir> {
     typevars: Vec<Var>,
     typ: &'hir Type<'hir>,
@@ -78,15 +79,15 @@ impl<'hir> Polytype<'hir> {
 }
 
 pub struct Bindings<'scope, 'hir> {
-    globals: &'hir HashMap<String, Polytype<'hir>>,
-    locals: &'scope mut Vec<(String, &'hir Type<'hir>)>,
+    globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
+    locals: &'scope mut Vec<(&'hir str, &'hir Type<'hir>)>,
     original_len: usize,
 }
 
 impl<'scope, 'hir> Bindings<'scope, 'hir> {
     pub fn new(
-        globals: &'hir HashMap<String, Polytype<'hir>>,
-        locals: &'scope mut Vec<(String, &'hir Type<'hir>)>,
+        globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
+        locals: &'scope mut Vec<(&'hir str, &'hir Type<'hir>)>,
     ) -> Self {
         let original_len = locals.len();
         Bindings {
@@ -109,7 +110,7 @@ impl<'scope, 'hir> Bindings<'scope, 'hir> {
             })
     }
 
-    pub fn add_local(&mut self, var: String, ty: &'hir Type<'hir>) {
+    pub fn add_local(&mut self, var: &'hir str, ty: &'hir Type<'hir>) {
         self.locals.push((var, ty));
     }
 
@@ -132,13 +133,13 @@ impl Drop for Bindings<'_, '_> {
 }
 
 #[derive(Clone, Debug, Error, PartialEq)]
-pub enum TypeError<'hir> {
+pub enum LowerError<'hir> {
     #[error("Cannot unify types")]
     Unify(&'hir Type<'hir>, &'hir Type<'hir>),
     #[error("Cyclic type")]
     CyclicType(Var, &'hir Type<'hir>),
-    #[error("Type not found")]
-    NotFound,
+    #[error("Identifier not found: `{0}`")]
+    IdentNotFound(String),
     #[error(transparent)]
     ParseInt(num::ParseIntError),
 }
@@ -202,9 +203,9 @@ impl<'hir, 'input> Env<'hir, 'input> {
     /// and
     ///
     /// `print`: `x () -> ()`
-    pub fn default_globals(&mut self) -> impl Iterator<Item = (String, Polytype<'hir>)> {
+    pub fn default_globals(&mut self) -> impl Iterator<Item = (&'hir str, Polytype<'hir>)> {
         [
-            ("in".to_string(), {
+            ("in", {
                 let (x, x_type) = self.new_typevar();
                 let (y, y_type) = self.new_typevar();
 
@@ -221,7 +222,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     })),
                 }
             }),
-            ("print".to_string(), {
+            ("print", {
                 let (x, x_type) = self.new_typevar();
 
                 Polytype {
@@ -283,7 +284,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
         bindings: &mut Bindings<'_, 'hir>,
         expr: &ast::Expr<'_, 'input>,
         map: &HashMap<&str, &'hir Type<'hir>>,
-        errors: &mut Vec<TypeError<'hir>>,
+        errors: &mut Vec<LowerError<'hir>>,
     ) -> Option<&'hir Expr<'hir, 'input>> {
         match expr {
             ast::Expr::Paren(parenthesized) => {
@@ -295,9 +296,9 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 ast::ExprSymbol::Star(_) => Some(&Expr::Builtin(Builtin::Mul)),
                 ast::ExprSymbol::Percent(_) => Some(&Expr::Builtin(Builtin::Rem)),
                 ast::ExprSymbol::Slash(_) => Some(&Expr::Builtin(Builtin::Div)),
-                ast::ExprSymbol::Dot(_) => todo!("infer ."),
-                ast::ExprSymbol::DotDot(_) => todo!("infer .."),
-                ast::ExprSymbol::Semi(_) => todo!("infer ;"),
+                ast::ExprSymbol::Dot(_) => todo!("lower `.`"),
+                ast::ExprSymbol::DotDot(_) => todo!("lower `..`"),
+                ast::ExprSymbol::Semi(_) => todo!("lower `;`"),
                 ast::ExprSymbol::Equal(_) => Some(&Expr::Builtin(Builtin::Eq)),
                 ast::ExprSymbol::Less(_) => Some(&Expr::Builtin(Builtin::Lt)),
                 ast::ExprSymbol::Greater(_) => Some(&Expr::Builtin(Builtin::Gt)),
@@ -308,7 +309,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
                     Ok(int) => Some(self.exprs.alloc(Expr::I32(int))),
                     Err(e) => {
-                        errors.push(TypeError::ParseInt(e));
+                        errors.push(LowerError::ParseInt(e));
                         None
                     }
                 },
@@ -319,7 +320,8 @@ impl<'hir, 'input> Env<'hir, 'input> {
                             ty,
                         })))
                     } else {
-                        errors.push(TypeError::NotFound);
+                        // panic!("ident not found: {} at {}", ident.literal, ident.location);
+                        errors.push(LowerError::IdentNotFound(ident.literal.to_string()));
                         None
                     }
                 }
@@ -350,9 +352,11 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 let head = {
                     let mut scoped_bindings = bindings.enter_scope();
 
-                    let body = self.lower(&mut scoped_bindings, head.body, map, errors)?;
+                    // Need to parse the params _before_ the body...
+                    // Duh.
                     let (lhs, rhs) =
                         self.type_of_many_params(&mut scoped_bindings, &head.params, map, errors)?;
+                    let body = self.lower(&mut scoped_bindings, head.body, map, errors)?;
                     ExprBranch { lhs, rhs, body }
                 };
 
@@ -361,13 +365,13 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     .map(|(_, branch)| {
                         let mut scoped_bindings = bindings.enter_scope();
 
-                        let body = self.lower(&mut scoped_bindings, branch.body, map, errors)?;
                         let (lhs, rhs) = self.type_of_many_params(
                             &mut scoped_bindings,
                             &branch.params,
                             map,
                             errors,
                         )?;
+                        let body = self.lower(&mut scoped_bindings, branch.body, map, errors)?;
 
                         let typevars = self.typevars.as_mut_slice();
 
@@ -437,20 +441,20 @@ impl<'hir, 'input> Env<'hir, 'input> {
         &mut self,
         bindings: &mut Bindings<'_, 'hir>,
         pat: &ast::ExprPat<'_, 'input>,
-        errors: &mut Vec<TypeError<'hir>>,
+        errors: &mut Vec<LowerError<'hir>>,
     ) -> Option<&'hir ExprPat<'hir, 'input>> {
         match pat {
             ast::Pat::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
                     Ok(int) => Some(self.expr_pats.alloc(ExprPat::I32(int))),
                     Err(e) => {
-                        errors.push(TypeError::ParseInt(e));
+                        errors.push(LowerError::ParseInt(e));
                         None
                     }
                 },
                 ast::ExprLit::Ident(ident) => {
                     let ty = self.new_typevar().1;
-                    bindings.add_local(ident.literal.to_string(), ty);
+                    bindings.add_local(ident.literal, ty);
                     Some(self.expr_pats.alloc(ExprPat::Ident(ExprIdent {
                         literal: ident.literal,
                         ty,
@@ -495,7 +499,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
         bindings: &mut Bindings<'_, 'hir>,
         param: &ast::ExprParam<'_, 'input>,
         map: &HashMap<&str, &'hir Type<'hir>>,
-        errors: &mut Vec<TypeError<'hir>>,
+        errors: &mut Vec<LowerError<'hir>>,
     ) -> Option<&'hir ExprPat<'hir, 'input>> {
         let pat_type = self.lower_pat(bindings, param.pat, errors)?;
         if let Some((_, annotation)) = param.ty {
@@ -518,7 +522,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
         bindings: &mut Bindings<'_, 'hir>,
         params: &ast::ExprParams<'_, 'input>,
         map: &HashMap<&str, &'hir Type<'hir>>,
-        errors: &mut Vec<TypeError<'hir>>,
+        errors: &mut Vec<LowerError<'hir>>,
     ) -> Option<(&'hir ExprPat<'hir, 'input>, &'hir ExprPat<'hir, 'input>)> {
         match params {
             ast::ExprParams::Zero => Some((&UNIT_PAT, &UNIT_PAT)),
@@ -568,28 +572,28 @@ fn unify<'hir>(
     t1: &'hir Type<'hir>,
     t2: &'hir Type<'hir>,
     equations: &mut Equations<'hir>,
-    errors: &mut Vec<TypeError<'hir>>,
+    errors: &mut Vec<LowerError<'hir>>,
 ) -> NodeIndex {
     match (t1, t2) {
-        (Type::I32, Type::I32) => equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes)),
-        (Type::Bool, Type::Bool) => equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes)),
+        (Type::I32, Type::I32) => equations.add_rule(Node::Equiv(t1, t2)),
+        (Type::Bool, Type::Bool) => equations.add_rule(Node::Equiv(t1, t2)),
         (Type::Tuple(TypeTuple(tuple_a)), Type::Tuple(TypeTuple(tuple_b))) => {
             if tuple_a.len() == tuple_b.len() {
-                let conclusion = equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes));
+                let conclusion = equations.add_rule(Node::Equiv(t1, t2));
                 for (i, (a, b)) in std::iter::zip(tuple_a, tuple_b).enumerate() {
                     // Always doing this `original_error_count` right after we unify...
                     let original_error_count = errors.len();
                     let proof = unify(typevars, a, b, equations, errors);
                     if errors.len() != original_error_count {
-                        equations.graph[conclusion] = Rule::Equivalent(t1, t2, Equiv::No);
+                        equations.graph[conclusion] = Node::NotEquiv(t1, t2);
                     }
-                    equations.add_proof(proof, conclusion, Reason::Tuple(i));
+                    equations.add_proof(proof, conclusion, Edge::Tuple(i));
                 }
                 conclusion
             } else {
                 // different length tuples
-                errors.push(TypeError::Unify(t1, t2));
-                equations.add_rule(Rule::Equivalent(t1, t2, Equiv::No))
+                errors.push(LowerError::Unify(t1, t2));
+                equations.add_rule(Node::NotEquiv(t1, t2))
             }
         }
         (Type::Var(var), a) | (a, Type::Var(var)) => {
@@ -597,24 +601,23 @@ fn unify<'hir>(
                 let original_error_count = errors.len();
                 let proof = unify(typevars, a, b, equations, errors);
 
-                let equiv = if errors.len() == original_error_count {
-                    Equiv::Yes
+                let conclusion = if errors.len() == original_error_count {
+                    equations.add_rule(Node::Equiv(t1, t2))
                 } else {
-                    Equiv::No
+                    equations.add_rule(Node::NotEquiv(t1, t2))
                 };
-                let conclusion = equations.add_rule(Rule::Equivalent(t1, t2, equiv));
                 // If we wanted, we could also add an edge with `_binding_source`,
                 // which tells us exactly where the typevar was bound.
-                equations.add_proof(proof, conclusion, Reason::Transitivity);
+                equations.add_proof(proof, conclusion, Edge::Transitivity);
                 conclusion
             } else if t1 == t2 {
-                equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes))
+                equations.add_rule(Node::Equiv(t1, t2))
             } else if occurs(typevars, *var, a) {
-                errors.push(TypeError::CyclicType(*var, a));
-                equations.add_rule(Rule::Equivalent(t1, t2, Equiv::No))
+                errors.push(LowerError::CyclicType(*var, a));
+                equations.add_rule(Node::NotEquiv(t1, t2))
             } else {
                 // The actual binding code is here
-                let conclusion = equations.add_rule(Rule::Binding {
+                let conclusion = equations.add_rule(Node::Binding {
                     var: *var,
                     definition: a,
                 });
@@ -624,25 +627,25 @@ fn unify<'hir>(
             }
         }
         (Type::Function(f1), Type::Function(f2)) => {
-            let conclusion = equations.add_rule(Rule::Equivalent(t1, t2, Equiv::Yes));
+            let conclusion = equations.add_rule(Node::Equiv(t1, t2));
             let original_error_count = errors.len();
             let lhs_proof = unify(typevars, f1.lhs, f2.lhs, equations, errors);
             let rhs_proof = unify(typevars, f1.rhs, f2.rhs, equations, errors);
             let output_proof = unify(typevars, f1.output, f2.output, equations, errors);
 
             if errors.len() != original_error_count {
-                equations.graph[conclusion] = Rule::Equivalent(t1, t2, Equiv::No);
+                equations.graph[conclusion] = Node::NotEquiv(t1, t2);
             }
 
-            equations.add_proof(lhs_proof, conclusion, Reason::FunctionLhs);
-            equations.add_proof(rhs_proof, conclusion, Reason::FunctionRhs);
-            equations.add_proof(output_proof, conclusion, Reason::FunctionOutput);
+            equations.add_proof(lhs_proof, conclusion, Edge::FunctionLhs);
+            equations.add_proof(rhs_proof, conclusion, Edge::FunctionRhs);
+            equations.add_proof(output_proof, conclusion, Edge::FunctionOutput);
 
             conclusion
         }
         _ => {
-            errors.push(TypeError::Unify(t1, t2));
-            equations.add_rule(Rule::Equivalent(t1, t2, Equiv::No))
+            errors.push(LowerError::Unify(t1, t2));
+            equations.add_rule(Node::NotEquiv(t1, t2))
         }
     }
 }

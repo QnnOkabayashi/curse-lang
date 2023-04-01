@@ -48,8 +48,8 @@ let main: () () -> () = ||
 "#;
 
 const ADDING: &str = r#"
-let apply a b c: (a b -> c) (a, b) -> c = |f, (a, b)|
-    a f b
+let apply a b c: (a b -> c) (a, b) -> c = |f, (lhs, rhs)|
+    lhs f rhs
 
 let main: () () -> () = ||
     (+) apply (4, 5) in print
@@ -65,7 +65,7 @@ let main: () () -> () = ||
 
 #[test]
 fn test_branching_typeck() {
-    let program = ADDING;
+    let program = IN2;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
@@ -74,12 +74,16 @@ fn test_branching_typeck() {
     let mut env = Env::new(&mut allocations);
 
     // temporary for now until we can have custom named types
-    let type_scope = HashMap::new();
+    let type_scope: HashMap<&str, &Type<'_>> = HashMap::new();
 
-    let globals = env
+    // given the name of a top-level item (i.e. a function for now),
+    // get the mapping from ty
+    let mut function_to_typescope: HashMap<&str, HashMap<&str, &Type<'_>>> = HashMap::new();
+
+    let globals: HashMap<&str, Polytype<'_>> = env
         .default_globals()
         .chain(program.items.iter().map(|item| {
-            // Since items (e.g. functions for now) can be generic over types,
+            // Since items (i.e. functions for now) can be generic over types,
             // we need to extend the set of currently in-scope types with the
             // generics that this item introduces. To avoid bringing the types
             // into the global program scope, we'll create a temporary inner scope
@@ -93,41 +97,39 @@ fn test_branching_typeck() {
                 inner_type_scope.insert(generic.literal, ty);
             }
 
-            (
-                item.name.literal.to_string(),
-                Polytype {
-                    typevars,
-                    typ: env.type_from_ast(item.typ, &inner_type_scope),
-                },
-            )
+            let typ = env.type_from_ast(item.typ, &inner_type_scope);
+
+            function_to_typescope.insert(item.name.literal, inner_type_scope);
+
+            (item.name.literal, Polytype { typevars, typ })
         }))
         .collect();
 
-    let mut locals = Vec::with_capacity(16);
-    let mut bindings = Bindings::new(&globals, &mut locals);
-
-    let mut errors = vec![];
-
-    let main = program
+    let mut locals: Vec<(&str, &Type<'_>)> = Vec::with_capacity(16);
+    let mut errors: Vec<LowerError> = Vec::with_capacity(0);
+    let _lowered_items: HashMap<&str, (Polytype<'_>, Option<&Expr<'_, '_>>)> = program
         .items
         .iter()
-        .find(|item| item.name.literal == "main")
-        .unwrap()
-        .expr;
+        .map(|item| {
+            let item_name = item.name.literal;
+            let polytype = globals[item_name].clone();
+            let body = env.lower(
+                &mut Bindings::new(&globals, &mut locals),
+                item.expr,
+                &function_to_typescope[item_name],
+                &mut errors,
+            );
+            (item_name, (polytype, body))
+        })
+        .collect();
 
-    // Right now this won't work for finding the types of generic functions.
-    // We need some way to preserve their scope.
-    let result = env.lower(&mut bindings, main, &type_scope, &mut errors);
-    if errors.is_empty() {
-        let _expr = result.expect("no errors");
-    } else {
-        println!("failed");
+    for e in errors {
+        println!("{e}");
     }
+
     // Put the result into: https://edotor.net/
     println!("{}", env.equations);
-
-    // println!("{:?}", env.typevars.borrow());
-    // println!("{t:#?}");
+    println!("{:#?}", _lowered_items["main"].1.as_ref().unwrap());
 }
 
 const PROG2: &str = r#"

@@ -5,19 +5,13 @@ use petgraph::graph::{DiGraph, EdgeReference, NodeIndex};
 use petgraph::visit::EdgeRef;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Equiv {
-    #[displaydoc("≡")]
-    Yes,
-    #[displaydoc("≢")]
-    No,
-}
-
 /// A node on the inference graph.
 #[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Rule<'hir> {
-    #[displaydoc("{0} {2} {1}")]
-    Equivalent(&'hir Type<'hir>, &'hir Type<'hir>, Equiv),
+pub enum Node<'hir> {
+    #[displaydoc("{0} ≡ {1}")]
+    Equiv(&'hir Type<'hir>, &'hir Type<'hir>),
+    #[displaydoc("{0} ≢ {1}")]
+    NotEquiv(&'hir Type<'hir>, &'hir Type<'hir>),
     #[displaydoc("{var} := {definition}")]
     Binding {
         var: Var,
@@ -28,7 +22,7 @@ pub enum Rule<'hir> {
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to
 /// a conclusion (another node).
 #[derive(Display)]
-pub enum Reason {
+pub enum Edge {
     /// lhs
     FunctionLhs,
     /// rhs
@@ -43,7 +37,7 @@ pub enum Reason {
 
 #[derive(Default)]
 pub struct Equations<'hir> {
-    pub graph: DiGraph<Rule<'hir>, Reason>,
+    pub graph: DiGraph<Node<'hir>, Edge>,
 }
 
 impl<'hir> Equations<'hir> {
@@ -53,11 +47,11 @@ impl<'hir> Equations<'hir> {
         }
     }
 
-    pub fn add_rule(&mut self, rule: Rule<'hir>) -> NodeIndex {
+    pub fn add_rule(&mut self, rule: Node<'hir>) -> NodeIndex {
         self.graph.add_node(rule)
     }
 
-    pub fn add_proof(&mut self, proof: NodeIndex, conclusion: NodeIndex, why: Reason) {
+    pub fn add_proof(&mut self, proof: NodeIndex, conclusion: NodeIndex, why: Edge) {
         self.graph.add_edge(proof, conclusion, why);
     }
 }
@@ -65,10 +59,10 @@ impl<'hir> Equations<'hir> {
 impl fmt::Display for Equations<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn get_edge_attributes(
-            graph: &DiGraph<Rule<'_>, Reason>,
-            edge: EdgeReference<Reason>,
+            graph: &DiGraph<Node<'_>, Edge>,
+            edge: EdgeReference<Edge>,
         ) -> String {
-            if let Rule::Equivalent(_, _, Equiv::No) = &graph[edge.source()] {
+            if let Node::NotEquiv(_, _) = &graph[edge.source()] {
                 "color = red".to_string()
             } else {
                 String::new()
@@ -76,10 +70,10 @@ impl fmt::Display for Equations<'_> {
         }
 
         fn get_node_attributes(
-            _graph: &DiGraph<Rule<'_>, Reason>,
-            (_ix, rule): (NodeIndex, &Rule<'_>),
+            _graph: &DiGraph<Node<'_>, Edge>,
+            (_ix, rule): (NodeIndex, &Node<'_>),
         ) -> String {
-            if let Rule::Equivalent(_, _, Equiv::No) = rule {
+            if let Node::NotEquiv(_, _) = rule {
                 "color = red".to_string()
             } else {
                 String::new()
