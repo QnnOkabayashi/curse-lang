@@ -65,7 +65,7 @@ let main: () () -> () = ||
 
 #[test]
 fn test_branching_typeck() {
-    let program = IN2;
+    let program = SUPERCHARGE;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
@@ -76,8 +76,6 @@ fn test_branching_typeck() {
     // temporary for now until we can have custom named types
     let type_scope: HashMap<&str, &Type<'_>> = HashMap::new();
 
-    // given the name of a top-level item (i.e. a function for now),
-    // get the mapping from ty
     let mut function_to_typescope: HashMap<&str, HashMap<&str, &Type<'_>>> = HashMap::new();
 
     let globals: HashMap<&str, Polytype<'_>> = env

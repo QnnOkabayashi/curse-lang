@@ -6,7 +6,7 @@ use petgraph::visit::EdgeRef;
 use std::fmt;
 
 /// A node on the inference graph.
-#[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Display, PartialEq)]
 pub enum Node<'hir> {
     #[displaydoc("{0} ≡ {1}")]
     Equiv(&'hir Type<'hir>, &'hir Type<'hir>),

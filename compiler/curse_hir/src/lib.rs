@@ -25,7 +25,7 @@ pub type Typevar<'hir> = Option<(&'hir Type<'hir>, NodeIndex)>;
 #[displaydoc("T{0}")]
 pub struct Var(usize);
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, Display, PartialEq)]
 pub enum Type<'hir> {
     #[displaydoc("i32")]
     I32,
@@ -39,7 +39,7 @@ pub enum Type<'hir> {
     Function(TypeFunction<'hir>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypeTuple<'hir>(Vec<&'hir Type<'hir>>);
 
 impl fmt::Display for TypeTuple<'_> {
@@ -55,7 +55,7 @@ impl fmt::Display for TypeTuple<'_> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Display, PartialEq)]
 #[displaydoc("({lhs} {rhs} -> {output})")]
 pub struct TypeFunction<'hir> {
     lhs: &'hir Type<'hir>,
