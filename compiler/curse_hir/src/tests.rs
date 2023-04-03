@@ -14,7 +14,7 @@ const TWICE: &str = r#"
 let inc: i32 () -> i32 = |n|
     n + 1
 
-let twice: (i32 () -> i32) i32 -> i32 = |f, x|
+let twice a: (a () -> a) a -> a = |f, x|
     x f () f ()
 
 let main: () () -> () = ||
@@ -63,6 +63,11 @@ let main: () () -> () = ||
     5 in2 print
 "#;
 
+const SIMPLE: &str = r#"
+let main: () () -> () = ||
+    5 print ()
+"#;
+
 #[test]
 fn test_branching_typeck() {
     let program = SUPERCHARGE;
@@ -70,8 +75,8 @@ fn test_branching_typeck() {
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
 
-    let mut allocations = Allocations::default();
-    let mut env = Env::new(&mut allocations);
+    let mut hir = Hir::default();
+    let mut env = Env::new(&mut hir);
 
     // temporary for now until we can have custom named types
     let type_scope: HashMap<&str, &Type<'_>> = HashMap::new();
@@ -105,7 +110,7 @@ fn test_branching_typeck() {
 
     let mut locals: Vec<(&str, &Type<'_>)> = Vec::with_capacity(16);
     let mut errors: Vec<LowerError> = Vec::with_capacity(0);
-    let _lowered_items: HashMap<&str, (Polytype<'_>, Option<&Expr<'_, '_>>)> = program
+    let lowered_items: HashMap<&str, (Polytype<'_>, Option<&Expr<'_, '_>>)> = program
         .items
         .iter()
         .map(|item| {
@@ -121,13 +126,23 @@ fn test_branching_typeck() {
         })
         .collect();
 
-    for e in errors {
-        println!("{e}");
-    }
-
     // Put the result into: https://edotor.net/
     println!("{}", env.equations);
-    println!("{:#?}", _lowered_items["main"].1.as_ref().unwrap());
+
+    if let Some(expr) = lowered_items["main"].1 {
+        assert!(errors.is_empty());
+        // println!("{expr}");
+        let mut out = vec![];
+        dot::render(expr, &mut out).unwrap();
+        let out = String::from_utf8(out).unwrap();
+        println!("{out}");
+    } else {
+        assert!(!errors.is_empty());
+        println!("Errors:");
+        for (i, err) in errors.into_iter().enumerate() {
+            println!("{i}) {err}");
+        }
+    }
 }
 
 const PROG2: &str = r#"

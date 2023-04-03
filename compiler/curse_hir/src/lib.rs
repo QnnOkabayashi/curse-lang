@@ -159,7 +159,7 @@ static UNIT_PAT: ExprPat<'static, 'static> = ExprPat::Tuple(ExprTuple {
 /// from a `Allocations` appropriately, we can freely mutate `Env` because it only
 /// holds shared references to the arenas so no aliasing invariants are broken.
 #[derive(Default)]
-pub struct Allocations<'hir, 'input> {
+pub struct Hir<'hir, 'input> {
     types: Arena<Type<'hir>>,
     typevars: Vec<Typevar<'hir>>,
     exprs: Arena<Expr<'hir, 'input>>,
@@ -178,14 +178,14 @@ pub struct Env<'hir, 'input> {
 }
 
 impl<'hir, 'input> Env<'hir, 'input> {
-    pub fn new(allocations: &'hir mut Allocations<'hir, 'input>) -> Self {
+    pub fn new(hir: &'hir mut Hir<'hir, 'input>) -> Self {
         Env {
-            types: &allocations.types,
-            typevars: &mut allocations.typevars,
-            exprs: &allocations.exprs,
-            expr_pats: &allocations.expr_pats,
-            expr_branches: &allocations.expr_branches,
-            equations: &mut allocations.equations,
+            types: &hir.types,
+            typevars: &mut hir.typevars,
+            exprs: &hir.exprs,
+            expr_pats: &hir.expr_pats,
+            expr_branches: &hir.expr_branches,
+            equations: &mut hir.equations,
         }
     }
 
