@@ -147,16 +147,18 @@ impl<T> Chunk<T> {
     pub fn try_push(&self, value: T) -> Result<Ref<'_, T>, T> {
         let len = self.len();
 
-        if len == self.cap {
+        // Check `>=` just in case
+        if len >= self.cap {
             return Err(value);
         }
 
+        // Pretty much copy-pasted from `Vec::push`.
+        // https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1836-1847
         unsafe {
-            // SAFETY: We ensured above that there is spare capacity.
-            self.ptr.as_ptr().add(len).write(value);
+            let end: *mut T = self.ptr.as_ptr().add(len);
+            ptr::write(end, value);
+            self.len.set(len + 1);
         }
-
-        self.len.set(len + 1);
 
         Ok(Ref {
             index: len,
@@ -176,11 +178,7 @@ impl<T> Chunk<T> {
     /// If you `.try_push(...)` on `dst` inside of `f`, whatever you push will
     /// be overwritten and leaked so try not to do that. However, it will still
     /// be safe because [`Ref<'_, T>`] is index-based.
-    pub fn map<'chunk, S>(
-        &self,
-        dst: &'chunk Chunk<S>,
-        mut f: impl FnMut(&T, MapRef<'chunk, S>) -> S,
-    ) {
+    pub fn map<'chunk, S>(&self, dst: &'chunk Chunk<S>, mut f: impl FnMut(&T) -> S) {
         assert!(dst.len() == 0, "chunk must start as empty");
         assert!(
             dst.cap >= self.len(),
@@ -200,7 +198,7 @@ impl<T> Chunk<T> {
                 // It'll just get overwritten and will leak, which is safe.
                 // After all, their `Ref` will just index to the wrong thing,
                 // but that won't cause any UB.
-                ptr::write(address, f(element, MapRef(dst)));
+                ptr::write(address, f(element));
             }
         }
 
@@ -257,28 +255,6 @@ impl<T> Drop for Chunk<T> {
     }
 }
 
-/// Map a [`Ref<'_, T>`] from one [`Chunk`] into another.
-pub struct MapRef<'a, S>(&'a Chunk<S>);
-
-impl<'a, S> MapRef<'a, S> {
-    pub fn map<'chunk, T>(self, r: &Ref<'chunk, T>) -> Ref<'a, S> {
-        Ref {
-            index: r.index,
-            chunk: self.0,
-        }
-    }
-}
-
-// Doesn't depend on `S: Clone`, which `derive` automatically inserts.
-impl<S> Clone for MapRef<'_, S> {
-    fn clone(&self) -> Self {
-        MapRef(self.0)
-    }
-}
-
-// Doesn't depend on `S: Copy`, which `derive` automatically inserts.
-impl<S> Copy for MapRef<'_, S> {}
-
 /// An index-based reference into a [`Chunk`].
 ///
 /// This type contains no unsafe code :)
@@ -296,6 +272,13 @@ fn size_of_ref() {
 impl<'chunk, T> Ref<'chunk, T> {
     pub fn index(&self) -> usize {
         self.index
+    }
+
+    pub fn rebase<'a, S>(&self, chunk: &'a Chunk<S>) -> Ref<'a, S> {
+        Ref {
+            index: self.index,
+            chunk,
+        }
     }
 
     pub fn get(&self) -> &T {
@@ -331,39 +314,36 @@ mod tests {
     use super::*;
 
     #[derive(Debug)]
-    enum IntTree<'a> {
+    enum IntNode<'a> {
         Int(i32),
         Pair(Ref<'a, Self>, Ref<'a, Self>),
     }
 
     #[derive(Debug)]
-    enum StringTree<'a> {
+    enum StringNode<'a> {
         String(String),
         Pair(Ref<'a, Self>, Ref<'a, Self>),
     }
 
     #[test]
     fn test1() {
-        let int_tree: Chunk<IntTree> = Chunk::with_capacity(3);
-        let one: Ref<'_, IntTree> = int_tree.try_push(IntTree::Int(1)).unwrap();
-        let two: Ref<'_, IntTree> = int_tree.try_push(IntTree::Int(2)).unwrap();
-        let _pair: Ref<'_, IntTree> = int_tree.try_push(IntTree::Pair(one, two)).unwrap();
+        let int_tree: Chunk<IntNode> = Chunk::with_capacity(3);
+        let one: Ref<'_, IntNode> = int_tree.try_push(IntNode::Int(1)).unwrap();
+        let two: Ref<'_, IntNode> = int_tree.try_push(IntNode::Int(2)).unwrap();
+        let _pair: Ref<'_, IntNode> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
 
         println!("{int_tree:?}");
 
-        let string_tree: Chunk<StringTree> = Chunk::new_like(&int_tree);
-        int_tree.map(
-            &string_tree,
-            |tree: &IntTree, m: MapRef<StringTree>| match tree {
-                IntTree::Int(int32) => StringTree::String(int32.to_string()),
-                IntTree::Pair(lhs, rhs) => {
-                    // Map the refs to hold a reference to the new tree that's being
-                    // mapped into instead. Indices are stable and so they stay
-                    // the same.
-                    StringTree::Pair(m.map(lhs), m.map(rhs))
-                }
-            },
-        );
+        let string_tree: Chunk<StringNode> = Chunk::new_like(&int_tree);
+        int_tree.map(&string_tree, |node: &IntNode| match node {
+            IntNode::Int(int32) => StringNode::String(int32.to_string()),
+            IntNode::Pair(lhs, rhs) => {
+                // Map the refs to hold a reference to the new tree that's being
+                // mapped into instead. Indices are stable and so they stay
+                // the same.
+                StringNode::Pair(lhs.rebase(&string_tree), rhs.rebase(&string_tree))
+            }
+        });
 
         println!("{string_tree:?}");
     }
