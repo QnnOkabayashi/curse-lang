@@ -1,7 +1,6 @@
 use std::cell::Cell;
 use std::{fmt, mem, ops, ptr, slice};
 
-
 // Initial size in bytes.
 // const INITIAL_SIZE: usize = 1024;
 
@@ -81,17 +80,17 @@ use std::{fmt, mem, ops, ptr, slice};
 
 /// Like `Vec<T>`, but cannot reallocate and allows for pushing via only a
 /// shared reference.
-/// 
+///
 /// When pushing an item with [`Chunk::try_push`], a [`Ref<'_, T>`] is returned
 /// which allows for safe access into the `Chunk`.
-/// 
+///
 /// Also, this type derefs to a `&[T]` of the allocated elements, allowing for
 /// iteration and manual indexing.
-/// 
+///
 /// The main benefit of this type is the [`Chunk::map`] method, which allows
 /// for node-based data structures within the `Chunk` to be mapped safely
 /// to a similarly-shaped data structure.
-/// 
+///
 /// This will be essential for lowering steps throughout the curse compiler.
 pub struct Chunk<T> {
     ptr: ptr::NonNull<T>,
@@ -177,7 +176,7 @@ impl<T> Chunk<T> {
     }
 
     /// To be used with [`Chunk::new_like`].
-    /// 
+    ///
     /// If you `.try_push(...)` on `dst` inside of `f`, whatever you push will
     /// be overwritten and leaked so try not to do that. However, it will still
     /// be safe because [`Ref<'_, T>`] is index-based.
@@ -285,7 +284,7 @@ impl<S> Clone for MapRef<'_, S> {
 impl<S> Copy for MapRef<'_, S> {}
 
 /// An index-based reference into a [`Chunk`].
-/// 
+///
 /// This type contains no unsafe code :)
 #[derive(Copy, Clone)]
 pub struct Ref<'chunk, T> {
@@ -357,15 +356,18 @@ mod tests {
         println!("{int_tree:?}");
 
         let string_tree: Chunk<StringTree> = Chunk::new_like(&int_tree);
-        int_tree.map(&string_tree, |tree: &IntTree, m: MapRef<StringTree>| match tree {
-            IntTree::Int(int32) => StringTree::String(int32.to_string()),
-            IntTree::Pair(lhs, rhs) => {
-                // Map the refs to hold a reference to the new tree that's being
-                // mapped into instead. Indices are stable and so they stay
-                // the same.
-                StringTree::Pair(m.map(lhs), m.map(rhs))
-            }
-        });
+        int_tree.map(
+            &string_tree,
+            |tree: &IntTree, m: MapRef<StringTree>| match tree {
+                IntTree::Int(int32) => StringTree::String(int32.to_string()),
+                IntTree::Pair(lhs, rhs) => {
+                    // Map the refs to hold a reference to the new tree that's being
+                    // mapped into instead. Indices are stable and so they stay
+                    // the same.
+                    StringTree::Pair(m.map(lhs), m.map(rhs))
+                }
+            },
+        );
 
         println!("{string_tree:?}");
     }
