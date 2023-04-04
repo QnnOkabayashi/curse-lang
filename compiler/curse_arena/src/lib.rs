@@ -1,5 +1,7 @@
 use std::cell::Cell;
-use std::{fmt, mem, ops, ptr, slice};
+use std::mem::ManuallyDrop;
+use std::ptr::NonNull;
+use std::{fmt, ops, ptr, slice};
 
 // Initial size in bytes.
 // const INITIAL_SIZE: usize = 1024;
@@ -93,7 +95,7 @@ use std::{fmt, mem, ops, ptr, slice};
 ///
 /// This will be essential for lowering steps throughout the curse compiler.
 pub struct Chunk<T> {
-    ptr: ptr::NonNull<T>,
+    ptr: NonNull<T>,
     len: Cell<usize>,
     cap: usize,
 }
@@ -104,12 +106,12 @@ impl<T> Chunk<T> {
     }
 
     pub fn from_vec(vec: Vec<T>) -> Self {
-        let mut vec = mem::ManuallyDrop::new(vec);
+        let mut vec = ManuallyDrop::new(vec);
 
         unsafe {
             // SAFETY: The ptr that vec uses is guaranteed nonnull.
             Chunk {
-                ptr: ptr::NonNull::new_unchecked(vec.as_mut_ptr()),
+                ptr: NonNull::new_unchecked(vec.as_mut_ptr()),
                 len: Cell::new(vec.len()),
                 cap: vec.capacity(),
             }
@@ -119,6 +121,11 @@ impl<T> Chunk<T> {
     /// The length of the `Chunk`.
     pub fn len(&self) -> usize {
         self.len.get()
+    }
+
+    /// Returns `true` if empty, otherwise `false`.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns the total capacity of the [`Chunk`].
@@ -138,34 +145,23 @@ impl<T> Chunk<T> {
     /// Pushes an element and returns a reference, or gives back the element
     /// if there's not enough space.
     pub fn try_push(&self, value: T) -> Result<Ref<'_, T>, T> {
-        if self.len() == self.cap {
+        let len = self.len();
+
+        if len == self.cap {
             return Err(value);
         }
 
         unsafe {
-            let len = self.len();
-            let end: *mut T = self.ptr.as_ptr().add(len);
-
             // SAFETY: We ensured above that there is spare capacity.
-            ptr::write(end, value);
-
-            self.len.set(len + 1);
-
-            Ok(Ref {
-                index: len,
-                chunk: self,
-            })
-
-            // SAFETY: The following is unsafe in two ways:
-            // 1. We are dereferencing a raw pointer. This is safe because
-            //    we just wrote a valid value to the address.
-            // 2. We're taking a reference to it, which has an arbitrary lifetime.
-            //    This is safe because the lifetime is shortened to the lifetime
-            //    of `&self`, which is correct since a `Chunk` never reallocates
-            //    its buffer. Thus, the reference will be valid for as long
-            //    as the `Chunk` is.
-            // Ok(&*end)
+            self.ptr.as_ptr().add(len).write(value);
         }
+
+        self.len.set(len + 1);
+
+        Ok(Ref {
+            index: len,
+            chunk: self,
+        })
     }
 
     /// Returns a fresh [`Chunk`] with the same capacity as `chunk`.
@@ -294,7 +290,7 @@ pub struct Ref<'chunk, T> {
 
 #[test]
 fn size_of_ref() {
-    println!("{}", mem::size_of::<Ref<'_, ()>>());
+    println!("{}", std::mem::size_of::<Ref<'_, ()>>());
 }
 
 impl<'chunk, T> Ref<'chunk, T> {
