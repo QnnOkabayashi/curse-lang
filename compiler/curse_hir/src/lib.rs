@@ -7,6 +7,11 @@ use std::{collections::HashMap, fmt, num};
 use thiserror::Error;
 use typed_arena::Arena;
 
+// TODO(quinn): what I really want is to be able to iterate over the arena.
+// I think this means I want an arena that returns immutable references when
+// you allocate something. That way, we can still have helpful lifetime annotations
+// and also be allowed to iterate because you're allowed multiple immut refs.
+
 mod equations;
 use equations::{Edge, Equations, Node};
 mod expr;
@@ -32,17 +37,32 @@ pub enum Type<'hir> {
     #[displaydoc("bool")]
     Bool,
     #[displaydoc("{0}")]
-    Tuple(TypeTuple<'hir>),
+    Tuple(TypeTuple<&'hir Self>),
     #[displaydoc("{0}")]
     Var(Var),
     #[displaydoc("{0}")]
-    Function(TypeFunction<'hir>),
+    Function(TypeFunction<&'hir Self>),
+}
+
+// TODO(quinn): in order to actually lower everything, we also need to be able to
+// iterator through what's in the environment...
+
+#[derive(Clone, Debug, Display, PartialEq)]
+pub enum KnownType<'hir> {
+    #[displaydoc("i32")]
+    I32,
+    #[displaydoc("bool")]
+    Bool,
+    #[displaydoc("{0}")]
+    Tuple(TypeTuple<&'hir Self>),
+    #[displaydoc("{0}")]
+    Function(TypeFunction<&'hir Self>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TypeTuple<'hir>(Vec<&'hir Type<'hir>>);
+pub struct TypeTuple<Ty>(Vec<Ty>);
 
-impl fmt::Display for TypeTuple<'_> {
+impl<Ty: fmt::Display> fmt::Display for TypeTuple<Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         if let Some((x, xs)) = self.0.split_first() {
@@ -55,12 +75,17 @@ impl fmt::Display for TypeTuple<'_> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Display, PartialEq)]
-#[displaydoc("({lhs} {rhs} -> {output})")]
-pub struct TypeFunction<'hir> {
-    lhs: &'hir Type<'hir>,
-    rhs: &'hir Type<'hir>,
-    output: &'hir Type<'hir>,
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct TypeFunction<Ty> {
+    lhs: Ty,
+    rhs: Ty,
+    output: Ty,
+}
+
+impl<Ty: fmt::Display> fmt::Display for TypeFunction<Ty> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({} {} -> {})", self.lhs, self.rhs, self.output)
+    }
 }
 
 #[derive(Clone)]
@@ -156,7 +181,7 @@ static UNIT_PAT: ExprPat<'static, 'static> = ExprPat::Tuple(ExprTuple {
 /// and the purpose behind creating a distinction between the two is that
 /// we only ever want to allow for immutable references to the arenas but
 /// mutable references for the vectors. By making `Env` borrow each allocation
-/// from a `Allocations` appropriately, we can freely mutate `Env` because it only
+/// from an `Hir` appropriately, we can freely mutate `Env` because it only
 /// holds shared references to the arenas so no aliasing invariants are broken.
 #[derive(Default)]
 pub struct Hir<'hir, 'input> {
@@ -320,7 +345,6 @@ impl<'hir, 'input> Env<'hir, 'input> {
                             ty,
                         })))
                     } else {
-                        // panic!("ident not found: {} at {}", ident.literal, ident.location);
                         errors.push(LowerError::IdentNotFound(ident.literal.to_string()));
                         None
                     }

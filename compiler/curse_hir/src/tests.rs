@@ -68,9 +68,16 @@ let main: () () -> () = ||
     5 print ()
 "#;
 
+const MATH: &str = r#"
+let main: () () -> () = ||
+    5 in |x|
+    4 in |y|
+    x + y
+"#;
+
 #[test]
 fn test_branching_typeck() {
-    let program = SUPERCHARGE;
+    let program = MATH;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
@@ -127,13 +134,13 @@ fn test_branching_typeck() {
         .collect();
 
     // Put the result into: https://edotor.net/
-    println!("{}", env.equations);
+    // println!("{}", env.equations);
 
     if let Some(expr) = lowered_items["main"].1 {
         assert!(errors.is_empty());
         // println!("{expr}");
         let mut out = vec![];
-        dot::render(expr, &mut out).unwrap();
+        dot::render(&Graph::new(expr), &mut out).unwrap();
         let out = String::from_utf8(out).unwrap();
         println!("{out}");
     } else {

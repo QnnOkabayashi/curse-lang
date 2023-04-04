@@ -219,18 +219,27 @@ impl<'hir> Ty<'hir> for ExprAppl<'hir, '_> {
     }
 }
 
+pub use impl_dot::Graph;
+
 mod impl_dot {
     use super::{Expr, Ty};
 
-    type Nd<'hir, 'input> = &'hir Expr<'hir, 'input>;
-    type Ed<'hir, 'input> = (Nd<'hir, 'input>, Nd<'hir, 'input>);
+    pub struct Graph<'g> {
+        expr: &'g Expr<'g, 'g>,
+    }
 
-    impl<'hir, 'input> dot::GraphWalk<'hir, Nd<'hir, 'input>, Ed<'hir, 'input>> for Expr<'hir, 'input> {
-        fn nodes(&'hir self) -> dot::Nodes<'hir, Nd<'hir, 'input>> {
-            fn expr_nodes<'hir, 'input>(
-                expr: &'hir Expr<'hir, 'input>,
-                nodes: &mut Vec<Nd<'hir, 'input>>,
-            ) {
+    impl<'g> Graph<'g> {
+        pub fn new(expr: &'g Expr<'g, 'g>) -> Self {
+            Graph { expr }
+        }
+    }
+
+    type Nd<'g> = &'g Expr<'g, 'g>;
+    type Ed<'g> = (Nd<'g>, Nd<'g>);
+
+    impl<'g> dot::GraphWalk<'g, Nd<'g>, Ed<'g>> for Graph<'g> {
+        fn nodes(&'g self) -> dot::Nodes<'g, Nd<'g>> {
+            fn expr_nodes<'g>(expr: Nd<'g>, nodes: &mut Vec<Nd<'g>>) {
                 nodes.push(expr);
                 match expr {
                     Expr::Builtin(_) => {}
@@ -256,16 +265,12 @@ mod impl_dot {
             }
 
             let mut nodes = Vec::with_capacity(64);
-            expr_nodes(self, &mut nodes);
+            expr_nodes(self.expr, &mut nodes);
             nodes.into()
         }
 
-        fn edges(&'hir self) -> dot::Edges<'hir, Ed<'hir, 'input>> {
-            fn expr_edges<'hir, 'input>(
-                expr: &'hir Expr<'hir, 'input>,
-                parent: Option<&'hir Expr<'hir, 'input>>,
-                edges: &mut Vec<Ed<'hir, 'input>>,
-            ) {
+        fn edges(&'g self) -> dot::Edges<'g, Ed<'g>> {
+            fn expr_edges<'g>(expr: Nd<'g>, parent: Option<Nd<'g>>, edges: &mut Vec<Ed<'g>>) {
                 if let Some(parent) = parent {
                     edges.push((parent, expr));
                 }
@@ -277,7 +282,7 @@ mod impl_dot {
                     }
                     Expr::Closure(closure) => {
                         for branch in closure.iter_branches() {
-                            expr_edges(branch.body, None, edges);
+                            expr_edges(branch.body, Some(expr), edges);
                         }
                     }
                     Expr::Appl(appl) => {
@@ -288,41 +293,60 @@ mod impl_dot {
                     _ => {}
                 }
             }
-            
+
             let mut edges = Vec::with_capacity(64);
-            expr_edges(self, None, &mut edges);
+            expr_edges(self.expr, None, &mut edges);
             edges.into()
         }
 
-        fn source(&'hir self, edge: &Ed<'hir, 'input>) -> Nd<'hir, 'input> {
+        fn source(&'g self, edge: &Ed<'g>) -> Nd<'g> {
             edge.0
         }
 
-        fn target(&'hir self, edge: &Ed<'hir, 'input>) -> Nd<'hir, 'input> {
+        fn target(&'g self, edge: &Ed<'g>) -> Nd<'g> {
             edge.1
         }
     }
 
-    impl<'hir, 'input> dot::Labeller<'hir, Nd<'hir, 'input>, Ed<'hir, 'input>> for Expr<'hir, 'input> {
-        fn graph_id(&'hir self) -> dot::Id<'hir> {
+    impl<'g> dot::Labeller<'g, Nd<'g>, Ed<'g>> for Graph<'g> {
+        fn graph_id(&'g self) -> dot::Id<'g> {
             dot::Id::new("example").unwrap()
         }
 
-        fn node_id(&'hir self, n: &Nd<'hir, 'input>) -> dot::Id<'hir> {
+        fn node_id(&'g self, n: &Nd<'g>) -> dot::Id<'g> {
             let x = *n as *const _ as usize;
             dot::Id::new(format!("p{}", x)).unwrap()
         }
-    
-        fn node_label(&'hir self, n: &Nd<'hir, 'input>) -> dot::LabelText<'hir> {
+
+        fn node_label(&'g self, n: &Nd<'g>) -> dot::LabelText<'g> {
+            // TODO(quinn): can't just make an easy eval type function because
+            // you can have typevars in tuples and functions and such and will
+            // need to construct a new one of those if they contain a typevar.
+            // So we'll end up creating a bunch of new allocations in the arena
+            // to make these new types. And at that point we may as well lower
+            // again to have concrete types and no dependence on a `&[Typevar]`
+            // for lookups.
+
             match n {
-                Expr::Builtin(builtin) => dot::LabelText::LabelStr(format!("{}: {}", builtin.as_str(), builtin.ty()).into()),
+                Expr::Builtin(builtin) => dot::LabelText::LabelStr(
+                    format!("{}: {}", builtin.as_str(), builtin.ty()).into(),
+                ),
                 Expr::Bool(true) => dot::LabelText::LabelStr("true: bool".into()),
                 Expr::Bool(false) => dot::LabelText::LabelStr("false: bool".into()),
                 Expr::I32(int) => dot::LabelText::LabelStr(format!("{int}: i32").into()),
-                Expr::Ident(ident) => dot::LabelText::LabelStr(format!("{}: {}", ident.literal, ident.ty()).into()),
-                Expr::Tuple(tuple) => dot::LabelText::LabelStr(format!("{}: {}", tuple, tuple.ty()).into()),
-                Expr::Closure(closure) => dot::LabelText::LabelStr(format!("<closure>: {}", closure.ty()).into()),
-                Expr::Appl(appl) => dot::LabelText::LabelStr(format!("<appl>: {}", appl.ty()).into()),
+
+                Expr::Ident(ident) => {
+                    dot::LabelText::LabelStr(format!("{}: {}", ident.literal, ident.ty()).into())
+                }
+                Expr::Tuple(tuple) => {
+                    dot::LabelText::LabelStr(format!("{}: {}", tuple, tuple.ty()).into())
+                }
+                Expr::Closure(closure) => {
+                    dot::LabelText::LabelStr(format!("<closure>: {}", closure.ty()).into())
+                }
+                Expr::Appl(appl) => {
+                    dot::LabelText::LabelStr(format!("<appl>: {}", appl.ty()).into())
+                }
             }
         }
     }
