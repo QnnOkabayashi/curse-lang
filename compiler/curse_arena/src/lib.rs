@@ -4,17 +4,117 @@ use std::num::NonZeroUsize;
 use std::ptr::NonNull;
 use std::{fmt, mem, ops, ptr, slice};
 
-/// Like `Vec<T>`, but cannot reallocate and allows for pushing via only a
-/// shared reference.
+/// An arena for homogeneous data types.
 ///
-/// Also, this type derefs to a `&[T]` of the allocated elements, allowing for
-/// iteration and manual indexing.
+/// This type makes a lot of tradeoffs to suitable for the curse compiler.
 ///
-/// The main benefit of this type is the [`Arena::map`] method, which allows
-/// for node-based data structures within the `Arena` to be mapped safely
-/// to other data structures, while also preserving edges in the form of `&T`s.
+/// Cons:
+/// * Doesn't reallocate, you're required to preallocate all the space you'll need.
+/// * Returns immutable references to allocated elements.
 ///
-/// This will be essential for lowering steps throughout the curse compiler.
+/// Pros:
+/// * Every operation is O(1).
+/// * You can use [`Arena::as_slice`] to get a `&[T]` of the allocated values.
+/// * Can map a `&T` to its offset from the start (as a `usize`) to find the
+///   index of a given allocation in O(1) time using [`Arena::index_of`].
+///
+/// These benefits are limited by themselves, but allow for enormous potential.
+/// For example, you can map a topologically-ordered data structure that uses
+/// `&T` as the edges from one arena into another:
+///
+/// ```
+/// # use curse_arena::Arena;
+/// #[derive(Debug)]
+/// enum IntNode<'a> {
+///     Int(i32),
+///     Pair(&'a Self, &'a Self),
+/// }
+///
+/// #[derive(Debug)]
+/// enum StringNode<'a> {
+///     String(String),
+///     Pair(&'a Self, &'a Self),
+/// }
+///
+/// let int_tree: Arena<IntNode> = Arena::with_capacity(3);
+/// let one: &IntNode<'_> = int_tree.push(IntNode::Int(1));
+/// let two: &IntNode<'_> = int_tree.push(IntNode::Int(2));
+/// let _pair: &IntNode<'_> = int_tree.push(IntNode::Pair(one, two));
+///
+/// assert_eq!(
+///     format!("{int_tree:?}"),
+///     "[Int(1), Int(2), Pair(Int(1), Int(2))]"
+/// );
+///
+/// let string_tree: Arena<StringNode> = Arena::new_like(&int_tree);
+/// for node in int_tree.iter() {
+///     match node {
+///         IntNode::Int(int32) => {
+///             string_tree.push(StringNode::String(int32.to_string()));
+///         }
+///         IntNode::Pair(lhs, rhs) => {
+///             string_tree.push(StringNode::Pair(
+///                 &string_tree[int_tree.index_of(lhs)],
+///                 &string_tree[int_tree.index_of(rhs)],
+///             ));
+///         }
+///     }
+/// }
+///
+/// assert_eq!(
+///     format!("{string_tree:?}"),
+///     r#"[String("1"), String("2"), Pair(String("1"), String("2"))]"#
+/// );
+/// ```
+///
+/// If you plan to map a tree into a non-empty [`Arena`], be sure to add the
+/// initial length when you map your references:
+///
+/// ```rust
+/// # use curse_arena::Arena;
+/// # #[derive(Debug)]
+/// # enum IntNode<'a> {
+/// #     Int(i32),
+/// #     Pair(&'a Self, &'a Self),
+/// # }
+/// #
+/// # #[derive(Debug)]
+/// # enum StringNode<'a> {
+/// #     String(String),
+/// #     Pair(&'a Self, &'a Self),
+/// # }
+/// let int_tree: Arena<IntNode> = Arena::with_capacity(3);
+/// let one: &IntNode<'_> = int_tree.push(IntNode::Int(1));
+/// let two: &IntNode<'_> = int_tree.push(IntNode::Int(2));
+/// let _pair: &IntNode<'_> = int_tree.push(IntNode::Pair(one, two));
+///
+/// assert_eq!(
+///     format!("{int_tree:?}"),
+///     "[Int(1), Int(2), Pair(Int(1), Int(2))]"
+/// );
+///
+/// let string_tree: Arena<StringNode> = Arena::with_capacity(4);
+/// string_tree.push(StringNode::String("hello".to_string()));
+/// let initial_len = string_tree.len();
+/// for node in int_tree.iter() {
+///     match node {
+///         IntNode::Int(int32) => {
+///             string_tree.push(StringNode::String(int32.to_string()));
+///         }
+///         IntNode::Pair(lhs, rhs) => {
+///             string_tree.push(StringNode::Pair(
+///                 &string_tree[int_tree.index_of(lhs) + initial_len],
+///                 &string_tree[int_tree.index_of(rhs) + initial_len],
+///             ));
+///         }
+///     }
+/// }
+///
+/// assert_eq!(
+///     format!("{string_tree:?}"),
+///     r#"[String("hello"), String("1"), String("2"), Pair(String("1"), String("2"))]"#
+/// );
+/// ```
 pub struct Arena<T> {
     /// These are just the raw components of a vector
     nonnull: NonNull<T>,
@@ -59,19 +159,23 @@ impl<T> Arena<T> {
         self.cap
     }
 
+    /// Returns the remaining capacity within the [`Arena`].
     pub fn remaining_capacity(&self) -> usize {
         self.cap.get() - self.len()
     }
 
     /// Returns a slice of the elements that have been pushed so far.
     pub fn as_slice(&self) -> &[T] {
-        // SAFETY:
+        // SAFETY: The contents of the allocation only change on `try_push`,
+        // which accurately updates the length to reflect how many values
+        // are initialized. Thus, the slice is valid.
         unsafe { slice::from_raw_parts(self.nonnull.as_ptr(), self.len()) }
     }
 
     /// Pushes an element and returns a reference, or gives back the element
     /// if there's not enough space.
     pub fn try_push(&self, value: T) -> Result<&T, T> {
+        // Check that there's space
         if self.len() >= self.cap.get() {
             return Err(value);
         }
@@ -79,6 +183,7 @@ impl<T> Arena<T> {
         unsafe {
             // SAFETY: Same code as `Vec::push` pretty much.
             // https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1836-1847
+            // We checked that there's space above.
             let end: *mut T = self.nonnull.as_ptr().add(self.len());
             ptr::write(end, value);
             self.len.set(self.len() + 1);
@@ -90,45 +195,15 @@ impl<T> Arena<T> {
         }
     }
 
-    /// Returns a fresh [`Arena`] with the same capacity as `chunk`.
+    /// Returns a fresh [`Arena`] with the same capacity as `base`.
     ///
-    /// This is handy for creating a new chunk that you want to map into.
-    pub fn new_like<S>(chunk: &Arena<S>) -> Self {
-        Arena::with_capacity(chunk.cap.get()) // unnecessary `.expect()`, oh well
+    /// This is handy for creating a new arena that you want to map into.
+    pub fn new_like<S>(base: &Arena<S>) -> Self {
+        Arena::with_capacity(base.cap.get())
     }
-    // I think you can just simulate this with a for loop...
-    // /// To be used with [`Arena::new_like`].
-    // ///
-    // /// If you `.try_push(...)` on `dst` inside of `f`, whatever you push will
-    // /// be overwritten and leaked so try not to do that. However, it will still
-    // /// be safe because [`Ref<'_, T>`] is index-based.
-    // ///
-    // /// If you want the index of each node, you can use [`Arena::index_of`]
-    // /// on the `&T` passed into your function to get the index.
-    // pub fn map<'chunk, S>(&self, dst: &'chunk Arena<S>, mut f: impl FnMut(&T) -> S) {
-    //     assert!(
-    //         dst.remaining_capacity() >= self.len(),
-    //         "not enough space to map all elements"
-    //     );
 
-    //     for (element, offset) in self.iter().zip(dst.len()..) {
-    //         unsafe {
-    //             // SAFETY: Ensured that `dst.remaining_cap() >= self.len()` holds
-    //             let end = dst.nonnull.as_ptr().add(offset);
-
-    //             // if `f` pushes to `dst`, then anything they push will get
-    //             // overwritten and leaked.
-    //             // SAFETY: ptr is valid for writes and aligned.
-    //             ptr::write(end, f(element));
-
-    //             dst.len.set(offset + 1);
-    //         }
-    //     }
-    // }
-
-    /// Index of the reference in this chunk's array.
-    /// This is simply calculated as the difference of two pointers, and is
-    /// particularly useful for mapping references in [`Arena::map`].
+    /// Index of the reference in this chunk's array in O(1) time.
+    /// This is simply calculated as the difference of two pointers.
     ///
     /// Note that this may return an index _past_ the end of `self`s allocated
     /// data.
@@ -276,6 +351,53 @@ mod tests {
         assert_eq!(
             format!("{string_tree:?}"),
             r#"[String("hi"), String("1"), String("2"), Pair(String("1"), String("2"))]"#
+        );
+    }
+
+    #[test]
+    fn test2() {
+        #[derive(Debug)]
+        enum IntNode<'a> {
+            Int(i32),
+            Pair(&'a Self, &'a Self),
+        }
+
+        #[derive(Debug)]
+        enum StringNode<'a> {
+            String(String),
+            Pair(&'a Self, &'a Self),
+        }
+
+        let int_tree: Arena<IntNode> = Arena::with_capacity(3);
+        let one: &IntNode<'_> = int_tree.push(IntNode::Int(1));
+        let two: &IntNode<'_> = int_tree.push(IntNode::Int(2));
+        let _pair: &IntNode<'_> = int_tree.push(IntNode::Pair(one, two));
+
+        assert_eq!(
+            format!("{int_tree:?}"),
+            "[Int(1), Int(2), Pair(Int(1), Int(2))]"
+        );
+
+        let string_tree: Arena<StringNode> = Arena::with_capacity(4);
+        string_tree.push(StringNode::String("hello".to_string()));
+        let initial_len = string_tree.len();
+        for node in int_tree.iter() {
+            match node {
+                IntNode::Int(int32) => {
+                    string_tree.push(StringNode::String(int32.to_string()));
+                }
+                IntNode::Pair(lhs, rhs) => {
+                    string_tree.push(StringNode::Pair(
+                        &string_tree[int_tree.index_of(lhs) + initial_len],
+                        &string_tree[int_tree.index_of(rhs) + initial_len],
+                    ));
+                }
+            }
+        }
+
+        assert_eq!(
+            format!("{string_tree:?}"),
+            r#"[String("hello"), String("1"), String("2"), Pair(String("1"), String("2"))]"#
         );
     }
 }
