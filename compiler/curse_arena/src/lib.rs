@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::marker::PhantomData;
 use std::mem::{size_of, ManuallyDrop};
 use std::num::NonZeroUsize;
 use std::ptr::NonNull;
@@ -94,7 +93,7 @@ use std::{fmt, ops, ptr, slice};
 ///
 /// This will be essential for lowering steps throughout the curse compiler.
 pub struct Chunk<T> {
-    ptr: NonNull<T>,
+    nonnull: NonNull<T>,
     len: Cell<usize>,
     cap: NonZeroUsize,
 }
@@ -112,7 +111,7 @@ impl<T> Chunk<T> {
         unsafe {
             // SAFETY: The ptr that vec uses is guaranteed nonnull.
             Chunk {
-                ptr: NonNull::new_unchecked(vec.as_mut_ptr()),
+                nonnull: NonNull::new_unchecked(vec.as_mut_ptr()),
                 len: Cell::new(vec.len()),
                 cap,
             }
@@ -140,38 +139,25 @@ impl<T> Chunk<T> {
 
     /// Returns a slice of the elements that have been pushed so far.
     pub fn as_slice(&self) -> &[T] {
-        unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.len()) }
-    }
-
-    /// Returns a pointer to the next free slot, or `None` if the `Chunk` is full.
-    fn next_addr(&self) -> Option<NonNull<T>> {
-        if self.len() >= self.cap.get() {
-            None
-        } else {
-            unsafe {
-                // SAFETY: `len` is basically len of a vec which is never past
-                // `isize::MAX`, it comes from the same allocation, and we just
-                // performed a bounds check.
-                let ptr = self.ptr.as_ptr().add(self.len());
-
-                // SAFETY: ptr points to within an allocation which cannot
-                // be null.
-                Some(NonNull::new_unchecked(ptr))
-            }
-        }
+        unsafe { slice::from_raw_parts(self.nonnull.as_ptr(), self.len()) }
     }
 
     /// Pushes an element and returns a reference, or gives back the element
     /// if there's not enough space.
     pub fn try_push(&self, value: T) -> Result<&T, T> {
-        let Some(end) = self.next_addr() else {
+        if self.len() >= self.cap.get() {
             return Err(value);
-        };
+        }
 
         unsafe {
+            // SAFETY: `len` is basically len of a vec which is never past
+            // `isize::MAX`, it comes from the same allocation, and we just
+            // performed a bounds check.
+            let end: *mut T = self.nonnull.as_ptr().add(self.len());
+
             // SAFETY: same code as `Vec::push` pretty much.
             // https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1836-1847
-            ptr::write(end.as_ptr(), value);
+            ptr::write(end, value);
             self.len.set(self.len() + 1);
 
             // SAFETY: The following has two invariants that must be upheld:
@@ -182,7 +168,7 @@ impl<T> Chunk<T> {
             //    of `&self`, which is correct since a `Chunk` never reallocates
             //    its buffer. Thus, the reference will be valid for as long
             //    as the `Chunk` is.
-            Ok(&*end.as_ptr())
+            Ok(&*end)
         }
     }
 
@@ -191,22 +177,6 @@ impl<T> Chunk<T> {
     /// This is handy for creating a new chunk that you want to map into.
     pub fn new_like<S>(chunk: &Chunk<S>) -> Self {
         Chunk::with_capacity(chunk.cap.get()) // unnecessary `.expect()`, oh well
-    }
-
-    pub fn create_ref_map<'a, S>(&'a self, new_chunk: &'a Chunk<S>) -> RefMap<'a, T, S> {
-        // assert!(self.len() >= new_chunk.len());
-        assert!(size_of::<T>() != 0, "ZSTs are unsupported");
-
-        RefMap {
-            allowed_start: self.ptr.as_ptr(),
-            initialized: &new_chunk.len,
-            new_chunk: new_chunk
-                .next_addr()
-                .expect("no space in new chunk")
-                .as_ptr(),
-            _src_marker: PhantomData,
-            _dst_marker: PhantomData,
-        }
     }
 
     /// To be used with [`Chunk::new_like`].
@@ -220,32 +190,37 @@ impl<T> Chunk<T> {
             "not enough space to map all elements"
         );
 
-        let initial_len = dst.len();
-
-        for (offset, element) in self.iter().enumerate() {
+        for (element, offset) in self.iter().zip(dst.len()..) {
             unsafe {
-                let offset = offset + initial_len;
                 // SAFETY: Ensured that `dst.remaining_cap() >= self.len()` holds
-                let address = dst.ptr.as_ptr().add(offset);
+                let end = dst.nonnull.as_ptr().add(offset);
+
+                // if `f` pushes to `dst`, then anything they push will get
+                // overwritten and leaked.
                 // SAFETY: ptr is valid for writes and aligned.
-                // If `f` panics, it's okay because `dst.len` hasn't been updated yet
-                // so we'll leak whatever's been written thus far.
+                ptr::write(end, f(element));
 
-                // Also, what happens if `f` tries to push to `dst`?
-                // It'll just get overwritten and will leak, which is safe.
-                ptr::write(address, f(element));
-
-                // Update the length immediately so any `RefMap`s working
-                // between the two gets an up-to-date version of the length,
-                // (they borrow the `Cell<usize>`).
-                // Also: do not depend on `self.len()` because `f` might push
-                // something which would update the length. In here, `offset`
-                // is the source of truth.
-                // Even if they pushed to `self`, it would be fine because we're
-                // iterating over a slice which is like a frozen view of `self`.
                 dst.len.set(offset + 1);
             }
         }
+    }
+
+    /// Index of the reference in this chunk's array.
+    /// This is simply calculated as the difference of two pointers, and is
+    /// particularly useful for mapping references in [`Chunk::map`].
+    ///
+    /// Note that this may return an index _past_ the end of `self`s allocated
+    /// data.
+    ///
+    /// # Panics
+    ///
+    /// If the reference points to before the start of `self`'s data, then this
+    /// method will panic.
+    pub fn index_of(&self, reference: &T) -> usize {
+        (reference as *const T as usize)
+            .checked_sub(self.nonnull.as_ptr() as usize)
+            .expect("negative index")
+            / size_of::<T>()
     }
 
     // /// Maps a slice into the `Chunk`.
@@ -276,6 +251,18 @@ impl<T> Chunk<T> {
     // }
 }
 
+impl<T: fmt::Debug> Chunk<T> {
+    /// Pushes an element.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if there's no remaining capacity, as [`Chunk`]
+    /// never reallocates.
+    pub fn push(&self, value: T) -> &T {
+        self.try_push(value).expect("no remaining capacity")
+    }
+}
+
 impl<T: fmt::Debug> fmt::Debug for Chunk<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.as_slice(), f)
@@ -293,63 +280,9 @@ impl<T> ops::Deref for Chunk<T> {
 impl<T> Drop for Chunk<T> {
     fn drop(&mut self) {
         unsafe {
-            let _ = Vec::<T>::from_raw_parts(self.ptr.as_ptr(), self.len.get(), self.cap.get());
+            // SAFETY: yes
+            let _ = Vec::<T>::from_raw_parts(self.nonnull.as_ptr(), self.len.get(), self.cap.get());
         }
-    }
-}
-
-/// Maps references from the old chunk to the new chunk, ensuring that only
-/// valid references are passed in.
-///
-/// We want to allow our node-based data structures (i.e. trees) to
-/// hold plain references to other nodes (`&T`), but in order to map trees into
-/// other trees, we have to guarantee a topological sort.
-///
-/// This type allows for mapping references inside of nodes to the new chunk,
-/// while checking that topological ordering is maintained to prevent any UB
-/// of holding a reference to uninitialized memory.
-pub struct RefMap<'a, Src, Dst> {
-    // Pointer to the start of the old `Chunk`, in units of `Src`
-    allowed_start: *mut Src,
-    // Pointer to the end of the allowed region (exclusive).
-    initialized: &'a Cell<usize>,
-    // The `Chunk` that is being mapped into.
-    new_chunk: *mut Dst,
-    _src_marker: PhantomData<&'a Chunk<Src>>,
-    _dst_marker: PhantomData<&'a Chunk<Dst>>,
-}
-
-impl<'a, Src, Dst> RefMap<'a, Src, Dst> {
-    // This function is INCREDIBLY unsafe
-    pub fn map(&self, p: &Src) -> &'a Dst {
-        let index = (p as *const Src as usize)
-            .checked_sub(self.allowed_start as usize)
-            .expect("invalid addr")
-            / size_of::<Src>();
-
-        if index >= self.initialized.get() {
-            panic!("invalid addr");
-        }
-
-        unsafe {
-            // SAFETY: The address belongs to the chunk and the offset is within
-            // the range of initialized values.
-            &*self.new_chunk.add(index)
-        }
-    }
-}
-
-impl<Src, Dst> Clone for RefMap<'_, Src, Dst> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<Src, Dst> Copy for RefMap<'_, Src, Dst> {}
-
-impl<Src, Dst> fmt::Debug for RefMap<'_, Src, Dst> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RefMap").finish_non_exhaustive()
     }
 }
 
@@ -375,25 +308,29 @@ mod tests {
         let _ = string_tree
             .try_push(StringNode::String("hi".into()))
             .unwrap();
-        {
-            let int_tree: Chunk<IntNode> = Chunk::with_capacity(3);
-            let one: &IntNode<'_> = int_tree.try_push(IntNode::Int(1)).unwrap();
-            let two: &IntNode<'_> = int_tree.try_push(IntNode::Int(2)).unwrap();
-            let _pair: &IntNode<'_> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
 
-            println!("{int_tree:?}");
+        let int_tree: Chunk<IntNode> = Chunk::with_capacity(3);
+        let one: &IntNode<'_> = int_tree.try_push(IntNode::Int(1)).unwrap();
+        let two: &IntNode<'_> = int_tree.try_push(IntNode::Int(2)).unwrap();
+        let _pair: &IntNode<'_> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
 
-            // We can create the map out here, as it holds a reference to `string_tree`s
-            // `len` field (a `Cell<usize>`), which allows it to dynamically check
-            // its length which gets updated between calls in [`Chunk::map`]
-            let m: RefMap<IntNode, StringNode> = int_tree.create_ref_map(&string_tree);
+        let initial_len = string_tree.len();
 
-            int_tree.map(&string_tree, |node: &IntNode| match node {
-                IntNode::Int(int32) => StringNode::String(int32.to_string()),
-                IntNode::Pair(lhs, rhs) => StringNode::Pair(m.map(lhs), m.map(rhs)),
-            });
-        }
+        int_tree.map(&string_tree, |node: &IntNode| match node {
+            IntNode::Int(int32) => StringNode::String(int32.to_string()),
+            IntNode::Pair(lhs, rhs) => StringNode::Pair(
+                &string_tree[int_tree.index_of(lhs) + initial_len],
+                &string_tree[int_tree.index_of(rhs) + initial_len],
+            ),
+        });
 
-        println!("{string_tree:?}");
+        assert_eq!(
+            format!("{int_tree:?}"),
+            "[Int(1), Int(2), Pair(Int(1), Int(2))]"
+        );
+        assert_eq!(
+            format!("{string_tree:?}"),
+            r#"[String("hi"), String("1"), String("2"), Pair(String("1"), String("2"))]"#
+        );
     }
 }
