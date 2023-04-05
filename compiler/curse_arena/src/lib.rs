@@ -1,5 +1,8 @@
+#![allow(unstable_name_collisions)]
+use sptr::Strict;
 use std::cell::Cell;
-use std::mem::ManuallyDrop;
+use std::marker::PhantomData;
+use std::mem::{size_of, ManuallyDrop};
 use std::ptr::NonNull;
 use std::{fmt, ops, ptr, slice};
 
@@ -144,7 +147,7 @@ impl<T> Chunk<T> {
 
     /// Pushes an element and returns a reference, or gives back the element
     /// if there's not enough space.
-    pub fn try_push(&self, value: T) -> Result<Ref<'_, T>, T> {
+    pub fn try_push(&self, value: T) -> Result<&T, T> {
         let len = self.len();
 
         // Check `>=` just in case
@@ -152,18 +155,23 @@ impl<T> Chunk<T> {
             return Err(value);
         }
 
-        // Pretty much copy-pasted from `Vec::push`.
-        // https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1836-1847
         unsafe {
+            // SAFETY: same code as `Vec::push` pretty much.
+            // https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1836-1847
             let end: *mut T = self.ptr.as_ptr().add(len);
             ptr::write(end, value);
             self.len.set(len + 1);
-        }
 
-        Ok(Ref {
-            index: len,
-            chunk: self,
-        })
+            // SAFETY: The following is unsafe in two ways:
+            // 1. We are dereferencing a raw pointer. This is safe because
+            //    we just wrote a valid value to the address.
+            // 2. We're taking a reference to it, which has an arbitrary lifetime.
+            //    This is safe because the lifetime is shortened to the lifetime
+            //    of `&self`, which is correct since a `Chunk` never reallocates
+            //    its buffer. Thus, the reference will be valid for as long
+            //    as the `Chunk` is.
+            Ok(&*end)
+        }
     }
 
     /// Returns a fresh [`Chunk`] with the same capacity as `chunk`.
@@ -173,12 +181,30 @@ impl<T> Chunk<T> {
         Chunk::with_capacity(chunk.cap)
     }
 
+    pub fn create_ref_map<'a, S>(&'a self, new_chunk: &'a Chunk<S>) -> RefMap<'a, T, S> {
+        assert!(self.len() >= new_chunk.len());
+        assert!(size_of::<T>() != 0, "ZSTs are unsupported");
+
+        RefMap {
+            allowed_start: self.ptr.as_ptr(),
+            allowed_end: unsafe {
+                // SAFETY: new_chunk.len() is shorter than self.len() as asserted
+                // above.
+                self.ptr.as_ptr().add(new_chunk.len())
+            },
+            new_chunk: new_chunk.ptr.as_ptr(),
+            _src_marker: PhantomData,
+            _dst_marker: PhantomData,
+        }
+    }
+
     /// To be used with [`Chunk::new_like`].
     ///
     /// If you `.try_push(...)` on `dst` inside of `f`, whatever you push will
     /// be overwritten and leaked so try not to do that. However, it will still
     /// be safe because [`Ref<'_, T>`] is index-based.
     pub fn map<'chunk, S>(&self, dst: &'chunk Chunk<S>, mut f: impl FnMut(&T) -> S) {
+        assert!(size_of::<T>() != 0, "ZSTs are unsupported"); // do we need this?
         assert!(dst.len() == 0, "chunk must start as empty");
         assert!(
             dst.cap >= self.len(),
@@ -199,10 +225,9 @@ impl<T> Chunk<T> {
                 // After all, their `Ref` will just index to the wrong thing,
                 // but that won't cause any UB.
                 ptr::write(address, f(element));
+                dst.len.set(offset + 1);
             }
         }
-
-        dst.len.set(self.len());
     }
 
     // /// Maps a slice into the `Chunk`.
@@ -255,57 +280,51 @@ impl<T> Drop for Chunk<T> {
     }
 }
 
-/// An index-based reference into a [`Chunk`].
+/// Maps references from the old chunk to the new chunk, ensuring that only
+/// valid references are passed in.
 ///
-/// This type contains no unsafe code :)
-#[derive(Copy, Clone)]
-pub struct Ref<'chunk, T> {
-    index: usize,
-    chunk: &'chunk Chunk<T>,
+/// We want to allow our node-based data structures (i.e. trees teehee) to
+/// hold plain references to other nodes (`&T`), but in order to map trees into
+/// other trees, we have to guarantee a topological sort.
+///
+/// This type allows for mapping references inside of nodes to the new chunk,
+/// while enforcing that topological ordering is maintained to prevent any UB
+/// of holding a reference to uninitialized memory.
+// Also not copy or clone intentionally
+pub struct RefMap<'a, Src, Dst> {
+    // Pointer to the start of the old `Chunk`.
+    allowed_start: *mut Src,
+    // Pointer to the end of the allowed region (exclusive).
+    allowed_end: *mut Src,
+    // The `Chunk` that is being mapped into.
+    new_chunk: *mut Dst,
+    _src_marker: PhantomData<&'a Chunk<Src>>,
+    _dst_marker: PhantomData<&'a Chunk<Dst>>,
 }
 
-#[test]
-fn size_of_ref() {
-    println!("{}", std::mem::size_of::<Ref<'_, ()>>());
-}
+impl<'a, T, S> RefMap<'a, T, S> {
+    pub fn map(&self, p: &T) -> &'a S {
+        // All these addresses are byte units
+        let addr = (p as *const T).addr();
+        let allowed_start = self.allowed_start.addr();
+        let allowed_end = self.allowed_end.addr();
 
-impl<'chunk, T> Ref<'chunk, T> {
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    pub fn rebase<'a, S>(&self, chunk: &'a Chunk<S>) -> Ref<'a, S> {
-        Ref {
-            index: self.index,
-            chunk,
+        if addr >= allowed_end || addr < allowed_start {
+            panic!("invalid addr");
         }
-    }
 
-    pub fn get(&self) -> &T {
-        self.chunk
-            .as_slice()
-            .get(self.index)
-            .expect("uninitialized ref")
-    }
-}
+        // Cannot use `offset_from` here because users can get the
+        // same reference but with different provenance using some bs
+        // which would cause UB :(
+        // Also, checked earlier in [`Chunk::map`] (where `self` was created)
+        // that `T` is not a ZST.
+        let offset = (addr - allowed_start) / size_of::<T>();
 
-impl<'chunk, T> ops::Deref for Ref<'chunk, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.get()
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for Ref<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.get(), f)
-    }
-}
-
-impl<T: fmt::Display> fmt::Display for Ref<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self.get(), f)
+        unsafe {
+            // SAFETY: The address belongs to the chunk and the offset is within
+            // the range of initialized values.
+            &*self.new_chunk.add(offset)
+        }
     }
 }
 
@@ -316,21 +335,21 @@ mod tests {
     #[derive(Debug)]
     enum IntNode<'a> {
         Int(i32),
-        Pair(Ref<'a, Self>, Ref<'a, Self>),
+        Pair(&'a Self, &'a Self),
     }
 
     #[derive(Debug)]
     enum StringNode<'a> {
         String(String),
-        Pair(Ref<'a, Self>, Ref<'a, Self>),
+        Pair(&'a Self, &'a Self),
     }
 
     #[test]
     fn test1() {
         let int_tree: Chunk<IntNode> = Chunk::with_capacity(3);
-        let one: Ref<'_, IntNode> = int_tree.try_push(IntNode::Int(1)).unwrap();
-        let two: Ref<'_, IntNode> = int_tree.try_push(IntNode::Int(2)).unwrap();
-        let _pair: Ref<'_, IntNode> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
+        let one: &IntNode<'_> = int_tree.try_push(IntNode::Int(1)).unwrap();
+        let two: &IntNode<'_> = int_tree.try_push(IntNode::Int(2)).unwrap();
+        let _pair: &IntNode<'_> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
 
         println!("{int_tree:?}");
 
@@ -338,10 +357,8 @@ mod tests {
         int_tree.map(&string_tree, |node: &IntNode| match node {
             IntNode::Int(int32) => StringNode::String(int32.to_string()),
             IntNode::Pair(lhs, rhs) => {
-                // Map the refs to hold a reference to the new tree that's being
-                // mapped into instead. Indices are stable and so they stay
-                // the same.
-                StringNode::Pair(lhs.rebase(&string_tree), rhs.rebase(&string_tree))
+                let m = int_tree.create_ref_map(&string_tree);
+                StringNode::Pair(m.map(lhs), m.map(rhs))
             }
         });
 

@@ -15,9 +15,9 @@ use typed_arena::Arena;
 mod equations;
 use equations::{Edge, Equations, Node};
 mod expr;
-mod hm;
-mod hm2;
-mod hm3;
+// mod hm;
+// mod hm2;
+// mod hm3;
 
 #[cfg(test)]
 mod tests;

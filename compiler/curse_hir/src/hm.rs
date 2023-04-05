@@ -89,27 +89,27 @@ impl<'hm> Env<'hm> {
         })))
     }
 
-    /// (* specializes the polytype s by copying the term and replacing the
-    ///     * bound type variables consistently by new monotype variables
-    ///     * E.g.   inst (forall a b. a -> b -> a) = c -> d -> c     *)
-    ///    let inst (PolyType(typevars, typ)) : typ =
-    ///        (* Replace any typevars found in the Hashtbl with the
-    ///         * associated value in the same table, leave them otherwise *)
-    ///        let rec replace_tvs tbl = function
-    ///            | TUnit -> TUnit
-    ///            | TVar({ contents = Bound t }) -> replace_tvs tbl t
-    ///            | TVar({ contents = Unbound (n, level)}) as t ->
-    ///                begin match ITbl.find_opt tbl n with
-    ///                | Some t' -> t'
-    ///                | None -> t
-    ///                end
-    ///            | Fn(a, b) -> Fn(replace_tvs tbl a, replace_tvs tbl b)
-    ///        in
-    ///        (* Note that the returned type is no longer a PolyType,
-    ///         * this means it is now monomorphic, the 'forall' is gone. *)
-    ///        let tvs_to_replace = ITbl.create 1 in
-    ///        List.iter (fun tv -> ITbl.add tvs_to_replace tv (newvar_t ())) typevars;
-    ///        replace_tvs tvs_to_replace typ
+    // (* specializes the polytype s by copying the term and replacing the
+    //     * bound type variables consistently by new monotype variables
+    //     * E.g.   inst (forall a b. a -> b -> a) = c -> d -> c     *)
+    //    let inst (PolyType(typevars, typ)) : typ =
+    //        (* Replace any typevars found in the Hashtbl with the
+    //         * associated value in the same table, leave them otherwise *)
+    //        let rec replace_tvs tbl = function
+    //            | TUnit -> TUnit
+    //            | TVar({ contents = Bound t }) -> replace_tvs tbl t
+    //            | TVar({ contents = Unbound (n, level)}) as t ->
+    //                begin match ITbl.find_opt tbl n with
+    //                | Some t' -> t'
+    //                | None -> t
+    //                end
+    //            | Fn(a, b) -> Fn(replace_tvs tbl a, replace_tvs tbl b)
+    //        in
+    //        (* Note that the returned type is no longer a PolyType,
+    //         * this means it is now monomorphic, the 'forall' is gone. *)
+    //        let tvs_to_replace = ITbl.create 1 in
+    //        List.iter (fun tv -> ITbl.add tvs_to_replace tv (newvar_t ())) typevars;
+    //        replace_tvs tvs_to_replace typ
     pub fn inst(&'hm self, polytype: &Polytype<'hm>) -> &'hm Type<'hm> {
         fn replace_tvs<'hm>(
             tbl: &HashMap<TypevarId, &'hm Type<'hm>>,
@@ -141,15 +141,15 @@ impl<'hm> Env<'hm> {
         replace_tvs(&tvs_to_replace, self, polytype.typ)
     }
 
-    ///     (* Can a monomorphic TVar(a) be found inside this type? *)
-    /// let rec occurs a_id a_level (* in *) = function
-    ///     | TUnit -> false
-    ///     | TVar({ contents = Bound t }) -> occurs a_id a_level t
-    ///     | TVar({ contents = Unbound(b_id, b_level)} as b_typevar) ->
-    ///         let min_level = min a_level b_level in
-    ///         b_typevar := Unbound (b_id, min_level);
-    ///         a_id = b_id
-    ///     | Fn(b, c) -> occurs a_id a_level b || occurs a_id a_level c
+    //     (* Can a monomorphic TVar(a) be found inside this type? *)
+    // let rec occurs a_id a_level (* in *) = function
+    //     | TUnit -> false
+    //     | TVar({ contents = Bound t }) -> occurs a_id a_level t
+    //     | TVar({ contents = Unbound(b_id, b_level)} as b_typevar) ->
+    //         let min_level = min a_level b_level in
+    //         b_typevar := Unbound (b_id, min_level);
+    //         a_id = b_id
+    //     | Fn(b, c) -> occurs a_id a_level b || occurs a_id a_level c
     pub fn occurs(&self, a_id: TypevarId, ty: &'hm Type<'hm>) -> bool {
         match ty {
             Type::Unit => false,
@@ -161,27 +161,27 @@ impl<'hm> Env<'hm> {
         }
     }
 
-    /// let rec unify (t1: typ) (t2: typ) : unit =
-    /// match (t1, t2) with
-    /// | (TUnit, TUnit) -> ()
-    /// (* These two recursive calls to the bound typevar replace
-    /// * the 'find' in the union-find algorithm *)
-    /// | (TVar({ contents = Bound a' }), b) -> unify a' b
-    /// | (a, TVar({ contents = Bound b' })) -> unify a b'
-    /// | (TVar({ contents = Unbound(a_id, a_level) } as a), b) ->
-    ///     (* create binding for boundTy that is currently empty *)
-    ///     if t1 = t2 then () else (* a = a, but dont create a recursive binding to itself *)
-    ///     if occurs a_id a_level b then raise TypeError else
-    ///     a := Bound b
-    /// | (a, TVar({ contents = Unbound(b_id, b_level)} as b)) ->
-    ///     (* create binding for boundTy that is currently empty *)
-    ///     if t1 = t2 then () else
-    ///     if occurs b_id b_level a then raise TypeError else
-    ///     b := Bound a
-    /// | (Fn(a, b), Fn(c, d)) ->
-    ///     unify a c;
-    ///     unify b d
-    /// | (a, b) -> raise TypeError
+    // let rec unify (t1: typ) (t2: typ) : unit =
+    // match (t1, t2) with
+    // | (TUnit, TUnit) -> ()
+    // (* These two recursive calls to the bound typevar replace
+    // * the 'find' in the union-find algorithm *)
+    // | (TVar({ contents = Bound a' }), b) -> unify a' b
+    // | (a, TVar({ contents = Bound b' })) -> unify a b'
+    // | (TVar({ contents = Unbound(a_id, a_level) } as a), b) ->
+    //     (* create binding for boundTy that is currently empty *)
+    //     if t1 = t2 then () else (* a = a, but dont create a recursive binding to itself *)
+    //     if occurs a_id a_level b then raise TypeError else
+    //     a := Bound b
+    // | (a, TVar({ contents = Unbound(b_id, b_level)} as b)) ->
+    //     (* create binding for boundTy that is currently empty *)
+    //     if t1 = t2 then () else
+    //     if occurs b_id b_level a then raise TypeError else
+    //     b := Bound a
+    // | (Fn(a, b), Fn(c, d)) ->
+    //     unify a c;
+    //     unify b d
+    // | (a, b) -> raise TypeError
     pub fn unify(&self, t1: &'hm Type<'hm>, t2: &'hm Type<'hm>) -> Result<(), Error> {
         match (t1, t2) {
             (Type::Unit, Type::Unit) => Ok(()),
@@ -219,20 +219,20 @@ impl<'hm> Env<'hm> {
         }
     }
 
-    /// (* Find all typevars and wrap the type in a PolyType *)
-    /// (* e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b  *)
-    /// let generalize (t: typ) : polytype =
-    ///     (* collect all the monomorphic typevars *)
-    ///     let rec find_all_tvs = function
-    ///         | TUnit -> []
-    ///         | TVar({ contents = Bound t }) -> find_all_tvs t
-    ///         | TVar({ contents = Unbound (n, level)}) ->
-    ///             if level > !current_level then [n]
-    ///             else []
-    ///         | Fn(a, b) -> find_all_tvs a @ find_all_tvs b
-    ///     in find_all_tvs t
-    ///     |> List.sort_uniq compare
-    ///     |> fun typevars -> PolyType(typevars, t)
+    // (* Find all typevars and wrap the type in a PolyType *)
+    // (* e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b  *)
+    // let generalize (t: typ) : polytype =
+    //     (* collect all the monomorphic typevars *)
+    //     let rec find_all_tvs = function
+    //         | TUnit -> []
+    //         | TVar({ contents = Bound t }) -> find_all_tvs t
+    //         | TVar({ contents = Unbound (n, level)}) ->
+    //             if level > !current_level then [n]
+    //             else []
+    //         | Fn(a, b) -> find_all_tvs a @ find_all_tvs b
+    //     in find_all_tvs t
+    //     |> List.sort_uniq compare
+    //     |> fun typevars -> PolyType(typevars, t)
     pub fn generalize(&'hm self, typ: &'hm Type<'hm>) -> Polytype<'hm> {
         fn find_all_tvs<'hm>(env: &'hm Env<'hm>, typ: &'hm Type<'hm>, out: &mut Vec<TypevarId>) {
             match typ {
@@ -262,65 +262,65 @@ impl<'hm> Env<'hm> {
         Polytype { typevars, typ }
     }
 
-    /// (* The main entry point to type inference *)
-    /// (* All branches (except for the trivial Unit) of the first match in this function
-    ///    are translated directly from the rules for algorithm J, given in comments *)
-    /// (* infer : polytype SMap.t -> Expr -> Type *)
-    /// let rec infer env : expr -> typ = function
-    ///     | Unit -> TUnit
-    ///     (* Var
-    ///      *   x : s ∊ env
-    ///      *   t = inst s
-    ///      *   -----------
-    ///      *   infer env x = t
-    ///      *)
-    ///     | Identifier x ->
-    ///         let s = SMap.find x env in
-    ///         let t = inst s in
-    ///         t
-    ///     (* App
-    ///      *   infer env f = t0
-    ///      *   infer env x = t1
-    ///      *   t' = newvar ()
-    ///      *   unify t0 (t1 -> t')
-    ///      *   ---------------
-    ///      *   infer env (f x) = t'
-    ///      *)
-    ///     | FnCall(f, x) ->
-    ///         let t0 = infer env f in
-    ///         let t1 = infer env x in
-    ///         let t' = newvar_t () in
-    ///         unify t0 (Fn(t1, t'));
-    ///         t'
-    ///     (* Abs
-    ///      *   t = newvar ()
-    ///      *   infer (SMap.add x t env) e = t'
-    ///      *   -------------
-    ///      *   infer env (fun x -> e) = t -> t'
-    ///      *)
-    ///     | Lambda(x, e) ->
-    ///         let t = newvar_t () in
-    ///         (* t must be a polytype to go in our map, so make an empty forall *)
-    ///         let env' = SMap.add x (dont_generalize t) env in
-    ///         let t' = infer env' e in
-    ///         Fn(t, t')
-    ///     (* Let
-    ///      *   infer env e0 = t
-    ///      *   infer (SMap.add x (generalize t) env) e1 = t'
-    ///      *   -----------------
-    ///      *   infer env (let x = e0 in e1) = t'
-    ///      *
-    ///      * enter/exit_level optimizations are from
-    ///      * http://okmij.org/ftp/ML/generalization.html
-    ///      * In this implementation, they're required so we
-    ///      * don't generalize types that escape into the environment.
-    ///      *)
-    ///     | Let(x, e0, e1) ->
-    ///         enter_level ();
-    ///         let t = infer env e0 in
-    ///         exit_level ();
-    ///         let t' = infer (SMap.add x (generalize t) env) e1 in
-    ///         t'
+    // (* The main entry point to type inference *)
+    // (* All branches (except for the trivial Unit) of the first match in this function
+    //    are translated directly from the rules for algorithm J, given in comments *)
+    // (* infer : polytype SMap.t -> Expr -> Type *)
+    // let rec infer env : expr -> typ = function
+    //     | Unit -> TUnit
+    //     (* Var
+    //      *   x : s ∊ env
+    //      *   t = inst s
+    //      *   -----------
+    //      *   infer env x = t
+    //      *)
+    //     | Identifier x ->
+    //         let s = SMap.find x env in
+    //         let t = inst s in
+    //         t
+    //     (* App
+    //      *   infer env f = t0
+    //      *   infer env x = t1
+    //      *   t' = newvar ()
+    //      *   unify t0 (t1 -> t')
+    //      *   ---------------
+    //      *   infer env (f x) = t'
+    //      *)
+    //     | FnCall(f, x) ->
+    //         let t0 = infer env f in
+    //         let t1 = infer env x in
+    //         let t' = newvar_t () in
+    //         unify t0 (Fn(t1, t'));
+    //         t'
+    //     (* Abs
+    //      *   t = newvar ()
+    //      *   infer (SMap.add x t env) e = t'
+    //      *   -------------
+    //      *   infer env (fun x -> e) = t -> t'
+    //      *)
+    //     | Lambda(x, e) ->
+    //         let t = newvar_t () in
+    //         (* t must be a polytype to go in our map, so make an empty forall *)
+    //         let env' = SMap.add x (dont_generalize t) env in
+    //         let t' = infer env' e in
+    //         Fn(t, t')
+    //     (* Let
+    //      *   infer env e0 = t
+    //      *   infer (SMap.add x (generalize t) env) e1 = t'
+    //      *   -----------------
+    //      *   infer env (let x = e0 in e1) = t'
+    //      *
+    //      * enter/exit_level optimizations are from
+    //      * http://okmij.org/ftp/ML/generalization.html
+    //      * In this implementation, they're required so we
+    //      * don't generalize types that escape into the environment.
+    //      *)
+    //     | Let(x, e0, e1) ->
+    //         enter_level ();
+    //         let t = infer env e0 in
+    //         exit_level ();
+    //         let t' = infer (SMap.add x (generalize t) env) e1 in
+    //         t'
     pub fn infer(
         &'hm self,
         bindings: &HashMap<String, Polytype<'hm>>,
