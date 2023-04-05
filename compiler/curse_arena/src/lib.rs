@@ -198,7 +198,7 @@ impl<T> Chunk<T> {
         assert!(size_of::<T>() != 0, "ZSTs are unsupported");
 
         RefMap {
-            allowed_start: self.ptr.as_ptr() as usize / size_of::<T>(),
+            allowed_start: self.ptr.as_ptr(),
             initialized: &new_chunk.len,
             new_chunk: new_chunk
                 .next_addr()
@@ -310,7 +310,7 @@ impl<T> Drop for Chunk<T> {
 /// of holding a reference to uninitialized memory.
 pub struct RefMap<'a, Src, Dst> {
     // Pointer to the start of the old `Chunk`, in units of `Src`
-    allowed_start: usize,
+    allowed_start: *mut Src,
     // Pointer to the end of the allowed region (exclusive).
     initialized: &'a Cell<usize>,
     // The `Chunk` that is being mapped into.
@@ -322,21 +322,19 @@ pub struct RefMap<'a, Src, Dst> {
 impl<'a, Src, Dst> RefMap<'a, Src, Dst> {
     // This function is INCREDIBLY unsafe
     pub fn map(&self, p: &Src) -> &'a Dst {
-        // address of ref in units of `Src`
-        let offset_from_null = p as *const Src as usize / size_of::<Src>();
+        let index = (p as *const Src as usize)
+            .checked_sub(self.allowed_start as usize)
+            .expect("invalid addr")
+            / size_of::<Src>();
 
-        let offset_from_start = offset_from_null
-            .checked_sub(self.allowed_start)
-            .expect("invalid addr");
-
-        if offset_from_start >= self.initialized.get() {
+        if index >= self.initialized.get() {
             panic!("invalid addr");
         }
 
         unsafe {
             // SAFETY: The address belongs to the chunk and the offset is within
             // the range of initialized values.
-            &*self.new_chunk.add(offset_from_start)
+            &*self.new_chunk.add(index)
         }
     }
 }
