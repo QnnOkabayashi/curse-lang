@@ -172,12 +172,12 @@ impl<T> Arena<T> {
         unsafe { slice::from_raw_parts(self.nonnull.as_ptr(), self.len()) }
     }
 
-    /// Pushes an element and returns a reference, or gives back the element
-    /// if there's not enough space.
-    pub fn try_push(&self, value: T) -> Result<&T, T> {
+    /// Pushes an element and returns a reference, or gives back the value
+    /// wrapped in a [`CapacityError`] if there's not enough space.
+    pub fn try_push(&self, value: T) -> Result<&T, CapacityError<T>> {
         // Check that there's space
         if self.len() >= self.cap.get() {
-            return Err(value);
+            return Err(CapacityError { value });
         }
 
         unsafe {
@@ -193,6 +193,16 @@ impl<T> Arena<T> {
             // of `&self`, which is safe because `Arena` **never** reallocates.
             Ok(&*end)
         }
+    }
+
+    /// Pushes an element.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if there's no remaining capacity, as [`Arena`]
+    /// never reallocates.
+    pub fn push(&self, value: T) -> &T {
+        self.try_push(value).unwrap()
     }
 
     /// Returns a fresh [`Arena`] with the same capacity as `base`.
@@ -258,18 +268,6 @@ impl<T> Arena<T> {
     // }
 }
 
-impl<T: fmt::Debug> Arena<T> {
-    /// Pushes an element.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if there's no remaining capacity, as [`Arena`]
-    /// never reallocates.
-    pub fn push(&self, value: T) -> &T {
-        self.try_push(value).expect("no remaining capacity")
-    }
-}
-
 impl<T: fmt::Debug> fmt::Debug for Arena<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.as_slice(), f)
@@ -292,6 +290,34 @@ impl<T> Drop for Arena<T> {
         }
     }
 }
+
+/// Error value returned by [`Arena::try_push`] indicating insufficient capacity.
+/// 
+/// To recover the value, use [`.value()`](CapacityError::value).
+pub struct CapacityError<T> {
+    value: T
+}
+
+impl<T> CapacityError<T> {
+    /// Returns the inner value.
+    pub fn value(self) -> T {
+        self.value
+    }
+}
+
+impl<T> fmt::Debug for CapacityError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("CapacityError: insufficient capacity")
+    }
+}
+
+impl<T> fmt::Display for CapacityError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("insufficient capacity")
+    }
+}
+
+impl<T> std::error::Error for CapacityError<T> {}
 
 /// Helper type for mapping references between maps.
 pub struct RefMap<'src, 'dst, Src, Dst> {
