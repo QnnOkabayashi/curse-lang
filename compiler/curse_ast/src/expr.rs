@@ -71,6 +71,10 @@ impl<'ast, 'input> ExprClosure<'ast, 'input> {
         self
     }
 
+    pub fn num_branches(&self) -> usize {
+        1 + self.tail.len()
+    }
+
     pub fn iter_branches(&self) -> impl Iterator<Item = &ExprBranch<'ast, 'input>> {
         Some(&self.head)
             .into_iter()

@@ -152,6 +152,24 @@ fn test_branching_typeck() {
     }
 }
 
+#[test]
+fn test_count_allocations() {
+    let program = r#"
+let main: () () -> () = ||
+    5 in |x|
+    4 in |y|
+    x + y
+"#;
+
+    let ctx = curse_parse::Context::new();
+    let program = curse_parse::parse_program(&ctx, program).unwrap();
+
+    let counter = AllocationCounter::count_in_program(&program);
+    assert_eq!(counter.num_exprs, 13);
+    assert_eq!(counter.num_expr_pats, 2);
+    assert_eq!(counter.num_branches, 3);
+}
+
 const PROG2: &str = r#"
     0 range 10
         map (|x| x + 1)

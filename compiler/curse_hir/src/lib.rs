@@ -176,6 +176,62 @@ static UNIT_PAT: ExprPat<'static, 'static> = ExprPat::Tuple(ExprTuple {
     ty: &UNIT_TY,
 });
 
+/// Count the number of allocations in an [`ast::Program<'_, '_>`].
+#[derive(Debug)]
+pub struct AllocationCounter {
+    pub num_exprs: usize,
+    pub num_expr_pats: usize,
+    pub num_branches: usize,
+}
+
+impl AllocationCounter {
+    pub fn count_in_program(program: &ast::Program<'_, '_>) -> Self {
+        let mut counter = AllocationCounter {
+            num_exprs: 0,
+            num_expr_pats: 0,
+            num_branches: 0,
+        };
+
+        for item in program.items.iter() {
+            counter.count_in_expr(item.expr);
+        }
+        counter
+    }
+
+    fn count_in_expr(&mut self, expr: &ast::Expr<'_, '_>) {
+        match expr {
+            ast::Expr::Paren(parens) => self.count_in_expr(&parens.expr),
+            ast::Expr::Tuple(tuple) => {
+                self.num_exprs += tuple.len();
+                for element in tuple.iter_elements() {
+                    self.count_in_expr(element);
+                }
+            }
+            ast::Expr::Closure(closure) => {
+                self.num_exprs += 1;
+                self.num_branches += closure.num_branches();
+
+                for branch in closure.iter_branches() {
+                    self.num_expr_pats += match branch.params {
+                        ast::ExprParams::Zero => 0,
+                        ast::ExprParams::One(..) => 1,
+                        ast::ExprParams::Two(..) => 2,
+                    };
+
+                    self.count_in_expr(branch.body);
+                }
+            }
+            ast::Expr::Appl(appl) => {
+                self.num_exprs += 1;
+                self.count_in_expr(&appl.lhs);
+                self.count_in_expr(&appl.function);
+                self.count_in_expr(&appl.rhs);
+            }
+            _ => self.num_exprs += 1,
+        }
+    }
+}
+
 /// A base type that owns _most_ memory allocations in the HIR.
 /// This type is intended to be borrowed from by [`Env::new`],
 /// and the purpose behind creating a distinction between the two is that
