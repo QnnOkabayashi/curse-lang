@@ -1,8 +1,7 @@
-#![allow(unstable_name_collisions)]
-use sptr::Strict;
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::mem::{size_of, ManuallyDrop};
+use std::num::NonZeroUsize;
 use std::ptr::NonNull;
 use std::{fmt, ops, ptr, slice};
 
@@ -97,7 +96,7 @@ use std::{fmt, ops, ptr, slice};
 pub struct Chunk<T> {
     ptr: NonNull<T>,
     len: Cell<usize>,
-    cap: usize,
+    cap: NonZeroUsize,
 }
 
 impl<T> Chunk<T> {
@@ -106,6 +105,8 @@ impl<T> Chunk<T> {
     }
 
     pub fn from_vec(vec: Vec<T>) -> Self {
+        assert!(size_of::<T>() != 0, "ZSTs are unsupported");
+        let cap = NonZeroUsize::new(vec.capacity()).expect("chunks must be larger than 0");
         let mut vec = ManuallyDrop::new(vec);
 
         unsafe {
@@ -113,7 +114,7 @@ impl<T> Chunk<T> {
             Chunk {
                 ptr: NonNull::new_unchecked(vec.as_mut_ptr()),
                 len: Cell::new(vec.len()),
-                cap: vec.capacity(),
+                cap,
             }
         }
     }
@@ -129,12 +130,12 @@ impl<T> Chunk<T> {
     }
 
     /// Returns the total capacity of the [`Chunk`].
-    pub fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> NonZeroUsize {
         self.cap
     }
 
     pub fn remaining_capacity(&self) -> usize {
-        self.cap - self.len()
+        self.cap.get() - self.len()
     }
 
     /// Returns a slice of the elements that have been pushed so far.
@@ -142,24 +143,38 @@ impl<T> Chunk<T> {
         unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.len()) }
     }
 
+    /// Returns a pointer to the next free slot, or `None` if the `Chunk` is full.
+    fn next_addr(&self) -> Option<NonNull<T>> {
+        if self.len() >= self.cap.get() {
+            None
+        } else {
+            unsafe {
+                // SAFETY: `len` is basically len of a vec which is never past
+                // `isize::MAX`, it comes from the same allocation, and we just
+                // performed a bounds check.
+                let ptr = self.ptr.as_ptr().add(self.len());
+
+                // SAFETY: ptr points to within an allocation which cannot
+                // be null.
+                Some(NonNull::new_unchecked(ptr))
+            }
+        }
+    }
+
     /// Pushes an element and returns a reference, or gives back the element
     /// if there's not enough space.
     pub fn try_push(&self, value: T) -> Result<&T, T> {
-        let len = self.len();
-
-        // Check `>=` just in case
-        if len >= self.cap {
+        let Some(end) = self.next_addr() else {
             return Err(value);
-        }
+        };
 
         unsafe {
             // SAFETY: same code as `Vec::push` pretty much.
             // https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1836-1847
-            let end: *mut T = self.ptr.as_ptr().add(len);
-            ptr::write(end, value);
-            self.len.set(len + 1);
+            ptr::write(end.as_ptr(), value);
+            self.len.set(self.len() + 1);
 
-            // SAFETY: The following is unsafe in two ways:
+            // SAFETY: The following has two invariants that must be upheld:
             // 1. We are dereferencing a raw pointer. This is safe because
             //    we just wrote a valid value to the address.
             // 2. We're taking a reference to it, which has an arbitrary lifetime.
@@ -167,7 +182,7 @@ impl<T> Chunk<T> {
             //    of `&self`, which is correct since a `Chunk` never reallocates
             //    its buffer. Thus, the reference will be valid for as long
             //    as the `Chunk` is.
-            Ok(&*end)
+            Ok(&*end.as_ptr())
         }
     }
 
@@ -175,17 +190,20 @@ impl<T> Chunk<T> {
     ///
     /// This is handy for creating a new chunk that you want to map into.
     pub fn new_like<S>(chunk: &Chunk<S>) -> Self {
-        Chunk::with_capacity(chunk.cap)
+        Chunk::with_capacity(chunk.cap.get()) // unnecessary `.expect()`, oh well
     }
 
     pub fn create_ref_map<'a, S>(&'a self, new_chunk: &'a Chunk<S>) -> RefMap<'a, T, S> {
-        assert!(self.len() >= new_chunk.len());
+        // assert!(self.len() >= new_chunk.len());
         assert!(size_of::<T>() != 0, "ZSTs are unsupported");
 
         RefMap {
-            allowed_start: self.ptr.as_ptr().addr() / size_of::<T>(),
+            allowed_start: self.ptr.as_ptr() as usize / size_of::<T>(),
             initialized: &new_chunk.len,
-            new_chunk: new_chunk.ptr.as_ptr(),
+            new_chunk: new_chunk
+                .next_addr()
+                .expect("no space in new chunk")
+                .as_ptr(),
             _src_marker: PhantomData,
             _dst_marker: PhantomData,
         }
@@ -197,27 +215,34 @@ impl<T> Chunk<T> {
     /// be overwritten and leaked so try not to do that. However, it will still
     /// be safe because [`Ref<'_, T>`] is index-based.
     pub fn map<'chunk, S>(&self, dst: &'chunk Chunk<S>, mut f: impl FnMut(&T) -> S) {
-        assert!(size_of::<T>() != 0, "ZSTs are unsupported"); // do we need this?
-        assert!(dst.len() == 0, "chunk must start as empty");
         assert!(
-            dst.cap >= self.len(),
+            dst.remaining_capacity() >= self.len(),
             "not enough space to map all elements"
         );
 
-        let into_start: *mut S = dst.ptr.as_ptr();
+        let initial_len = dst.len();
+
         for (offset, element) in self.iter().enumerate() {
             unsafe {
-                // SAFETY: `dst` has cap >= self.len().
-                let address = into_start.add(offset);
+                let offset = offset + initial_len;
+                // SAFETY: Ensured that `dst.remaining_cap() >= self.len()` holds
+                let address = dst.ptr.as_ptr().add(offset);
                 // SAFETY: ptr is valid for writes and aligned.
-                // If `f` panics, it's okay because `into.len` hasn't been updated yet
+                // If `f` panics, it's okay because `dst.len` hasn't been updated yet
                 // so we'll leak whatever's been written thus far.
 
                 // Also, what happens if `f` tries to push to `dst`?
                 // It'll just get overwritten and will leak, which is safe.
-                // After all, their `Ref` will just index to the wrong thing,
-                // but that won't cause any UB.
                 ptr::write(address, f(element));
+
+                // Update the length immediately so any `RefMap`s working
+                // between the two gets an up-to-date version of the length,
+                // (they borrow the `Cell<usize>`).
+                // Also: do not depend on `self.len()` because `f` might push
+                // something which would update the length. In here, `offset`
+                // is the source of truth.
+                // Even if they pushed to `self`, it would be fine because we're
+                // iterating over a slice which is like a frozen view of `self`.
                 dst.len.set(offset + 1);
             }
         }
@@ -268,7 +293,7 @@ impl<T> ops::Deref for Chunk<T> {
 impl<T> Drop for Chunk<T> {
     fn drop(&mut self) {
         unsafe {
-            let _ = Vec::<T>::from_raw_parts(self.ptr.as_ptr(), self.len.get(), self.cap);
+            let _ = Vec::<T>::from_raw_parts(self.ptr.as_ptr(), self.len.get(), self.cap.get());
         }
     }
 }
@@ -298,7 +323,7 @@ impl<'a, Src, Dst> RefMap<'a, Src, Dst> {
     // This function is INCREDIBLY unsafe
     pub fn map(&self, p: &Src) -> &'a Dst {
         // address of ref in units of `Src`
-        let offset_from_null = (p as *const Src).addr() / size_of::<Src>();
+        let offset_from_null = p as *const Src as usize / size_of::<Src>();
 
         let offset_from_start = offset_from_null
             .checked_sub(self.allowed_start)
@@ -318,13 +343,7 @@ impl<'a, Src, Dst> RefMap<'a, Src, Dst> {
 
 impl<Src, Dst> Clone for RefMap<'_, Src, Dst> {
     fn clone(&self) -> Self {
-        RefMap {
-            allowed_start: self.allowed_start,
-            initialized: self.initialized,
-            new_chunk: self.new_chunk,
-            _src_marker: PhantomData,
-            _dst_marker: PhantomData,
-        }
+        *self
     }
 }
 
@@ -354,24 +373,28 @@ mod tests {
 
     #[test]
     fn test1() {
-        let int_tree: Chunk<IntNode> = Chunk::with_capacity(3);
-        let one: &IntNode<'_> = int_tree.try_push(IntNode::Int(1)).unwrap();
-        let two: &IntNode<'_> = int_tree.try_push(IntNode::Int(2)).unwrap();
-        let _pair: &IntNode<'_> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
+        let string_tree: Chunk<StringNode> = Chunk::with_capacity(4);
+        let _ = string_tree
+            .try_push(StringNode::String("hi".into()))
+            .unwrap();
+        {
+            let int_tree: Chunk<IntNode> = Chunk::with_capacity(3);
+            let one: &IntNode<'_> = int_tree.try_push(IntNode::Int(1)).unwrap();
+            let two: &IntNode<'_> = int_tree.try_push(IntNode::Int(2)).unwrap();
+            let _pair: &IntNode<'_> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
 
-        println!("{int_tree:?}");
+            println!("{int_tree:?}");
 
-        let string_tree: Chunk<StringNode> = Chunk::new_like(&int_tree);
+            // We can create the map out here, as it holds a reference to `string_tree`s
+            // `len` field (a `Cell<usize>`), which allows it to dynamically check
+            // its length which gets updated between calls in [`Chunk::map`]
+            let m: RefMap<IntNode, StringNode> = int_tree.create_ref_map(&string_tree);
 
-        // We can create the map out here, as it holds a reference to `string_tree`s
-        // `len` field (a `Cell<usize>`), which allows it to dynamically check
-        // its length which gets updated between calls in [`Chunk::map`]
-        let m: RefMap<IntNode, StringNode> = int_tree.create_ref_map(&string_tree);
-
-        int_tree.map(&string_tree, |node: &IntNode| match node {
-            IntNode::Int(int32) => StringNode::String(int32.to_string()),
-            IntNode::Pair(lhs, rhs) => StringNode::Pair(m.map(lhs), m.map(rhs)),
-        });
+            int_tree.map(&string_tree, |node: &IntNode| match node {
+                IntNode::Int(int32) => StringNode::String(int32.to_string()),
+                IntNode::Pair(lhs, rhs) => StringNode::Pair(m.map(lhs), m.map(rhs)),
+            });
+        }
 
         println!("{string_tree:?}");
     }
