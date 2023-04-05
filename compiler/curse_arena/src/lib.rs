@@ -292,10 +292,10 @@ impl<T> Drop for Arena<T> {
 }
 
 /// Error value returned by [`Arena::try_push`] indicating insufficient capacity.
-/// 
+///
 /// To recover the value, use [`.value()`](CapacityError::value).
 pub struct CapacityError<T> {
-    value: T
+    value: T,
 }
 
 impl<T> CapacityError<T> {
