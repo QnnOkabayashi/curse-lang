@@ -184,6 +184,9 @@ impl<T> Chunk<T> {
     /// If you `.try_push(...)` on `dst` inside of `f`, whatever you push will
     /// be overwritten and leaked so try not to do that. However, it will still
     /// be safe because [`Ref<'_, T>`] is index-based.
+    ///
+    /// If you want the index of each node, you can use [`Chunk::index_of`]
+    /// on the `&T` passed into your function to get the index.
     pub fn map<'chunk, S>(&self, dst: &'chunk Chunk<S>, mut f: impl FnMut(&T) -> S) {
         assert!(
             dst.remaining_capacity() >= self.len(),
@@ -221,6 +224,17 @@ impl<T> Chunk<T> {
             .checked_sub(self.nonnull.as_ptr() as usize)
             .expect("negative index")
             / size_of::<T>()
+    }
+
+    pub fn ref_map<'src, 'dst, Dst>(
+        &'src self,
+        dst: &'dst Chunk<Dst>,
+    ) -> RefMap<'src, 'dst, T, Dst> {
+        RefMap {
+            src: self,
+            dst,
+            initial_len: dst.len(),
+        }
     }
 
     // /// Maps a slice into the `Chunk`.
@@ -286,6 +300,19 @@ impl<T> Drop for Chunk<T> {
     }
 }
 
+/// Helper type for mapping references between maps.
+pub struct RefMap<'src, 'dst, Src, Dst> {
+    src: &'src Chunk<Src>,
+    dst: &'dst Chunk<Dst>,
+    initial_len: usize,
+}
+
+impl<'src, 'dst, Src, Dst> RefMap<'src, 'dst, Src, Dst> {
+    pub fn map(&self, r: &'src Src) -> &'dst Dst {
+        &self.dst[self.src.index_of(r) + self.initial_len]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,6 +327,7 @@ mod tests {
     enum StringNode<'a> {
         String(String),
         Pair(&'a Self, &'a Self),
+        Dummy,
     }
 
     #[test]
@@ -328,6 +356,39 @@ mod tests {
             format!("{int_tree:?}"),
             "[Int(1), Int(2), Pair(Int(1), Int(2))]"
         );
+        assert_eq!(
+            format!("{string_tree:?}"),
+            r#"[String("hi"), String("1"), String("2"), Pair(String("1"), String("2"))]"#
+        );
+    }
+
+    #[test]
+    fn test_push_while_mapping() {
+        let string_tree: Chunk<StringNode> = Chunk::with_capacity(4);
+        let _ = string_tree
+            .try_push(StringNode::String("hi".into()))
+            .unwrap();
+
+        let int_tree: Chunk<IntNode> = Chunk::with_capacity(3);
+        let one: &IntNode<'_> = int_tree.try_push(IntNode::Int(1)).unwrap();
+        let two: &IntNode<'_> = int_tree.try_push(IntNode::Int(2)).unwrap();
+        let _pair: &IntNode<'_> = int_tree.try_push(IntNode::Pair(one, two)).unwrap();
+
+        let refmap = int_tree.ref_map(&string_tree);
+        int_tree.map(&string_tree, |node: &IntNode| {
+            string_tree.push(StringNode::Dummy);
+            match node {
+                IntNode::Int(int32) => StringNode::String(int32.to_string()),
+                IntNode::Pair(lhs, rhs) => StringNode::Pair(refmap.map(lhs), refmap.map(rhs)),
+            }
+        });
+
+        assert_eq!(
+            format!("{int_tree:?}"),
+            "[Int(1), Int(2), Pair(Int(1), Int(2))]"
+        );
+
+        // no `Dummy` items here, they were all overwritten.
         assert_eq!(
             format!("{string_tree:?}"),
             r#"[String("hi"), String("1"), String("2"), Pair(String("1"), String("2"))]"#
