@@ -86,15 +86,12 @@ use std::{fmt, ops, ptr, slice};
 /// Like `Vec<T>`, but cannot reallocate and allows for pushing via only a
 /// shared reference.
 ///
-/// When pushing an item with [`Chunk::try_push`], a [`Ref<'_, T>`] is returned
-/// which allows for safe access into the `Chunk`.
-///
 /// Also, this type derefs to a `&[T]` of the allocated elements, allowing for
 /// iteration and manual indexing.
 ///
 /// The main benefit of this type is the [`Chunk::map`] method, which allows
 /// for node-based data structures within the `Chunk` to be mapped safely
-/// to a similarly-shaped data structure.
+/// to other data structures, while also preserving edges in the form of `&T`s.
 ///
 /// This will be essential for lowering steps throughout the curse compiler.
 pub struct Chunk<T> {
@@ -186,12 +183,8 @@ impl<T> Chunk<T> {
         assert!(size_of::<T>() != 0, "ZSTs are unsupported");
 
         RefMap {
-            allowed_start: self.ptr.as_ptr(),
-            allowed_end: unsafe {
-                // SAFETY: new_chunk.len() is shorter than self.len() as asserted
-                // above.
-                self.ptr.as_ptr().add(new_chunk.len())
-            },
+            allowed_start: self.ptr.as_ptr().addr() / size_of::<T>(),
+            initialized: &new_chunk.len,
             new_chunk: new_chunk.ptr.as_ptr(),
             _src_marker: PhantomData,
             _dst_marker: PhantomData,
@@ -283,48 +276,63 @@ impl<T> Drop for Chunk<T> {
 /// Maps references from the old chunk to the new chunk, ensuring that only
 /// valid references are passed in.
 ///
-/// We want to allow our node-based data structures (i.e. trees teehee) to
+/// We want to allow our node-based data structures (i.e. trees) to
 /// hold plain references to other nodes (`&T`), but in order to map trees into
 /// other trees, we have to guarantee a topological sort.
 ///
 /// This type allows for mapping references inside of nodes to the new chunk,
-/// while enforcing that topological ordering is maintained to prevent any UB
+/// while checking that topological ordering is maintained to prevent any UB
 /// of holding a reference to uninitialized memory.
-// Also not copy or clone intentionally
 pub struct RefMap<'a, Src, Dst> {
-    // Pointer to the start of the old `Chunk`.
-    allowed_start: *mut Src,
+    // Pointer to the start of the old `Chunk`, in units of `Src`
+    allowed_start: usize,
     // Pointer to the end of the allowed region (exclusive).
-    allowed_end: *mut Src,
+    initialized: &'a Cell<usize>,
     // The `Chunk` that is being mapped into.
     new_chunk: *mut Dst,
     _src_marker: PhantomData<&'a Chunk<Src>>,
     _dst_marker: PhantomData<&'a Chunk<Dst>>,
 }
 
-impl<'a, T, S> RefMap<'a, T, S> {
-    pub fn map(&self, p: &T) -> &'a S {
-        // All these addresses are byte units
-        let addr = (p as *const T).addr();
-        let allowed_start = self.allowed_start.addr();
-        let allowed_end = self.allowed_end.addr();
+impl<'a, Src, Dst> RefMap<'a, Src, Dst> {
+    // This function is INCREDIBLY unsafe
+    pub fn map(&self, p: &Src) -> &'a Dst {
+        // address of ref in units of `Src`
+        let offset_from_null = (p as *const Src).addr() / size_of::<Src>();
 
-        if addr >= allowed_end || addr < allowed_start {
+        let offset_from_start = offset_from_null
+            .checked_sub(self.allowed_start)
+            .expect("invalid addr");
+
+        if offset_from_start >= self.initialized.get() {
             panic!("invalid addr");
         }
-
-        // Cannot use `offset_from` here because users can get the
-        // same reference but with different provenance using some bs
-        // which would cause UB :(
-        // Also, checked earlier in [`Chunk::map`] (where `self` was created)
-        // that `T` is not a ZST.
-        let offset = (addr - allowed_start) / size_of::<T>();
 
         unsafe {
             // SAFETY: The address belongs to the chunk and the offset is within
             // the range of initialized values.
-            &*self.new_chunk.add(offset)
+            &*self.new_chunk.add(offset_from_start)
         }
+    }
+}
+
+impl<Src, Dst> Clone for RefMap<'_, Src, Dst> {
+    fn clone(&self) -> Self {
+        RefMap {
+            allowed_start: self.allowed_start,
+            initialized: self.initialized,
+            new_chunk: self.new_chunk,
+            _src_marker: PhantomData,
+            _dst_marker: PhantomData,
+        }
+    }
+}
+
+impl<Src, Dst> Copy for RefMap<'_, Src, Dst> {}
+
+impl<Src, Dst> fmt::Debug for RefMap<'_, Src, Dst> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RefMap").finish_non_exhaustive()
     }
 }
 
@@ -354,23 +362,17 @@ mod tests {
         println!("{int_tree:?}");
 
         let string_tree: Chunk<StringNode> = Chunk::new_like(&int_tree);
+
+        // We can create the map out here, as it holds a reference to `string_tree`s
+        // `len` field (a `Cell<usize>`), which allows it to dynamically check
+        // its length which gets updated between calls in [`Chunk::map`]
+        let m: RefMap<IntNode, StringNode> = int_tree.create_ref_map(&string_tree);
+
         int_tree.map(&string_tree, |node: &IntNode| match node {
             IntNode::Int(int32) => StringNode::String(int32.to_string()),
-            IntNode::Pair(lhs, rhs) => {
-                let m = int_tree.create_ref_map(&string_tree);
-                StringNode::Pair(m.map(lhs), m.map(rhs))
-            }
+            IntNode::Pair(lhs, rhs) => StringNode::Pair(m.map(lhs), m.map(rhs)),
         });
 
         println!("{string_tree:?}");
     }
 }
-
-// TODO(quinn): only types get shared across a lot of things.
-// Expressions do not.
-
-// So we should use either an index or ptr-based model (but not references)
-// so that lowering can be done linearly and elements that point to later
-// elements will just point to invalid data until the whole lowering process
-// is done. Would probably be smart to do an index-based one and hold a reference
-// to the actual graph just in case we do try to early access to ensure safety.
