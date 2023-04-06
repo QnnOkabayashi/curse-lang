@@ -81,9 +81,24 @@ fn test_branching_typeck() {
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
+    let counter = AllocationCounter::count_in_program(&program);
+    println!("{counter:#?}");
 
-    let mut hir = Hir::default();
-    let mut env = Env::new(&mut hir);
+    let types = Arena::with_capacity(1024); // need to precompute this..
+    let mut typevars = Vec::new();
+    let exprs = Arena::with_capacity(counter.num_exprs);
+    let expr_pats = Arena::with_capacity(counter.num_expr_pats);
+    let expr_branches = Arena::with_capacity(counter.num_branches);
+    let mut equations = Equations::new();
+
+    let mut env = Env {
+        types: &types,
+        typevars: &mut typevars,
+        exprs: &exprs,
+        expr_pats: &expr_pats,
+        expr_branches: &expr_branches,
+        equations: &mut equations,
+    };
 
     // temporary for now until we can have custom named types
     let type_scope: HashMap<&str, &Type<'_>> = HashMap::new();
@@ -135,6 +150,16 @@ fn test_branching_typeck() {
 
     // Put the result into: https://edotor.net/
     // println!("{}", env.equations);
+
+    println!("exprs remaining capacity = {}", exprs.remaining_capacity());
+    println!(
+        "expr_pats remaining capacity = {}",
+        expr_pats.remaining_capacity()
+    );
+    println!(
+        "expr_branches remaining capacity = {}",
+        expr_branches.remaining_capacity()
+    );
 
     if let Some(expr) = lowered_items["main"].1 {
         assert!(errors.is_empty());

@@ -1,11 +1,11 @@
 #![allow(dead_code)]
+use curse_arena::Arena;
 use curse_ast as ast;
 use displaydoc::Display;
 use expr::*;
 use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, fmt, num};
 use thiserror::Error;
-use typed_arena::Arena;
 
 // TODO(quinn): what I really want is to be able to iterate over the arena.
 // I think this means I want an arena that returns immutable references when
@@ -239,7 +239,6 @@ impl AllocationCounter {
 /// mutable references for the vectors. By making `Env` borrow each allocation
 /// from an `Hir` appropriately, we can freely mutate `Env` because it only
 /// holds shared references to the arenas so no aliasing invariants are broken.
-#[derive(Default)]
 pub struct Hir<'hir, 'input> {
     types: Arena<Type<'hir>>,
     typevars: Vec<Typevar<'hir>>,
@@ -247,6 +246,19 @@ pub struct Hir<'hir, 'input> {
     expr_pats: Arena<ExprPat<'hir, 'input>>,
     expr_branches: Arena<ExprBranch<'hir, 'input>>,
     equations: Equations<'hir>,
+}
+
+impl<'hir, 'input> Hir<'hir, 'input> {
+    pub fn new(counter: AllocationCounter) -> Self {
+        Hir {
+            types: Arena::with_capacity(1024), // need to precompute this...
+            typevars: Vec::new(),
+            exprs: Arena::with_capacity(counter.num_exprs),
+            expr_pats: Arena::with_capacity(counter.num_expr_pats),
+            expr_branches: Arena::with_capacity(counter.num_branches),
+            equations: Equations::new(),
+        }
+    }
 }
 
 pub struct Env<'hir, 'input> {
@@ -273,7 +285,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
     pub fn new_typevar(&mut self) -> (Var, &'hir Type<'hir>) {
         let var_ptr = Var(self.typevars.len());
         self.typevars.push(None);
-        (var_ptr, self.types.alloc(Type::Var(var_ptr)))
+        (var_ptr, self.types.push(Type::Var(var_ptr)))
     }
 
     /// Get a global environment with the type signatures of `in` and `print`
@@ -292,9 +304,9 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
                 Polytype {
                     typevars: vec![x, y],
-                    typ: self.types.alloc(Type::Function(TypeFunction {
+                    typ: self.types.push(Type::Function(TypeFunction {
                         lhs: x_type,
-                        rhs: self.types.alloc(Type::Function(TypeFunction {
+                        rhs: self.types.push(Type::Function(TypeFunction {
                             lhs: x_type,
                             rhs: &UNIT_TY,
                             output: y_type,
@@ -308,7 +320,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
                 Polytype {
                     typevars: vec![x],
-                    typ: self.types.alloc(Type::Function(TypeFunction {
+                    typ: self.types.push(Type::Function(TypeFunction {
                         lhs: x_type,
                         rhs: &UNIT_TY,
                         output: &UNIT_TY,
@@ -341,7 +353,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     }
                 }
                 Type::Function(TypeFunction { lhs, rhs, output }) => {
-                    env.types.alloc(Type::Function(TypeFunction {
+                    env.types.push(Type::Function(TypeFunction {
                         lhs: replace_unbound_typevars(tbl, env, lhs),
                         rhs: replace_unbound_typevars(tbl, env, rhs),
                         output: replace_unbound_typevars(tbl, env, output),
@@ -388,7 +400,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
             },
             ast::Expr::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Some(self.exprs.alloc(Expr::I32(int))),
+                    Ok(int) => Some(self.exprs.push(Expr::I32(int))),
                     Err(e) => {
                         errors.push(LowerError::ParseInt(e));
                         None
@@ -396,7 +408,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 },
                 ast::ExprLit::Ident(ident) => {
                     if let Some(ty) = bindings.get(ident.literal, self) {
-                        Some(self.exprs.alloc(Expr::Ident(ExprIdent {
+                        Some(self.exprs.push(Expr::Ident(ExprIdent {
                             literal: ident.literal,
                             ty,
                         })))
@@ -425,59 +437,86 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 }
 
                 let (exprs, types) = results?;
-                let ty = self.types.alloc(Type::Tuple(TypeTuple(types)));
-                Some(self.exprs.alloc(Expr::Tuple(ExprTuple { exprs, ty })))
+                let ty = self.types.push(Type::Tuple(TypeTuple(types)));
+                Some(self.exprs.push(Expr::Tuple(ExprTuple { exprs, ty })))
             }
             ast::Expr::Closure(ast::ExprClosure { head, tail }) => {
-                let head = {
+                let mut scoped_bindings = bindings.enter_scope();
+
+                // Need to parse the params _before_ the body...
+                // Duh.
+                let (lhs, rhs) =
+                    self.type_of_many_params(&mut scoped_bindings, &head.params, map, errors)?;
+                let body = self.lower(&mut scoped_bindings, head.body, map, errors)?;
+
+                drop(scoped_bindings);
+
+                let head = self.expr_branches.push(ExprBranch {
+                    lhs,
+                    rhs,
+                    body,
+                    next_branch: rec(
+                        lhs.ty(),
+                        rhs.ty(),
+                        body.ty(),
+                        self,
+                        bindings,
+                        tail.iter().map(|(_, branch)| branch),
+                        map,
+                        errors,
+                    ),
+                });
+
+                fn rec<'ast, 'hir, 'input: 'ast>(
+                    head_lhs: &'hir Type<'hir>,
+                    head_rhs: &'hir Type<'hir>,
+                    head_body: &'hir Type<'hir>,
+                    env: &mut Env<'hir, 'input>,
+                    bindings: &mut Bindings<'_, 'hir>,
+                    mut branches: impl Iterator<Item = &'ast ast::ExprBranch<'ast, 'input>>,
+                    map: &HashMap<&str, &'hir Type<'hir>>,
+                    errors: &mut Vec<LowerError<'hir>>,
+                ) -> Option<&'hir ExprBranch<'hir, 'input>> {
+                    let branch = branches.next()?;
+
                     let mut scoped_bindings = bindings.enter_scope();
 
-                    // Need to parse the params _before_ the body...
-                    // Duh.
                     let (lhs, rhs) =
-                        self.type_of_many_params(&mut scoped_bindings, &head.params, map, errors)?;
-                    let body = self.lower(&mut scoped_bindings, head.body, map, errors)?;
-                    ExprBranch { lhs, rhs, body }
-                };
+                        env.type_of_many_params(&mut scoped_bindings, &branch.params, map, errors)?;
+                    let body = env.lower(&mut scoped_bindings, branch.body, map, errors)?;
+                    drop(scoped_bindings);
 
-                let branches = tail
-                    .iter()
-                    .map(|(_, branch)| {
-                        let mut scoped_bindings = bindings.enter_scope();
+                    let typevars = env.typevars.as_mut_slice();
 
-                        let (lhs, rhs) = self.type_of_many_params(
-                            &mut scoped_bindings,
-                            &branch.params,
-                            map,
-                            errors,
-                        )?;
-                        let body = self.lower(&mut scoped_bindings, branch.body, map, errors)?;
+                    let original_error_count = errors.len();
+                    unify(typevars, head_lhs, lhs.ty(), env.equations, errors);
+                    unify(typevars, head_rhs, rhs.ty(), env.equations, errors);
+                    unify(typevars, head_body, body.ty(), env.equations, errors);
 
-                        let typevars = self.typevars.as_mut_slice();
+                    if errors.len() == original_error_count {
+                        Some(env.expr_branches.push(ExprBranch {
+                            lhs,
+                            rhs,
+                            body,
+                            next_branch: rec(
+                                head_lhs, head_rhs, head_body, env, bindings, branches, map, errors,
+                            ),
+                        }))
+                    } else {
+                        None
+                    }
+                }
 
-                        let original_error_count = errors.len();
-                        unify(typevars, head.lhs.ty(), lhs.ty(), self.equations, errors);
-                        unify(typevars, head.rhs.ty(), rhs.ty(), self.equations, errors);
-                        unify(typevars, head.body.ty(), body.ty(), self.equations, errors);
-                        if errors.len() == original_error_count {
-                            Some(ExprBranch { lhs, rhs, body })
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Option<_>>()?;
-
-                let ty = self.types.alloc(Type::Function(TypeFunction {
+                let ty = self.types.push(Type::Function(TypeFunction {
                     lhs: head.lhs.ty(),
                     rhs: head.rhs.ty(),
                     output: head.body.ty(),
                 }));
 
-                Some(self.exprs.alloc(Expr::Closure(ExprClosure {
-                    ty,
-                    head,
-                    tail: branches,
-                })))
+                Some(
+                    self.exprs
+                        .push(Expr::Closure(ExprClosure { ty, branches: head })),
+                )
             }
             ast::Expr::Appl(appl) => {
                 let lhs = self.lower(bindings, appl.lhs, map, errors);
@@ -493,7 +532,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 unify(
                     typevars,
                     function.ty(),
-                    self.types.alloc(Type::Function(TypeFunction {
+                    self.types.push(Type::Function(TypeFunction {
                         lhs: lhs.ty(),
                         rhs: rhs.ty(),
                         output: ty,
@@ -503,7 +542,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 );
 
                 if errors.len() == original_error_count {
-                    Some(self.exprs.alloc(Expr::Appl(ExprAppl {
+                    Some(self.exprs.push(Expr::Appl(ExprAppl {
                         ty,
                         lhs,
                         function,
@@ -526,7 +565,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
         match pat {
             ast::Pat::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Some(self.expr_pats.alloc(ExprPat::I32(int))),
+                    Ok(int) => Some(self.expr_pats.push(ExprPat::I32(int))),
                     Err(e) => {
                         errors.push(LowerError::ParseInt(e));
                         None
@@ -535,7 +574,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 ast::ExprLit::Ident(ident) => {
                     let ty = self.new_typevar().1;
                     bindings.add_local(ident.literal, ty);
-                    Some(self.expr_pats.alloc(ExprPat::Ident(ExprIdent {
+                    Some(self.expr_pats.push(ExprPat::Ident(ExprIdent {
                         literal: ident.literal,
                         ty,
                     })))
@@ -561,9 +600,9 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 let (pats, types) = results?;
 
                 // PLEASE RENAME SOME THINGS ;_;
-                Some(self.expr_pats.alloc(ExprPat::Tuple(ExprTuple {
+                Some(self.expr_pats.push(ExprPat::Tuple(ExprTuple {
                     exprs: pats,
-                    ty: self.types.alloc(Type::Tuple(TypeTuple(types))),
+                    ty: self.types.push(Type::Tuple(TypeTuple(types))),
                 })))
             } // When we add struct destructuring, we can unify the type of the field
               // with the returned type of the pattern in that field.
@@ -636,9 +675,9 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 for ty in tuple.iter_elements() {
                     elements.push(self.type_from_ast(ty, map));
                 }
-                self.types.alloc(Type::Tuple(TypeTuple(elements)))
+                self.types.push(Type::Tuple(TypeTuple(elements)))
             }
-            ast::Type::Function(function) => self.types.alloc(Type::Function(TypeFunction {
+            ast::Type::Function(function) => self.types.push(Type::Function(TypeFunction {
                 lhs: self.type_from_ast(function.lhs, map),
                 rhs: self.type_from_ast(function.rhs, map),
                 output: self.type_from_ast(function.ret, map),

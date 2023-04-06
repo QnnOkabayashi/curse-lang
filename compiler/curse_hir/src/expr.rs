@@ -141,13 +141,21 @@ impl<T: fmt::Display> fmt::Display for ExprTuple<'_, T> {
 #[derive(Debug, Clone)]
 pub struct ExprClosure<'hir, 'input> {
     pub ty: &'hir Type<'hir>,
-    pub head: ExprBranch<'hir, 'input>,
-    pub tail: Vec<ExprBranch<'hir, 'input>>,
+    pub branches: &'hir ExprBranch<'hir, 'input>,
 }
 
 impl<'hir, 'input> ExprClosure<'hir, 'input> {
     pub fn iter_branches(&self) -> impl Iterator<Item = &ExprBranch<'hir, 'input>> {
-        Some(&self.head).into_iter().chain(self.tail.iter())
+        let mut current = Some(self.branches);
+        std::iter::from_fn(move || {
+            let next = current?;
+            current = next.next_branch;
+            Some(next)
+        })
+    }
+
+    pub fn num_branches(&self) -> usize {
+        self.iter_branches().count()
     }
 }
 
@@ -159,26 +167,30 @@ impl<'hir> Ty<'hir> for ExprClosure<'hir, '_> {
 
 impl fmt::Display for ExprClosure<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.tail.is_empty() {
-            self.head.fmt(f)
+        if self.branches.next_branch.is_none() {
+            write!(f, "{}", self.branches)
         } else {
-            write!(f, "(")?;
-            self.head.fmt(f)?;
-            for branch in self.tail.iter() {
-                write!(f, " else ")?;
-                branch.fmt(f)?;
-            }
-            write!(f, ")")
+            write!(f, "({})", self.branches)
         }
     }
 }
 
-#[derive(Display, Debug, Clone)]
-#[displaydoc("|{lhs}, {rhs}| {body}")]
+#[derive(Debug, Clone)]
 pub struct ExprBranch<'hir, 'input> {
     pub lhs: &'hir ExprPat<'hir, 'input>,
     pub rhs: &'hir ExprPat<'hir, 'input>,
     pub body: &'hir Expr<'hir, 'input>,
+    pub next_branch: Option<&'hir ExprBranch<'hir, 'input>>,
+}
+
+impl fmt::Display for ExprBranch<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "|{}, {}| {}", self.lhs, self.rhs, self.body)?;
+        if let Some(next) = self.next_branch {
+            write!(f, " else {next}")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Display, Debug, Clone)]

@@ -9,7 +9,7 @@ displaydoc = "0.2.3"
 dot = "0.1.4"
 petgraph = "0.6.3"
 thiserror = "1.0.40"
-typed-arena = "2.0.2"
+curse_arena = { path = "../curse_arena" }
 
 [dev-dependencies]
 curse_parse = { path = "../curse_parse" }
