@@ -1,6 +1,5 @@
 use std::cell::Cell;
 use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::ptr::NonNull;
 use std::{fmt, mem, ops, ptr, slice};
 
@@ -120,7 +119,7 @@ pub struct Arena<T> {
     nonnull: NonNull<T>,
     _marker: PhantomData<T>,
     len: Cell<usize>,
-    cap: NonZeroUsize,
+    cap: usize,
 }
 
 impl<T> Arena<T> {
@@ -130,7 +129,6 @@ impl<T> Arena<T> {
 
     pub fn from_vec(vec: Vec<T>) -> Self {
         assert!(mem::size_of::<T>() != 0, "ZSTs are unsupported");
-        let cap = NonZeroUsize::new(vec.capacity()).expect("chunks must be larger than 0");
         let mut vec = mem::ManuallyDrop::new(vec);
 
         // SAFETY: The ptr that vec uses is guaranteed nonnull.
@@ -140,7 +138,7 @@ impl<T> Arena<T> {
             nonnull,
             _marker: PhantomData,
             len: Cell::new(vec.len()),
-            cap,
+            cap: vec.capacity(),
         }
     }
 
@@ -155,13 +153,13 @@ impl<T> Arena<T> {
     }
 
     /// Returns the total capacity of the [`Arena`].
-    pub fn capacity(&self) -> NonZeroUsize {
+    pub fn capacity(&self) -> usize {
         self.cap
     }
 
     /// Returns the remaining capacity within the [`Arena`].
     pub fn remaining_capacity(&self) -> usize {
-        self.cap.get() - self.len()
+        self.cap - self.len()
     }
 
     /// Returns a slice of the elements that have been pushed so far.
@@ -176,7 +174,7 @@ impl<T> Arena<T> {
     /// wrapped in a [`CapacityError`] if there's not enough space.
     pub fn try_push(&self, value: T) -> Result<&T, CapacityError<T>> {
         // Check that there's space
-        if self.len() >= self.cap.get() {
+        if self.len() >= self.cap {
             return Err(CapacityError { value });
         }
 
@@ -209,7 +207,7 @@ impl<T> Arena<T> {
     ///
     /// This is handy for creating a new arena that you want to map into.
     pub fn new_like<S>(base: &Arena<S>) -> Self {
-        Arena::with_capacity(base.cap.get())
+        Arena::with_capacity(base.cap)
     }
 
     /// Index of the reference in this chunk's array in O(1) time.
@@ -286,7 +284,7 @@ impl<T> Drop for Arena<T> {
     fn drop(&mut self) {
         unsafe {
             // SAFETY: yes
-            let _ = Vec::<T>::from_raw_parts(self.nonnull.as_ptr(), self.len.get(), self.cap.get());
+            let _ = Vec::<T>::from_raw_parts(self.nonnull.as_ptr(), self.len.get(), self.cap);
         }
     }
 }
