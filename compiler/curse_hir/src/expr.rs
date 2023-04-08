@@ -1,4 +1,4 @@
-use crate::{Type, TypeFunction};
+use crate::{Cons, Type, TypeFunction};
 use displaydoc::Display;
 use std::fmt;
 
@@ -14,6 +14,8 @@ pub enum Expr<'hir, 'input> {
     Bool(bool),
     #[displaydoc("{0}")]
     I32(i32),
+    #[displaydoc("()")]
+    Unit,
     #[displaydoc("{0}")]
     Ident(ExprIdent<'hir, 'input>),
     #[displaydoc("{0}")]
@@ -30,6 +32,7 @@ impl<'hir> Ty<'hir> for Expr<'hir, '_> {
             Expr::Builtin(builtin) => builtin.ty(),
             Expr::Bool(_) => &Type::Bool,
             Expr::I32(_) => &Type::I32,
+            Expr::Unit => &Type::Unit,
             Expr::Tuple(tuple) => tuple.ty(),
             Expr::Ident(ident) => ident.ty(),
             Expr::Closure(closure) => closure.ty(),
@@ -115,8 +118,8 @@ impl<'hir> Ty<'hir> for ExprIdent<'hir, '_> {
 
 #[derive(Debug, Clone)]
 pub struct ExprTuple<'hir, T> {
-    pub exprs: Vec<&'hir T>,
     pub ty: &'hir Type<'hir>,
+    pub exprs: &'hir Cons<'hir, &'hir T>,
 }
 
 impl<'hir, T> Ty<'hir> for ExprTuple<'hir, T> {
@@ -128,10 +131,10 @@ impl<'hir, T> Ty<'hir> for ExprTuple<'hir, T> {
 impl<T: fmt::Display> fmt::Display for ExprTuple<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
-        if let Some((x, xs)) = self.exprs.split_first() {
-            write!(f, "{x}")?;
-            for x in xs {
-                write!(f, ", {x}")?;
+        write!(f, "{}", self.exprs.item)?;
+        if let Some(remaining) = self.exprs.next {
+            for item in remaining.iter() {
+                write!(f, ", {item}")?;
             }
         }
         write!(f, ")")
@@ -141,22 +144,7 @@ impl<T: fmt::Display> fmt::Display for ExprTuple<'_, T> {
 #[derive(Debug, Clone)]
 pub struct ExprClosure<'hir, 'input> {
     pub ty: &'hir Type<'hir>,
-    pub branches: &'hir ExprBranch<'hir, 'input>,
-}
-
-impl<'hir, 'input> ExprClosure<'hir, 'input> {
-    pub fn iter_branches(&self) -> impl Iterator<Item = &ExprBranch<'hir, 'input>> {
-        let mut current = Some(self.branches);
-        std::iter::from_fn(move || {
-            let next = current?;
-            current = next.next_branch;
-            Some(next)
-        })
-    }
-
-    pub fn num_branches(&self) -> usize {
-        self.iter_branches().count()
-    }
+    pub branches: &'hir Cons<'hir, ExprBranch<'hir, 'input>>,
 }
 
 impl<'hir> Ty<'hir> for ExprClosure<'hir, '_> {
@@ -167,30 +155,20 @@ impl<'hir> Ty<'hir> for ExprClosure<'hir, '_> {
 
 impl fmt::Display for ExprClosure<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.branches.next_branch.is_none() {
-            write!(f, "{}", self.branches)
-        } else {
-            write!(f, "({})", self.branches)
+        write!(f, "{}", self.branches.item)?;
+        for branch in self.branches.next.iter() {
+            write!(f, " else {}", branch.item)?;
         }
+        Ok(())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Copy, Clone, Debug, Display)]
+#[displaydoc("|{lhs}, {rhs}| {body}")]
 pub struct ExprBranch<'hir, 'input> {
     pub lhs: &'hir ExprPat<'hir, 'input>,
     pub rhs: &'hir ExprPat<'hir, 'input>,
     pub body: &'hir Expr<'hir, 'input>,
-    pub next_branch: Option<&'hir ExprBranch<'hir, 'input>>,
-}
-
-impl fmt::Display for ExprBranch<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "|{}, {}| {}", self.lhs, self.rhs, self.body)?;
-        if let Some(next) = self.next_branch {
-            write!(f, " else {next}")?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Display, Debug, Clone)]
@@ -199,6 +177,8 @@ pub enum ExprPat<'hir, 'input> {
     Bool(bool),
     #[displaydoc("{0}")]
     I32(i32),
+    #[displaydoc("()")]
+    Unit,
     #[displaydoc("{0}")]
     Ident(ExprIdent<'hir, 'input>),
     #[displaydoc("{0}")]
@@ -210,6 +190,7 @@ impl<'hir> Ty<'hir> for ExprPat<'hir, '_> {
         match self {
             ExprPat::Bool(_) => &Type::Bool,
             ExprPat::I32(_) => &Type::I32,
+            ExprPat::Unit => &Type::Unit,
             ExprPat::Ident(ident) => ident.ty(),
             ExprPat::Tuple(tuple) => tuple.ty(),
         }
@@ -257,6 +238,7 @@ mod impl_dot {
                     Expr::Builtin(_) => {}
                     Expr::Bool(_) => {}
                     Expr::I32(_) => {}
+                    Expr::Unit => {}
                     Expr::Ident(_) => {}
                     Expr::Tuple(tuple) => {
                         for element in tuple.exprs.iter() {
@@ -264,7 +246,7 @@ mod impl_dot {
                         }
                     }
                     Expr::Closure(closure) => {
-                        for branch in closure.iter_branches() {
+                        for branch in closure.branches.iter() {
                             expr_nodes(branch.body, nodes);
                         }
                     }
@@ -293,7 +275,7 @@ mod impl_dot {
                         }
                     }
                     Expr::Closure(closure) => {
-                        for branch in closure.iter_branches() {
+                        for branch in closure.branches.iter() {
                             expr_edges(branch.body, Some(expr), edges);
                         }
                     }
@@ -346,7 +328,7 @@ mod impl_dot {
                 Expr::Bool(true) => dot::LabelText::LabelStr("true: bool".into()),
                 Expr::Bool(false) => dot::LabelText::LabelStr("false: bool".into()),
                 Expr::I32(int) => dot::LabelText::LabelStr(format!("{int}: i32").into()),
-
+                Expr::Unit => dot::LabelText::LabelStr("(): ()".into()),
                 Expr::Ident(ident) => {
                     dot::LabelText::LabelStr(format!("{}: {}", ident.literal, ident.ty()).into())
                 }

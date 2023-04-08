@@ -15,9 +15,6 @@ use thiserror::Error;
 mod equations;
 use equations::{Edge, Equations, Node};
 mod expr;
-// mod hm;
-// mod hm2;
-// mod hm3;
 
 #[cfg(test)]
 mod tests;
@@ -30,18 +27,36 @@ pub type Typevar<'hir> = Option<(&'hir Type<'hir>, NodeIndex)>;
 #[displaydoc("T{0}")]
 pub struct Var(usize);
 
-#[derive(Clone, Debug, Display, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Type<'hir> {
-    #[displaydoc("i32")]
     I32,
-    #[displaydoc("bool")]
     Bool,
-    #[displaydoc("{0}")]
-    Tuple(TypeTuple<&'hir Self>),
-    #[displaydoc("{0}")]
+    Unit,
+    Tuple(&'hir Cons<'hir, &'hir Self>),
     Var(Var),
-    #[displaydoc("{0}")]
     Function(TypeFunction<&'hir Self>),
+}
+
+impl fmt::Display for Type<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::I32 => write!(f, "i32"),
+            Type::Bool => write!(f, "bool"),
+            Type::Unit => write!(f, "()"),
+            Type::Tuple(elements) => {
+                write!(f, "(")?;
+                write!(f, "{}", elements.item)?;
+                if let Some(remaining) = elements.next {
+                    for item in remaining.iter() {
+                        write!(f, ", {item}")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            Type::Var(var) => write!(f, "{var}"),
+            Type::Function(fun) => write!(f, "{fun}"),
+        }
+    }
 }
 
 // TODO(quinn): in order to actually lower everything, we also need to be able to
@@ -57,6 +72,30 @@ pub enum KnownType<'hir> {
     Tuple(TypeTuple<&'hir Self>),
     #[displaydoc("{0}")]
     Function(TypeFunction<&'hir Self>),
+}
+
+/// Node in a linked list
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cons<'list, T> {
+    // doesn't take a ref because for closure branches, we don't want to
+    // have to put them in another arena
+    item: T,
+    next: Option<&'list Self>,
+}
+
+impl<'list, T> Cons<'list, T> {
+    pub fn len(&self) -> usize {
+        self.iter().count()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
+        let mut curr = Some(self);
+        std::iter::from_fn(move || {
+            let next = curr?;
+            curr = next.next;
+            Some(&next.item)
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -169,17 +208,11 @@ pub enum LowerError<'hir> {
     ParseInt(num::ParseIntError),
 }
 
-static UNIT_TY: Type<'static> = Type::Tuple(TypeTuple(Vec::new()));
-
-static UNIT_PAT: ExprPat<'static, 'static> = ExprPat::Tuple(ExprTuple {
-    exprs: Vec::new(),
-    ty: &UNIT_TY,
-});
-
 /// Count the number of allocations in an [`ast::Program<'_, '_>`].
 #[derive(Debug)]
 pub struct AllocationCounter {
     pub num_exprs: usize,
+    pub num_tuple_item_exprs: usize,
     pub num_expr_pats: usize,
     pub num_branches: usize,
 }
@@ -188,6 +221,7 @@ impl AllocationCounter {
     pub fn count_in_program(program: &ast::Program<'_, '_>) -> Self {
         let mut counter = AllocationCounter {
             num_exprs: 0,
+            num_tuple_item_exprs: 0,
             num_expr_pats: 0,
             num_branches: 0,
         };
@@ -202,7 +236,8 @@ impl AllocationCounter {
         match expr {
             ast::Expr::Paren(parens) => self.count_in_expr(&parens.expr),
             ast::Expr::Tuple(tuple) => {
-                self.num_exprs += tuple.len();
+                self.num_exprs += 1;
+                self.num_tuple_item_exprs += tuple.len();
                 for element in tuple.iter_elements() {
                     self.count_in_expr(element);
                 }
@@ -227,7 +262,11 @@ impl AllocationCounter {
                 self.count_in_expr(&appl.function);
                 self.count_in_expr(&appl.rhs);
             }
-            _ => self.num_exprs += 1,
+            ast::Expr::Symbol(_) => {}
+            ast::Expr::Lit(lit) => match lit {
+                ast::ExprLit::Integer(_) | ast::ExprLit::Ident(_) => self.num_exprs += 1,
+                ast::ExprLit::True(_) | ast::ExprLit::False(_) => {}
+            },
         }
     }
 }
@@ -265,22 +304,27 @@ pub struct Env<'hir, 'input> {
     types: &'hir Arena<Type<'hir>>,
     typevars: &'hir mut Vec<Typevar<'hir>>,
     exprs: &'hir Arena<Expr<'hir, 'input>>,
+    /// Arena for linked lists of tuple item exprs (point to next tuple item)
+    tuple_item_exprs: &'hir Arena<Cons<'hir, &'hir Expr<'hir, 'input>>>,
+    /// Arena for linked lists of tuple item types (point to next tuple item)
+    tuple_item_types: &'hir Arena<Cons<'hir, &'hir Type<'hir>>>,
+    tuple_item_expr_pats: &'hir Arena<Cons<'hir, &'hir ExprPat<'hir, 'input>>>,
     expr_pats: &'hir Arena<ExprPat<'hir, 'input>>,
-    expr_branches: &'hir Arena<ExprBranch<'hir, 'input>>,
+    expr_branches: &'hir Arena<Cons<'hir, ExprBranch<'hir, 'input>>>,
     equations: &'hir mut Equations<'hir>,
 }
 
 impl<'hir, 'input> Env<'hir, 'input> {
-    pub fn new(hir: &'hir mut Hir<'hir, 'input>) -> Self {
-        Env {
-            types: &hir.types,
-            typevars: &mut hir.typevars,
-            exprs: &hir.exprs,
-            expr_pats: &hir.expr_pats,
-            expr_branches: &hir.expr_branches,
-            equations: &mut hir.equations,
-        }
-    }
+    // pub fn new(hir: &'hir mut Hir<'hir, 'input>) -> Self {
+    //     Env {
+    //         types: &hir.types,
+    //         typevars: &mut hir.typevars,
+    //         exprs: &hir.exprs,
+    //         expr_pats: &hir.expr_pats,
+    //         expr_branches: &hir.expr_branches,
+    //         equations: &mut hir.equations,
+    //     }
+    // }
 
     pub fn new_typevar(&mut self) -> (Var, &'hir Type<'hir>) {
         let var_ptr = Var(self.typevars.len());
@@ -308,7 +352,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                         lhs: x_type,
                         rhs: self.types.push(Type::Function(TypeFunction {
                             lhs: x_type,
-                            rhs: &UNIT_TY,
+                            rhs: &Type::Unit,
                             output: y_type,
                         })),
                         output: y_type,
@@ -322,8 +366,8 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     typevars: vec![x],
                     typ: self.types.push(Type::Function(TypeFunction {
                         lhs: x_type,
-                        rhs: &UNIT_TY,
-                        output: &UNIT_TY,
+                        rhs: &Type::Unit,
+                        output: &Type::Unit,
                     })),
                 }
             }),
@@ -378,67 +422,95 @@ impl<'hir, 'input> Env<'hir, 'input> {
         expr: &ast::Expr<'_, 'input>,
         map: &HashMap<&str, &'hir Type<'hir>>,
         errors: &mut Vec<LowerError<'hir>>,
-    ) -> Option<&'hir Expr<'hir, 'input>> {
+    ) -> Result<&'hir Expr<'hir, 'input>, PushedErrors> {
         match expr {
             ast::Expr::Paren(parenthesized) => {
                 self.lower(bindings, parenthesized.expr, map, errors)
             }
             ast::Expr::Symbol(symbol) => match symbol {
-                ast::ExprSymbol::Plus(_) => Some(&Expr::Builtin(Builtin::Add)),
-                ast::ExprSymbol::Minus(_) => Some(&Expr::Builtin(Builtin::Sub)),
-                ast::ExprSymbol::Star(_) => Some(&Expr::Builtin(Builtin::Mul)),
-                ast::ExprSymbol::Percent(_) => Some(&Expr::Builtin(Builtin::Rem)),
-                ast::ExprSymbol::Slash(_) => Some(&Expr::Builtin(Builtin::Div)),
+                ast::ExprSymbol::Plus(_) => Ok(&Expr::Builtin(Builtin::Add)),
+                ast::ExprSymbol::Minus(_) => Ok(&Expr::Builtin(Builtin::Sub)),
+                ast::ExprSymbol::Star(_) => Ok(&Expr::Builtin(Builtin::Mul)),
+                ast::ExprSymbol::Percent(_) => Ok(&Expr::Builtin(Builtin::Rem)),
+                ast::ExprSymbol::Slash(_) => Ok(&Expr::Builtin(Builtin::Div)),
                 ast::ExprSymbol::Dot(_) => todo!("lower `.`"),
                 ast::ExprSymbol::DotDot(_) => todo!("lower `..`"),
                 ast::ExprSymbol::Semi(_) => todo!("lower `;`"),
-                ast::ExprSymbol::Equal(_) => Some(&Expr::Builtin(Builtin::Eq)),
-                ast::ExprSymbol::Less(_) => Some(&Expr::Builtin(Builtin::Lt)),
-                ast::ExprSymbol::Greater(_) => Some(&Expr::Builtin(Builtin::Gt)),
-                ast::ExprSymbol::LessEqual(_) => Some(&Expr::Builtin(Builtin::Le)),
-                ast::ExprSymbol::GreaterEqual(_) => Some(&Expr::Builtin(Builtin::Ge)),
+                ast::ExprSymbol::Equal(_) => Ok(&Expr::Builtin(Builtin::Eq)),
+                ast::ExprSymbol::Less(_) => Ok(&Expr::Builtin(Builtin::Lt)),
+                ast::ExprSymbol::Greater(_) => Ok(&Expr::Builtin(Builtin::Gt)),
+                ast::ExprSymbol::LessEqual(_) => Ok(&Expr::Builtin(Builtin::Le)),
+                ast::ExprSymbol::GreaterEqual(_) => Ok(&Expr::Builtin(Builtin::Ge)),
             },
             ast::Expr::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Some(self.exprs.push(Expr::I32(int))),
+                    Ok(int) => Ok(self.exprs.push(Expr::I32(int))),
                     Err(e) => {
                         errors.push(LowerError::ParseInt(e));
-                        None
+                        Err(PushedErrors)
                     }
                 },
                 ast::ExprLit::Ident(ident) => {
                     if let Some(ty) = bindings.get(ident.literal, self) {
-                        Some(self.exprs.push(Expr::Ident(ExprIdent {
+                        Ok(self.exprs.push(Expr::Ident(ExprIdent {
                             literal: ident.literal,
                             ty,
                         })))
                     } else {
                         errors.push(LowerError::IdentNotFound(ident.literal.to_string()));
-                        None
+                        Err(PushedErrors)
                     }
                 }
-                ast::ExprLit::True(_) => Some(&Expr::Bool(true)),
-                ast::ExprLit::False(_) => Some(&Expr::Bool(false)),
+                ast::ExprLit::True(_) => Ok(&Expr::Bool(true)),
+                ast::ExprLit::False(_) => Ok(&Expr::Bool(false)),
             },
             ast::Expr::Tuple(tuple) => {
-                let mut results = Some((
-                    Vec::with_capacity(tuple.len()),
-                    Vec::with_capacity(tuple.len()),
-                ));
+                // tuple rec fn
+                fn rec<'ast, 'hir, 'input: 'ast>(
+                    bindings: &mut Bindings<'_, 'hir>,
+                    env: &mut Env<'hir, 'input>,
+                    map: &HashMap<&str, &'hir Type<'hir>>,
+                    errors: &mut Vec<LowerError<'hir>>,
+                    mut exprs: impl Iterator<Item = &'ast ast::Expr<'ast, 'input>>,
+                ) -> Result<
+                    Option<(
+                        &'hir Cons<'hir, &'hir Expr<'hir, 'input>>,
+                        &'hir Cons<'hir, &'hir Type<'hir>>,
+                    )>,
+                    PushedErrors,
+                > {
+                    let Some(expr) = exprs.next() else {
+                        return Ok(None);
+                    };
 
-                for expr in tuple.iter_elements() {
-                    match (&mut results, self.lower(bindings, expr, map, errors)) {
-                        (Some((exprs, types)), Some(expr)) => {
-                            exprs.push(expr);
-                            types.push(expr.ty());
-                        }
-                        _ => results = None,
-                    }
+                    let expr = env.lower(bindings, expr, map, errors)?;
+
+                    let Some((next_expr, next_type)) = rec(bindings, env, map, errors, exprs)? else {
+                        return Ok(None);
+                    };
+
+                    Ok(Some((
+                        env.tuple_item_exprs.push(Cons {
+                            item: expr,
+                            next: Some(next_expr),
+                        }),
+                        env.tuple_item_types.push(Cons {
+                            item: expr.ty(),
+                            next: Some(next_type),
+                        }),
+                    )))
                 }
 
-                let (exprs, types) = results?;
-                let ty = self.types.push(Type::Tuple(TypeTuple(types)));
-                Some(self.exprs.push(Expr::Tuple(ExprTuple { exprs, ty })))
+                if let Some((exprs, ty)) =
+                    rec(bindings, self, map, errors, tuple.iter_elements().copied())?
+                {
+                    Ok(self.exprs.push(Expr::Tuple(ExprTuple {
+                        ty: self.types.push(Type::Tuple(ty)),
+                        exprs,
+                    })))
+                } else {
+                    Ok(&Expr::Unit)
+                }
             }
             ast::Expr::Closure(ast::ExprClosure { head, tail }) => {
                 let mut scoped_bindings = bindings.enter_scope();
@@ -451,22 +523,6 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
                 drop(scoped_bindings);
 
-                let head = self.expr_branches.push(ExprBranch {
-                    lhs,
-                    rhs,
-                    body,
-                    next_branch: rec(
-                        lhs.ty(),
-                        rhs.ty(),
-                        body.ty(),
-                        self,
-                        bindings,
-                        tail.iter().map(|(_, branch)| branch),
-                        map,
-                        errors,
-                    ),
-                });
-
                 fn rec<'ast, 'hir, 'input: 'ast>(
                     head_lhs: &'hir Type<'hir>,
                     head_rhs: &'hir Type<'hir>,
@@ -476,8 +532,11 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     mut branches: impl Iterator<Item = &'ast ast::ExprBranch<'ast, 'input>>,
                     map: &HashMap<&str, &'hir Type<'hir>>,
                     errors: &mut Vec<LowerError<'hir>>,
-                ) -> Option<&'hir ExprBranch<'hir, 'input>> {
-                    let branch = branches.next()?;
+                ) -> Result<Option<&'hir Cons<'hir, ExprBranch<'hir, 'input>>>, PushedErrors>
+                {
+                    let Some(branch) = branches.next() else {
+                        return Ok(None);
+                    };
 
                     let mut scoped_bindings = bindings.enter_scope();
 
@@ -494,18 +553,31 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     unify(typevars, head_body, body.ty(), env.equations, errors);
 
                     if errors.len() == original_error_count {
-                        Some(env.expr_branches.push(ExprBranch {
-                            lhs,
-                            rhs,
-                            body,
-                            next_branch: rec(
+                        Ok(Some(env.expr_branches.push(Cons {
+                            item: ExprBranch { lhs, rhs, body },
+                            next: rec(
                                 head_lhs, head_rhs, head_body, env, bindings, branches, map, errors,
-                            ),
-                        }))
+                            )?,
+                        })))
                     } else {
-                        None
+                        Err(PushedErrors)
                     }
                 }
+
+                let next = rec(
+                    lhs.ty(),
+                    rhs.ty(),
+                    body.ty(),
+                    self,
+                    bindings,
+                    tail.iter().map(|(_, branch)| branch),
+                    map,
+                    errors,
+                )?;
+
+                let head = ExprBranch { lhs, rhs, body };
+
+                let branches = self.expr_branches.push(Cons { item: head, next });
 
                 let ty = self.types.push(Type::Function(TypeFunction {
                     lhs: head.lhs.ty(),
@@ -513,10 +585,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     output: head.body.ty(),
                 }));
 
-                Some(
-                    self.exprs
-                        .push(Expr::Closure(ExprClosure { ty, branches: head })),
-                )
+                Ok(self.exprs.push(Expr::Closure(ExprClosure { ty, branches })))
             }
             ast::Expr::Appl(appl) => {
                 let lhs = self.lower(bindings, appl.lhs, map, errors);
@@ -542,14 +611,14 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 );
 
                 if errors.len() == original_error_count {
-                    Some(self.exprs.push(Expr::Appl(ExprAppl {
+                    Ok(self.exprs.push(Expr::Appl(ExprAppl {
                         ty,
                         lhs,
                         function,
                         rhs,
                     })))
                 } else {
-                    None
+                    Err(PushedErrors)
                 }
             }
         }
@@ -561,49 +630,75 @@ impl<'hir, 'input> Env<'hir, 'input> {
         bindings: &mut Bindings<'_, 'hir>,
         pat: &ast::ExprPat<'_, 'input>,
         errors: &mut Vec<LowerError<'hir>>,
-    ) -> Option<&'hir ExprPat<'hir, 'input>> {
+    ) -> Result<&'hir ExprPat<'hir, 'input>, PushedErrors> {
         match pat {
             ast::Pat::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Some(self.expr_pats.push(ExprPat::I32(int))),
+                    Ok(int) => Ok(self.expr_pats.push(ExprPat::I32(int))),
                     Err(e) => {
                         errors.push(LowerError::ParseInt(e));
-                        None
+                        Err(PushedErrors)
                     }
                 },
                 ast::ExprLit::Ident(ident) => {
                     let ty = self.new_typevar().1;
                     bindings.add_local(ident.literal, ty);
-                    Some(self.expr_pats.push(ExprPat::Ident(ExprIdent {
+                    Ok(self.expr_pats.push(ExprPat::Ident(ExprIdent {
                         literal: ident.literal,
                         ty,
                     })))
                 }
-                ast::ExprLit::True(_) => Some(&ExprPat::Bool(true)),
-                ast::ExprLit::False(_) => Some(&ExprPat::Bool(false)),
+                ast::ExprLit::True(_) => Ok(&ExprPat::Bool(true)),
+                ast::ExprLit::False(_) => Ok(&ExprPat::Bool(false)),
             },
             ast::Pat::Tuple(tuple) => {
-                let mut results = Some((
-                    Vec::with_capacity(tuple.len()),
-                    Vec::with_capacity(tuple.len()),
-                ));
+                // TODO(quinn): this is mostly copy pasted from `Env::lower`,
+                // can we try to generalize them? Patterns are basically just
+                // expressions without closures or function application...
+                fn rec<'ast, 'hir, 'input: 'ast>(
+                    bindings: &mut Bindings<'_, 'hir>,
+                    env: &mut Env<'hir, 'input>,
+                    errors: &mut Vec<LowerError<'hir>>,
+                    mut pats: impl Iterator<Item = &'ast ast::ExprPat<'ast, 'input>>,
+                ) -> Result<
+                    Option<(
+                        &'hir Cons<'hir, &'hir ExprPat<'hir, 'input>>,
+                        &'hir Cons<'hir, &'hir Type<'hir>>,
+                    )>,
+                    PushedErrors,
+                > {
+                    let Some(pat) = pats.next() else {
+                        return Ok(None);
+                    };
 
-                for pat in tuple.iter_elements() {
-                    match (&mut results, self.lower_pat(bindings, pat, errors)) {
-                        (Some((pats, types)), Some(pat)) => {
-                            pats.push(pat);
-                            types.push(pat.ty());
-                        }
-                        _ => results = None,
-                    }
+                    let pat = env.lower_pat(bindings, pat, errors)?;
+
+                    let Some((next_pat, next_type)) = rec(bindings, env, errors, pats)? else {
+                        return Ok(None);
+                    };
+
+                    Ok(Some((
+                        env.tuple_item_expr_pats.push(Cons {
+                            item: pat,
+                            next: Some(next_pat),
+                        }),
+                        env.tuple_item_types.push(Cons {
+                            item: pat.ty(),
+                            next: Some(next_type),
+                        }),
+                    )))
                 }
-                let (pats, types) = results?;
 
-                // PLEASE RENAME SOME THINGS ;_;
-                Some(self.expr_pats.push(ExprPat::Tuple(ExprTuple {
-                    exprs: pats,
-                    ty: self.types.push(Type::Tuple(TypeTuple(types))),
-                })))
+                if let Some((exprs, ty)) =
+                    rec(bindings, self, errors, tuple.iter_elements().copied())?
+                {
+                    Ok(self.expr_pats.push(ExprPat::Tuple(ExprTuple {
+                        ty: self.types.push(Type::Tuple(ty)),
+                        exprs,
+                    })))
+                } else {
+                    Ok(&ExprPat::Unit)
+                }
             } // When we add struct destructuring, we can unify the type of the field
               // with the returned type of the pattern in that field.
               // e.g. If we have a `struct Number(i32)` and have the pattern
@@ -619,7 +714,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
         param: &ast::ExprParam<'_, 'input>,
         map: &HashMap<&str, &'hir Type<'hir>>,
         errors: &mut Vec<LowerError<'hir>>,
-    ) -> Option<&'hir ExprPat<'hir, 'input>> {
+    ) -> Result<&'hir ExprPat<'hir, 'input>, PushedErrors> {
         let pat_type = self.lower_pat(bindings, param.pat, errors)?;
         if let Some((_, annotation)) = param.ty {
             let t2 = self.type_from_ast(annotation, map);
@@ -628,11 +723,11 @@ impl<'hir, 'input> Env<'hir, 'input> {
             let original_error_count = errors.len();
             unify(typevars, pat_type.ty(), t2, self.equations, errors);
             if errors.len() != original_error_count {
-                return None;
+                return Err(PushedErrors);
             }
         }
 
-        Some(pat_type)
+        Ok(pat_type)
     }
 
     /// Returns the [`Type`]s of various [`ast::ExprParams`].
@@ -642,28 +737,27 @@ impl<'hir, 'input> Env<'hir, 'input> {
         params: &ast::ExprParams<'_, 'input>,
         map: &HashMap<&str, &'hir Type<'hir>>,
         errors: &mut Vec<LowerError<'hir>>,
-    ) -> Option<(&'hir ExprPat<'hir, 'input>, &'hir ExprPat<'hir, 'input>)> {
+    ) -> Result<(&'hir ExprPat<'hir, 'input>, &'hir ExprPat<'hir, 'input>), PushedErrors> {
         match params {
-            ast::ExprParams::Zero => Some((&UNIT_PAT, &UNIT_PAT)),
+            ast::ExprParams::Zero => Ok((&ExprPat::Unit, &ExprPat::Unit)),
             ast::ExprParams::One(lhs) => {
                 let lhs_type = self.lower_param(bindings, lhs, map, errors);
-                Some((lhs_type?, &UNIT_PAT))
+                Ok((lhs_type?, &ExprPat::Unit))
             }
             ast::ExprParams::Two(lhs, _, rhs) => {
                 let lhs_type = self.lower_param(bindings, lhs, map, errors);
                 let rhs_type = self.lower_param(bindings, rhs, map, errors);
-                Some((lhs_type?, rhs_type?))
+                Ok((lhs_type?, rhs_type?))
             }
         }
     }
 
     /// Convert an [`ast::Type`] annotation into an HIR [`Type`].
     pub fn type_from_ast(
-        &self,
-        typ: &ast::Type<'_, '_>,
+        &mut self,
+        typ: &ast::Type<'_, 'input>,
         map: &HashMap<&str, &'hir Type<'hir>>,
     ) -> &'hir Type<'hir> {
-        // this function needs to fundamentally change...
         match typ {
             ast::Type::Named(named) => match named.name.literal {
                 "i32" => &Type::I32,
@@ -671,11 +765,24 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 other => map.get(other).expect("type not found"),
             },
             ast::Type::Tuple(tuple) => {
-                let mut elements = Vec::with_capacity(tuple.len());
-                for ty in tuple.iter_elements() {
-                    elements.push(self.type_from_ast(ty, map));
+                // Build up the linked list of types from the inside out
+                fn rec<'ast, 'hir, 'input: 'ast>(
+                    env: &mut Env<'hir, 'input>,
+                    map: &HashMap<&str, &'hir Type<'hir>>,
+                    mut types: impl Iterator<Item = &'ast ast::Type<'ast, 'input>>,
+                ) -> Option<&'hir Cons<'hir, &'hir Type<'hir>>> {
+                    let item = env.type_from_ast(types.next()?, map);
+                    Some(env.tuple_item_types.push(Cons {
+                        item,
+                        next: rec(env, map, types),
+                    }))
                 }
-                self.types.push(Type::Tuple(TypeTuple(elements)))
+
+                if let Some(ty) = rec(self, map, tuple.iter_elements().copied()) {
+                    self.types.push(Type::Tuple(ty))
+                } else {
+                    &Type::Unit
+                }
             }
             ast::Type::Function(function) => self.types.push(Type::Function(TypeFunction {
                 lhs: self.type_from_ast(function.lhs, map),
@@ -685,6 +792,9 @@ impl<'hir, 'input> Env<'hir, 'input> {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct PushedErrors;
 
 fn unify<'hir>(
     typevars: &mut [Typevar<'hir>],
@@ -696,10 +806,11 @@ fn unify<'hir>(
     match (t1, t2) {
         (Type::I32, Type::I32) => equations.add_rule(Node::Equiv(t1, t2)),
         (Type::Bool, Type::Bool) => equations.add_rule(Node::Equiv(t1, t2)),
-        (Type::Tuple(TypeTuple(tuple_a)), Type::Tuple(TypeTuple(tuple_b))) => {
-            if tuple_a.len() == tuple_b.len() {
+        (Type::Unit, Type::Unit) => equations.add_rule(Node::Equiv(t1, t2)),
+        (Type::Tuple(a), Type::Tuple(b)) => {
+            if a.len() == b.len() {
                 let conclusion = equations.add_rule(Node::Equiv(t1, t2));
-                for (i, (a, b)) in std::iter::zip(tuple_a, tuple_b).enumerate() {
+                for (i, (a, b)) in a.iter().zip(b.iter()).enumerate() {
                     // Always doing this `original_error_count` right after we unify...
                     let original_error_count = errors.len();
                     let proof = unify(typevars, a, b, equations, errors);

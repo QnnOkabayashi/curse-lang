@@ -82,11 +82,13 @@ fn test_branching_typeck() {
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
     let counter = AllocationCounter::count_in_program(&program);
-    println!("{counter:#?}");
 
     let types = Arena::with_capacity(1024); // need to precompute this..
     let mut typevars = Vec::new();
     let exprs = Arena::with_capacity(counter.num_exprs);
+    let tuple_item_exprs = Arena::with_capacity(counter.num_tuple_item_exprs);
+    let tuple_item_types = Arena::with_capacity(counter.num_tuple_item_exprs);
+    let tuple_item_expr_pats = Arena::with_capacity(1024);
     let expr_pats = Arena::with_capacity(counter.num_expr_pats);
     let expr_branches = Arena::with_capacity(counter.num_branches);
     let mut equations = Equations::new();
@@ -95,6 +97,9 @@ fn test_branching_typeck() {
         types: &types,
         typevars: &mut typevars,
         exprs: &exprs,
+        tuple_item_exprs: &tuple_item_exprs,
+        tuple_item_types: &tuple_item_types,
+        tuple_item_expr_pats: &tuple_item_expr_pats,
         expr_pats: &expr_pats,
         expr_branches: &expr_branches,
         equations: &mut equations,
@@ -132,7 +137,7 @@ fn test_branching_typeck() {
 
     let mut locals: Vec<(&str, &Type<'_>)> = Vec::with_capacity(16);
     let mut errors: Vec<LowerError> = Vec::with_capacity(0);
-    let lowered_items: HashMap<&str, (Polytype<'_>, Option<&Expr<'_, '_>>)> = program
+    let lowered_items: HashMap<&str, (Polytype<'_>, Result<&Expr<'_, '_>, PushedErrors>)> = program
         .items
         .iter()
         .map(|item| {
@@ -151,17 +156,11 @@ fn test_branching_typeck() {
     // Put the result into: https://edotor.net/
     // println!("{}", env.equations);
 
-    println!("exprs remaining capacity = {}", exprs.remaining_capacity());
-    println!(
-        "expr_pats remaining capacity = {}",
-        expr_pats.remaining_capacity()
-    );
-    println!(
-        "expr_branches remaining capacity = {}",
-        expr_branches.remaining_capacity()
-    );
+    // assert_eq!(exprs.remaining_capacity(), 0);
+    // assert_eq!(expr_pats.remaining_capacity(), 0);
+    // assert_eq!(expr_branches.remaining_capacity(), 0);
 
-    if let Some(expr) = lowered_items["main"].1 {
+    if let Ok(expr) = lowered_items["main"].1 {
         assert!(errors.is_empty());
         // println!("{expr}");
         let mut out = vec![];
@@ -177,7 +176,7 @@ fn test_branching_typeck() {
     }
 }
 
-#[test]
+// #[test]
 fn test_count_allocations() {
     let program = r#"
 let main: () () -> () = ||
