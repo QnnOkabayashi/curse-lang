@@ -1,4 +1,4 @@
-use crate::{Cons, Type, TypeFunction};
+use crate::{List, Type, TypeFunction};
 use displaydoc::Display;
 use std::fmt;
 
@@ -119,7 +119,7 @@ impl<'hir> Ty<'hir> for ExprIdent<'hir, '_> {
 #[derive(Debug, Clone)]
 pub struct ExprTuple<'hir, T> {
     pub ty: &'hir Type<'hir>,
-    pub exprs: &'hir Cons<'hir, &'hir T>,
+    pub exprs: &'hir List<'hir, &'hir T>,
 }
 
 impl<'hir, T> Ty<'hir> for ExprTuple<'hir, T> {
@@ -144,7 +144,7 @@ impl<T: fmt::Display> fmt::Display for ExprTuple<'_, T> {
 #[derive(Debug, Clone)]
 pub struct ExprClosure<'hir, 'input> {
     pub ty: &'hir Type<'hir>,
-    pub branches: &'hir Cons<'hir, ExprBranch<'hir, 'input>>,
+    pub branches: &'hir List<'hir, ExprBranch<'hir, 'input>>,
 }
 
 impl<'hir> Ty<'hir> for ExprClosure<'hir, '_> {
@@ -251,9 +251,9 @@ mod impl_dot {
                         }
                     }
                     Expr::Appl(appl) => {
-                        expr_nodes(&appl.lhs, nodes);
-                        expr_nodes(&appl.function, nodes);
-                        expr_nodes(&appl.rhs, nodes);
+                        expr_nodes(appl.lhs, nodes);
+                        expr_nodes(appl.function, nodes);
+                        expr_nodes(appl.rhs, nodes);
                     }
                 }
             }
@@ -280,9 +280,9 @@ mod impl_dot {
                         }
                     }
                     Expr::Appl(appl) => {
-                        expr_edges(&appl.lhs, Some(expr), edges);
-                        expr_edges(&appl.function, Some(expr), edges);
-                        expr_edges(&appl.rhs, Some(expr), edges);
+                        expr_edges(appl.lhs, Some(expr), edges);
+                        expr_edges(appl.function, Some(expr), edges);
+                        expr_edges(appl.rhs, Some(expr), edges);
                     }
                     _ => {}
                 }

@@ -83,15 +83,15 @@ fn test_branching_typeck() {
     let program = curse_parse::parse_program(&ctx, program).unwrap();
     let counter = AllocationCounter::count_in_program(&program);
 
-    let types = Arena::with_capacity(1024); // need to precompute this..
     let mut typevars = Vec::new();
-    let exprs = Arena::with_capacity(counter.num_exprs);
-    let tuple_item_exprs = Arena::with_capacity(counter.num_tuple_item_exprs);
-    let tuple_item_types = Arena::with_capacity(counter.num_tuple_item_exprs);
-    let tuple_item_expr_pats = Arena::with_capacity(1024);
-    let expr_pats = Arena::with_capacity(counter.num_expr_pats);
-    let expr_branches = Arena::with_capacity(counter.num_branches);
-    let mut equations = Equations::new();
+    let types: Arena<Type> = Arena::with_capacity(1024); // need to precompute this..
+    let exprs: Arena<Expr> = Arena::with_capacity(counter.num_exprs);
+    let expr_pats: Arena<ExprPat> = Arena::with_capacity(counter.num_expr_pats);
+    let expr_branches: Arena<List<ExprBranch>> = Arena::with_capacity(counter.num_branches);
+    let tuple_item_exprs: Arena<List<&Expr>> = Arena::with_capacity(counter.num_tuple_item_exprs);
+    let tuple_item_types: Arena<List<&Type>> = Arena::with_capacity(counter.num_tuple_item_exprs);
+    let tuple_item_expr_pats: Arena<List<&ExprPat>> = Arena::with_capacity(1024);
+    let mut equations: Equations = Equations::new();
 
     let mut env = Env {
         types: &types,
@@ -120,6 +120,7 @@ fn test_branching_typeck() {
             let mut inner_type_scope = type_scope.clone();
 
             let mut typevars = Vec::with_capacity(item.generics.len());
+            inner_type_scope.reserve(item.generics.len());
 
             for generic in item.generics.iter() {
                 let (var, ty) = env.new_typevar();
@@ -137,19 +138,23 @@ fn test_branching_typeck() {
 
     let mut locals: Vec<(&str, &Type<'_>)> = Vec::with_capacity(16);
     let mut errors: Vec<LowerError> = Vec::with_capacity(0);
-    let lowered_items: HashMap<&str, (Polytype<'_>, Result<&Expr<'_, '_>, PushedErrors>)> = program
+
+    let lowered_items: Result<HashMap<&str, (Polytype<'_>, &Expr<'_, '_>)>, PushedErrors> = program
         .items
         .iter()
         .map(|item| {
             let item_name = item.name.literal;
-            let polytype = globals[item_name].clone();
-            let body = env.lower(
-                &mut Bindings::new(&globals, &mut locals),
-                item.expr,
+            let mut scope = Scope::new(
+                &mut env,
                 &function_to_typescope[item_name],
                 &mut errors,
+                &globals,
+                &mut locals,
             );
-            (item_name, (polytype, body))
+
+            let polytype = globals[item_name].clone();
+            let body = scope.lower(item.expr)?;
+            Ok((item_name, (polytype, body)))
         })
         .collect();
 
@@ -160,7 +165,8 @@ fn test_branching_typeck() {
     // assert_eq!(expr_pats.remaining_capacity(), 0);
     // assert_eq!(expr_branches.remaining_capacity(), 0);
 
-    if let Ok(expr) = lowered_items["main"].1 {
+    if let Ok(items) = lowered_items {
+        let expr = items["main"].1;
         assert!(errors.is_empty());
         // println!("{expr}");
         let mut out = vec![];

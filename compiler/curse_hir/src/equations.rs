@@ -51,8 +51,8 @@ impl<'hir> Equations<'hir> {
         self.graph.add_node(rule)
     }
 
-    pub fn add_proof(&mut self, proof: NodeIndex, conclusion: NodeIndex, why: Edge) {
-        self.graph.add_edge(proof, conclusion, why);
+    pub fn add_proof(&mut self, proof: NodeIndex, conclusion: NodeIndex, edge: Edge) {
+        self.graph.add_edge(proof, conclusion, edge);
     }
 }
 
