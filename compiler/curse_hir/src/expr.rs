@@ -1,47 +1,107 @@
-use crate::{List, Type, TypeFunction};
+use crate::{BoxedTypeFunction, List, Type};
 use displaydoc::Display;
 use std::fmt;
 
 pub trait Ty<'hir> {
-    fn ty(&'hir self) -> &'hir Type<'hir>;
+    fn ty(&self) -> Type<'hir>;
 }
 
-#[derive(Display, Debug, Clone)]
+/// A cheap `Copy` enum representing an expression.
+#[derive(Copy, Clone, Debug)]
 pub enum Expr<'hir, 'input> {
-    #[displaydoc("{0}")]
     Builtin(Builtin),
-    #[displaydoc("{0}")]
-    Bool(bool),
-    #[displaydoc("{0}")]
     I32(i32),
-    #[displaydoc("()")]
+    Bool(bool),
     Unit,
-    #[displaydoc("{0}")]
-    Ident(ExprIdent<'hir, 'input>),
-    #[displaydoc("{0}")]
-    Tuple(ExprTuple<'hir, Expr<'hir, 'input>>),
-    #[displaydoc("{0}")]
-    Closure(ExprClosure<'hir, 'input>),
-    #[displaydoc("{0}")]
-    Appl(ExprAppl<'hir, 'input>),
+    // TODO(quinn): Micro optimization opportunity here! If we do string interning
+    // and use u32 as the ids, we can make `Expr` be 16 bytes instead of 32.
+    // But would also have to simplify tuple/closure/appl to not have types inlined
+    Ident {
+        ty: Type<'hir>,
+        literal: &'input str,
+    },
+    Tuple {
+        ty: Type<'hir>,
+        exprs: &'hir List<'hir, Self>,
+    },
+    Closure {
+        ty: Type<'hir>,
+        branches: &'hir List<'hir, ExprBranch<'hir, 'input>>,
+    },
+    Appl {
+        ty: Type<'hir>,
+        appl: &'hir BoxedExprAppl<'hir, 'input>,
+    },
 }
+
+#[derive(Debug, Display)]
+#[displaydoc("{lhs} {function} {rhs}")]
+pub struct BoxedExprAppl<'hir, 'input> {
+    pub lhs: Expr<'hir, 'input>,
+    pub function: Expr<'hir, 'input>,
+    pub rhs: Expr<'hir, 'input>,
+}
+
+// stack of ideas
+// - Make expression trees graphable using arenas
+//   - Be able to display singleton exprs like () and +, which we want to
+//     statically allocate instead of put in an arena
+//     - Inline singleton exprs into `Expr`, with pointers into arenas for
+//       more complex items like tuples and applications
+//       - Inline as many things as possible, like numbers and idents.
+//         Harder to inline tuples and closures because they inflate the size
+//         of `Expr` to 32 bytes.
+//         - Come up with a way to not have to put the types within `Tuple` and
+//           `Closure`,
 
 impl<'hir> Ty<'hir> for Expr<'hir, '_> {
-    fn ty(&'hir self) -> &'hir Type<'hir> {
+    fn ty(&self) -> Type<'hir> {
         match self {
             Expr::Builtin(builtin) => builtin.ty(),
-            Expr::Bool(_) => &Type::Bool,
-            Expr::I32(_) => &Type::I32,
-            Expr::Unit => &Type::Unit,
-            Expr::Tuple(tuple) => tuple.ty(),
-            Expr::Ident(ident) => ident.ty(),
-            Expr::Closure(closure) => closure.ty(),
-            Expr::Appl(appl) => appl.ty(),
+            Expr::I32(_) => Type::I32,
+            Expr::Bool(_) => Type::Bool,
+            Expr::Unit => Type::Unit,
+            Expr::Ident { ty, .. } => *ty,
+            Expr::Tuple { ty, .. } => *ty,
+            Expr::Closure { ty, .. } => *ty,
+            Expr::Appl { ty, .. } => *ty,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Display for Expr<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::Builtin(builtin) => builtin.fmt(f),
+            Expr::I32(int) => int.fmt(f),
+            Expr::Bool(b) => b.fmt(f),
+            Expr::Unit => f.write_str("()"),
+            Expr::Ident { literal, .. } => literal.fmt(f),
+            Expr::Tuple { exprs, .. } => {
+                write!(f, "(")?;
+                write!(f, "{}", exprs.item)?;
+                if let Some(remaining) = exprs.next {
+                    for item in remaining.iter() {
+                        write!(f, ", {item}")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            Expr::Closure { branches, .. } => {
+                write!(f, "{}", branches.item)?;
+                if let Some(branches) = branches.next {
+                    for branch in branches.iter() {
+                        write!(f, " else {}", branch)?;
+                    }
+                }
+                Ok(())
+            }
+            Expr::Appl { appl, .. } => appl.fmt(f),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum Builtin {
     Add,
     Sub,
@@ -75,21 +135,21 @@ impl Builtin {
 }
 
 impl<'hir> Ty<'hir> for Builtin {
-    fn ty(&'hir self) -> &'hir Type<'hir> {
+    fn ty(&self) -> Type<'hir> {
         match self {
             Builtin::Add | Builtin::Sub | Builtin::Mul | Builtin::Rem => {
-                &Type::Function(TypeFunction {
-                    lhs: &Type::I32,
-                    rhs: &Type::I32,
-                    output: &Type::I32,
+                Type::Function(&BoxedTypeFunction {
+                    lhs: Type::I32,
+                    rhs: Type::I32,
+                    output: Type::I32,
                 })
             }
             Builtin::Div => todo!("Type of div"),
             Builtin::Eq | Builtin::Lt | Builtin::Gt | Builtin::Le | Builtin::Ge => {
-                &Type::Function(TypeFunction {
-                    lhs: &Type::I32,
-                    rhs: &Type::I32,
-                    output: &Type::Bool,
+                Type::Function(&BoxedTypeFunction {
+                    lhs: Type::I32,
+                    rhs: Type::I32,
+                    output: Type::Bool,
                 })
             }
             Builtin::Print => todo!("Type of print"),
@@ -103,27 +163,27 @@ impl fmt::Display for Builtin {
     }
 }
 
-#[derive(Display, Debug, Clone)]
+#[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("{literal}")]
 pub struct ExprIdent<'hir, 'input> {
     pub literal: &'input str,
-    pub ty: &'hir Type<'hir>,
+    pub ty: Type<'hir>,
 }
 
 impl<'hir> Ty<'hir> for ExprIdent<'hir, '_> {
-    fn ty(&'hir self) -> &'hir Type<'hir> {
+    fn ty(&self) -> Type<'hir> {
         self.ty
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct ExprTuple<'hir, T> {
-    pub ty: &'hir Type<'hir>,
-    pub exprs: &'hir List<'hir, &'hir T>,
+    pub ty: Type<'hir>,
+    pub exprs: &'hir List<'hir, T>,
 }
 
 impl<'hir, T> Ty<'hir> for ExprTuple<'hir, T> {
-    fn ty(&'hir self) -> &'hir Type<'hir> {
+    fn ty(&self) -> Type<'hir> {
         self.ty
     }
 }
@@ -141,207 +201,58 @@ impl<T: fmt::Display> fmt::Display for ExprTuple<'_, T> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ExprClosure<'hir, 'input> {
-    pub ty: &'hir Type<'hir>,
-    pub branches: &'hir List<'hir, ExprBranch<'hir, 'input>>,
-}
-
-impl<'hir> Ty<'hir> for ExprClosure<'hir, '_> {
-    fn ty(&'hir self) -> &'hir Type<'hir> {
-        self.ty
-    }
-}
-
-impl fmt::Display for ExprClosure<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.branches.item)?;
-        for branch in self.branches.next.iter() {
-            write!(f, " else {}", branch.item)?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("|{lhs}, {rhs}| {body}")]
 pub struct ExprBranch<'hir, 'input> {
-    pub lhs: &'hir ExprPat<'hir, 'input>,
-    pub rhs: &'hir ExprPat<'hir, 'input>,
-    pub body: &'hir Expr<'hir, 'input>,
+    pub lhs: Pat<'hir, 'input>,
+    pub rhs: Pat<'hir, 'input>,
+    pub body: Expr<'hir, 'input>,
 }
 
-#[derive(Display, Debug, Clone)]
-pub enum ExprPat<'hir, 'input> {
-    #[displaydoc("{0}")]
+#[derive(Copy, Clone, Debug)]
+pub enum Pat<'hir, 'input> {
     Bool(bool),
-    #[displaydoc("{0}")]
     I32(i32),
-    #[displaydoc("()")]
     Unit,
-    #[displaydoc("{0}")]
-    Ident(ExprIdent<'hir, 'input>),
-    #[displaydoc("{0}")]
-    Tuple(ExprTuple<'hir, ExprPat<'hir, 'input>>),
+    Ident {
+        ty: Type<'hir>,
+        literal: &'input str,
+    },
+    Tuple {
+        ty: Type<'hir>,
+        exprs: &'hir List<'hir, Pat<'hir, 'input>>,
+    },
 }
 
-impl<'hir> Ty<'hir> for ExprPat<'hir, '_> {
-    fn ty(&'hir self) -> &'hir Type<'hir> {
+impl fmt::Display for Pat<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExprPat::Bool(_) => &Type::Bool,
-            ExprPat::I32(_) => &Type::I32,
-            ExprPat::Unit => &Type::Unit,
-            ExprPat::Ident(ident) => ident.ty(),
-            ExprPat::Tuple(tuple) => tuple.ty(),
+            Pat::Bool(b) => b.fmt(f),
+            Pat::I32(i) => i.fmt(f),
+            Pat::Unit => f.write_str("()"),
+            Pat::Ident { literal, .. } => f.write_str(literal),
+            Pat::Tuple { exprs, .. } => {
+                write!(f, "(")?;
+                write!(f, "{}", exprs.item)?;
+                if let Some(remaining) = exprs.next {
+                    for item in remaining.iter() {
+                        write!(f, ", {item}")?;
+                    }
+                }
+                write!(f, ")")
+            }
         }
     }
 }
 
-#[derive(Display, Debug, Clone)]
-#[displaydoc("({lhs} {function} {rhs})")]
-pub struct ExprAppl<'hir, 'input> {
-    pub ty: &'hir Type<'hir>,
-    pub lhs: &'hir Expr<'hir, 'input>,
-    pub function: &'hir Expr<'hir, 'input>,
-    pub rhs: &'hir Expr<'hir, 'input>,
-}
-
-impl<'hir> Ty<'hir> for ExprAppl<'hir, '_> {
-    fn ty(&'hir self) -> &'hir Type<'hir> {
-        self.ty
-    }
-}
-
-pub use impl_dot::Graph;
-
-mod impl_dot {
-    use super::{Expr, Ty};
-
-    pub struct Graph<'g> {
-        expr: &'g Expr<'g, 'g>,
-    }
-
-    impl<'g> Graph<'g> {
-        pub fn new(expr: &'g Expr<'g, 'g>) -> Self {
-            Graph { expr }
-        }
-    }
-
-    type Nd<'g> = &'g Expr<'g, 'g>;
-    type Ed<'g> = (Nd<'g>, Nd<'g>);
-
-    impl<'g> dot::GraphWalk<'g, Nd<'g>, Ed<'g>> for Graph<'g> {
-        fn nodes(&'g self) -> dot::Nodes<'g, Nd<'g>> {
-            fn expr_nodes<'g>(expr: Nd<'g>, nodes: &mut Vec<Nd<'g>>) {
-                nodes.push(expr);
-                match expr {
-                    Expr::Builtin(_) => {}
-                    Expr::Bool(_) => {}
-                    Expr::I32(_) => {}
-                    Expr::Unit => {}
-                    Expr::Ident(_) => {}
-                    Expr::Tuple(tuple) => {
-                        for element in tuple.exprs.iter() {
-                            expr_nodes(element, nodes);
-                        }
-                    }
-                    Expr::Closure(closure) => {
-                        for branch in closure.branches.iter() {
-                            expr_nodes(branch.body, nodes);
-                        }
-                    }
-                    Expr::Appl(appl) => {
-                        expr_nodes(appl.lhs, nodes);
-                        expr_nodes(appl.function, nodes);
-                        expr_nodes(appl.rhs, nodes);
-                    }
-                }
-            }
-
-            let mut nodes = Vec::with_capacity(64);
-            expr_nodes(self.expr, &mut nodes);
-            nodes.into()
-        }
-
-        fn edges(&'g self) -> dot::Edges<'g, Ed<'g>> {
-            fn expr_edges<'g>(expr: Nd<'g>, parent: Option<Nd<'g>>, edges: &mut Vec<Ed<'g>>) {
-                if let Some(parent) = parent {
-                    edges.push((parent, expr));
-                }
-                match expr {
-                    Expr::Tuple(tuple) => {
-                        for element in tuple.exprs.iter() {
-                            expr_edges(element, Some(expr), edges);
-                        }
-                    }
-                    Expr::Closure(closure) => {
-                        for branch in closure.branches.iter() {
-                            expr_edges(branch.body, Some(expr), edges);
-                        }
-                    }
-                    Expr::Appl(appl) => {
-                        expr_edges(appl.lhs, Some(expr), edges);
-                        expr_edges(appl.function, Some(expr), edges);
-                        expr_edges(appl.rhs, Some(expr), edges);
-                    }
-                    _ => {}
-                }
-            }
-
-            let mut edges = Vec::with_capacity(64);
-            expr_edges(self.expr, None, &mut edges);
-            edges.into()
-        }
-
-        fn source(&'g self, edge: &Ed<'g>) -> Nd<'g> {
-            edge.0
-        }
-
-        fn target(&'g self, edge: &Ed<'g>) -> Nd<'g> {
-            edge.1
-        }
-    }
-
-    impl<'g> dot::Labeller<'g, Nd<'g>, Ed<'g>> for Graph<'g> {
-        fn graph_id(&'g self) -> dot::Id<'g> {
-            dot::Id::new("example").unwrap()
-        }
-
-        fn node_id(&'g self, n: &Nd<'g>) -> dot::Id<'g> {
-            let x = *n as *const _ as usize;
-            dot::Id::new(format!("p{}", x)).unwrap()
-        }
-
-        fn node_label(&'g self, n: &Nd<'g>) -> dot::LabelText<'g> {
-            // TODO(quinn): can't just make an easy eval type function because
-            // you can have typevars in tuples and functions and such and will
-            // need to construct a new one of those if they contain a typevar.
-            // So we'll end up creating a bunch of new allocations in the arena
-            // to make these new types. And at that point we may as well lower
-            // again to have concrete types and no dependence on a `&[Typevar]`
-            // for lookups.
-
-            match n {
-                Expr::Builtin(builtin) => dot::LabelText::LabelStr(
-                    format!("{}: {}", builtin.as_str(), builtin.ty()).into(),
-                ),
-                Expr::Bool(true) => dot::LabelText::LabelStr("true: bool".into()),
-                Expr::Bool(false) => dot::LabelText::LabelStr("false: bool".into()),
-                Expr::I32(int) => dot::LabelText::LabelStr(format!("{int}: i32").into()),
-                Expr::Unit => dot::LabelText::LabelStr("(): ()".into()),
-                Expr::Ident(ident) => {
-                    dot::LabelText::LabelStr(format!("{}: {}", ident.literal, ident.ty()).into())
-                }
-                Expr::Tuple(tuple) => {
-                    dot::LabelText::LabelStr(format!("{}: {}", tuple, tuple.ty()).into())
-                }
-                Expr::Closure(closure) => {
-                    dot::LabelText::LabelStr(format!("<closure>: {}", closure.ty()).into())
-                }
-                Expr::Appl(appl) => {
-                    dot::LabelText::LabelStr(format!("<appl>: {}", appl.ty()).into())
-                }
-            }
+impl<'hir> Ty<'hir> for Pat<'hir, '_> {
+    fn ty(&self) -> Type<'hir> {
+        match self {
+            Pat::Bool(_) => Type::Bool,
+            Pat::I32(_) => Type::I32,
+            Pat::Unit => Type::Unit,
+            Pat::Ident { ty, .. } => *ty,
+            Pat::Tuple { ty, .. } => *ty,
         }
     }
 }

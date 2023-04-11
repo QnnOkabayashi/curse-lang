@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 curse_ast = { path = "../curse_ast" }
 displaydoc = "0.2.3"
-dot = "0.1.4"
 petgraph = "0.6.3"
 thiserror = "1.0.40"
 curse_arena = { path = "../curse_arena" }

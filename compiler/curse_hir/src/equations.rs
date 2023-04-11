@@ -9,14 +9,11 @@ use std::fmt;
 #[derive(Copy, Clone, Debug, Display, PartialEq)]
 pub enum Node<'hir> {
     #[displaydoc("{0} ≡ {1}")]
-    Equiv(&'hir Type<'hir>, &'hir Type<'hir>),
+    Equiv(Type<'hir>, Type<'hir>),
     #[displaydoc("{0} ≢ {1}")]
-    NotEquiv(&'hir Type<'hir>, &'hir Type<'hir>),
+    NotEquiv(Type<'hir>, Type<'hir>),
     #[displaydoc("{var} := {definition}")]
-    Binding {
-        var: Var,
-        definition: &'hir Type<'hir>,
-    },
+    Binding { var: Var, definition: Type<'hir> },
 }
 
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to

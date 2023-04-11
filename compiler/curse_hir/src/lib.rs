@@ -2,7 +2,6 @@
 use curse_arena::Arena;
 use curse_ast as ast;
 use displaydoc::Display;
-use expr::*;
 use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, fmt, num};
 use thiserror::Error;
@@ -10,26 +9,37 @@ use thiserror::Error;
 mod equations;
 use equations::{Edge, Equations, Node};
 mod expr;
+use expr::*;
+mod dot;
 
 #[cfg(test)]
 mod tests;
 
 /// `Some` is bound, `None` is unbound.
-pub type Typevar<'hir> = Option<(&'hir Type<'hir>, NodeIndex)>;
+pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
 
 /// Newtype around a `usize` used to index into the `typevars` field of `Env`.
 #[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[displaydoc("T{0}")]
-pub struct Var(usize);
+pub struct Var(usize); // TODO(quinn): change to u32
 
+/// Cheap type that is intended to be inlined.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Type<'hir> {
     I32,
     Bool,
     Unit,
-    Tuple(&'hir List<'hir, &'hir Self>),
+    Tuple(&'hir List<'hir, Self>),
     Var(Var),
-    Function(TypeFunction<&'hir Self>),
+    Function(&'hir BoxedTypeFunction<'hir>),
+}
+
+#[derive(Copy, Clone, Debug, Display, PartialEq)]
+#[displaydoc("({lhs} {rhs} -> {output})")]
+pub struct BoxedTypeFunction<'hir> {
+    lhs: Type<'hir>,
+    rhs: Type<'hir>,
+    output: Type<'hir>,
 }
 
 impl fmt::Display for Type<'_> {
@@ -49,20 +59,20 @@ impl fmt::Display for Type<'_> {
                 write!(f, ")")
             }
             Type::Var(var) => write!(f, "{var}"),
-            Type::Function(fun) => write!(f, "{fun}"),
+            Type::Function(boxed) => boxed.fmt(f),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct List<'list, T> {
-    // doesn't take a ref because for closure branches, we don't want to
-    // have to put them in another arena
     item: T,
     next: Option<&'list Self>,
 }
 
 impl<'list, T> List<'list, T> {
+    /// Returns the number of elements in the list.
+    // Never empty
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.iter().count()
@@ -78,27 +88,14 @@ impl<'list, T> List<'list, T> {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct TypeFunction<Ty> {
-    lhs: Ty,
-    rhs: Ty,
-    output: Ty,
-}
-
-impl<Ty: fmt::Display> fmt::Display for TypeFunction<Ty> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({} {} -> {})", self.lhs, self.rhs, self.output)
-    }
-}
-
 #[derive(Clone)]
 pub struct Polytype<'hir> {
     typevars: Vec<Var>,
-    typ: &'hir Type<'hir>,
+    typ: Type<'hir>,
 }
 
 impl<'hir> Polytype<'hir> {
-    pub fn new(ty: &'hir Type<'hir>) -> Self {
+    pub fn new(ty: Type<'hir>) -> Self {
         Polytype {
             typevars: vec![],
             typ: ty,
@@ -108,21 +105,21 @@ impl<'hir> Polytype<'hir> {
 
 pub struct Scope<'outer, 'hir, 'input> {
     env: &'outer mut Env<'hir, 'input>,
-    type_map: &'outer HashMap<&'outer str, &'hir Type<'hir>>,
+    type_map: &'outer HashMap<&'outer str, Type<'hir>>,
     errors: &'outer mut Vec<LowerError<'hir>>,
     original_errors_len: usize,
     globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
-    locals: &'outer mut Vec<(&'hir str, &'hir Type<'hir>)>,
+    locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
     original_locals_len: usize,
 }
 
 impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     pub fn new(
         env: &'outer mut Env<'hir, 'input>,
-        type_map: &'outer HashMap<&'outer str, &'hir Type<'hir>>,
+        type_map: &'outer HashMap<&'outer str, Type<'hir>>,
         errors: &'outer mut Vec<LowerError<'hir>>,
         globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
-        locals: &'outer mut Vec<(&'hir str, &'hir Type<'hir>)>,
+        locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
     ) -> Self {
         let original_errors_len = errors.len();
         let original_locals_len = locals.len();
@@ -138,7 +135,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     }
 
     /// Search through local variables first, then search through global variables.
-    pub fn get(&mut self, var: &str) -> Option<&'hir Type<'hir>> {
+    pub fn type_of(&mut self, var: &str) -> Option<Type<'hir>> {
         self.locals
             .iter()
             .rev()
@@ -150,7 +147,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
             })
     }
 
-    pub fn add_local(&mut self, var: &'hir str, ty: &'hir Type<'hir>) {
+    pub fn add_local(&mut self, var: &'hir str, ty: Type<'hir>) {
         self.locals.push((var, ty));
     }
 
@@ -178,56 +175,55 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     pub fn lower(
         &mut self,
         expr: &ast::Expr<'_, 'input>,
-    ) -> Result<&'hir Expr<'hir, 'input>, PushedErrors> {
+    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
         match expr {
             ast::Expr::Paren(paren) => self.lower(paren.expr),
             ast::Expr::Symbol(symbol) => match symbol {
-                ast::ExprSymbol::Plus(_) => Ok(&Expr::Builtin(Builtin::Add)),
-                ast::ExprSymbol::Minus(_) => Ok(&Expr::Builtin(Builtin::Sub)),
-                ast::ExprSymbol::Star(_) => Ok(&Expr::Builtin(Builtin::Mul)),
-                ast::ExprSymbol::Percent(_) => Ok(&Expr::Builtin(Builtin::Rem)),
-                ast::ExprSymbol::Slash(_) => Ok(&Expr::Builtin(Builtin::Div)),
+                ast::ExprSymbol::Plus(_) => Ok(Expr::Builtin(Builtin::Add)),
+                ast::ExprSymbol::Minus(_) => Ok(Expr::Builtin(Builtin::Sub)),
+                ast::ExprSymbol::Star(_) => Ok(Expr::Builtin(Builtin::Mul)),
+                ast::ExprSymbol::Percent(_) => Ok(Expr::Builtin(Builtin::Rem)),
+                ast::ExprSymbol::Slash(_) => Ok(Expr::Builtin(Builtin::Div)),
                 ast::ExprSymbol::Dot(_) => todo!("lower `.`"),
                 ast::ExprSymbol::DotDot(_) => todo!("lower `..`"),
                 ast::ExprSymbol::Semi(_) => todo!("lower `;`"),
-                ast::ExprSymbol::Equal(_) => Ok(&Expr::Builtin(Builtin::Eq)),
-                ast::ExprSymbol::Less(_) => Ok(&Expr::Builtin(Builtin::Lt)),
-                ast::ExprSymbol::Greater(_) => Ok(&Expr::Builtin(Builtin::Gt)),
-                ast::ExprSymbol::LessEqual(_) => Ok(&Expr::Builtin(Builtin::Le)),
-                ast::ExprSymbol::GreaterEqual(_) => Ok(&Expr::Builtin(Builtin::Ge)),
+                ast::ExprSymbol::Equal(_) => Ok(Expr::Builtin(Builtin::Eq)),
+                ast::ExprSymbol::Less(_) => Ok(Expr::Builtin(Builtin::Lt)),
+                ast::ExprSymbol::Greater(_) => Ok(Expr::Builtin(Builtin::Gt)),
+                ast::ExprSymbol::LessEqual(_) => Ok(Expr::Builtin(Builtin::Le)),
+                ast::ExprSymbol::GreaterEqual(_) => Ok(Expr::Builtin(Builtin::Ge)),
             },
             ast::Expr::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Ok(self.env.exprs.push(Expr::I32(int))),
+                    Ok(int) => Ok(Expr::I32(int)),
                     Err(e) => {
                         self.errors.push(LowerError::ParseInt(e));
                         Err(PushedErrors)
                     }
                 },
                 ast::ExprLit::Ident(ident) => {
-                    if let Some(ty) = self.get(ident.literal) {
-                        Ok(self.env.exprs.push(Expr::Ident(ExprIdent {
+                    if let Some(ty) = self.type_of(ident.literal) {
+                        Ok(Expr::Ident {
                             literal: ident.literal,
                             ty,
-                        })))
+                        })
                     } else {
                         self.errors
                             .push(LowerError::IdentNotFound(ident.literal.to_string()));
                         Err(PushedErrors)
                     }
                 }
-                ast::ExprLit::True(_) => Ok(&Expr::Bool(true)),
-                ast::ExprLit::False(_) => Ok(&Expr::Bool(false)),
+                ast::ExprLit::True(_) => Ok(Expr::Bool(true)),
+                ast::ExprLit::False(_) => Ok(Expr::Bool(false)),
             },
             ast::Expr::Tuple(tuple) => {
-                // tuple rec fn
                 fn rec<'ast, 'hir, 'input: 'ast>(
                     scope: &mut Scope<'_, 'hir, 'input>,
                     mut exprs: impl Iterator<Item = &'ast ast::Expr<'ast, 'input>>,
                 ) -> Result<
                     Option<(
-                        &'hir List<'hir, &'hir Expr<'hir, 'input>>,
-                        &'hir List<'hir, &'hir Type<'hir>>,
+                        &'hir List<'hir, Expr<'hir, 'input>>,
+                        &'hir List<'hir, Type<'hir>>,
                     )>,
                     PushedErrors,
                 > {
@@ -254,23 +250,23 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                 }
 
                 if let Some((exprs, ty)) = rec(self, tuple.iter_elements().copied())? {
-                    Ok(self.env.exprs.push(Expr::Tuple(ExprTuple {
-                        ty: self.env.types.push(Type::Tuple(ty)),
+                    Ok(Expr::Tuple {
+                        ty: Type::Tuple(ty),
                         exprs,
-                    })))
+                    })
                 } else {
-                    Ok(&Expr::Unit)
+                    Ok(Expr::Unit)
                 }
             }
             ast::Expr::Closure(closure) => {
-                let mut inner_scope = self.enter_scope();
+                let mut inner = self.enter_scope();
 
                 // Need to parse the params _before_ the body...
                 // Duh.
-                let (lhs, rhs) = inner_scope.type_of_many_params(&closure.head.params)?;
-                let body = inner_scope.lower(closure.head.body)?;
+                let (lhs, rhs) = inner.type_of_many_params(&closure.head.params)?;
+                let body = inner.lower(closure.head.body)?;
 
-                drop(inner_scope);
+                drop(inner);
 
                 fn rec<'ast, 'hir, 'input: 'ast>(
                     scope: &mut Scope<'_, 'hir, 'input>,
@@ -283,7 +279,6 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                     };
 
                     let mut inner = scope.enter_scope();
-
                     let (lhs, rhs) = inner.type_of_many_params(&branch.params)?;
                     let body = inner.lower(branch.body)?;
                     drop(inner);
@@ -308,16 +303,13 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
 
                 let branches = self.env.expr_branches.push(List { item: head, next });
 
-                let ty = self.env.types.push(Type::Function(TypeFunction {
+                let ty = Type::Function(self.env.type_functions.push(BoxedTypeFunction {
                     lhs: head.lhs.ty(),
                     rhs: head.rhs.ty(),
                     output: head.body.ty(),
                 }));
 
-                Ok(self
-                    .env
-                    .exprs
-                    .push(Expr::Closure(ExprClosure { ty, branches })))
+                Ok(Expr::Closure { ty, branches })
             }
             ast::Expr::Appl(appl) => {
                 let lhs = self.lower(appl.lhs);
@@ -332,7 +324,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
 
                 self.unify(
                     function.ty(),
-                    self.env.types.push(Type::Function(TypeFunction {
+                    Type::Function(self.env.type_functions.push(BoxedTypeFunction {
                         lhs: lhs.ty(),
                         rhs: rhs.ty(),
                         output: ty,
@@ -342,12 +334,13 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                 if self.had_errors() {
                     Err(PushedErrors)
                 } else {
-                    Ok(self.env.exprs.push(Expr::Appl(ExprAppl {
+                    Ok(Expr::Appl {
                         ty,
-                        lhs,
-                        function,
-                        rhs,
-                    })))
+                        appl: self
+                            .env
+                            .expr_appls
+                            .push(BoxedExprAppl { lhs, function, rhs }),
+                    })
                 }
             }
         }
@@ -357,11 +350,11 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     fn lower_pat(
         &mut self,
         pat: &ast::ExprPat<'_, 'input>,
-    ) -> Result<&'hir ExprPat<'hir, 'input>, PushedErrors> {
+    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
         match pat {
             ast::Pat::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Ok(self.env.expr_pats.push(ExprPat::I32(int))),
+                    Ok(int) => Ok(Pat::I32(int)),
                     Err(e) => {
                         self.errors.push(LowerError::ParseInt(e));
                         Err(PushedErrors)
@@ -370,13 +363,13 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                 ast::ExprLit::Ident(ident) => {
                     let ty = self.env.new_typevar().1;
                     self.add_local(ident.literal, ty);
-                    Ok(self.env.expr_pats.push(ExprPat::Ident(ExprIdent {
+                    Ok(Pat::Ident {
                         literal: ident.literal,
                         ty,
-                    })))
+                    })
                 }
-                ast::ExprLit::True(_) => Ok(&ExprPat::Bool(true)),
-                ast::ExprLit::False(_) => Ok(&ExprPat::Bool(false)),
+                ast::ExprLit::True(_) => Ok(Pat::Bool(true)),
+                ast::ExprLit::False(_) => Ok(Pat::Bool(false)),
             },
             ast::Pat::Tuple(tuple) => {
                 // TODO(quinn): this is mostly copy pasted from `Env::lower`,
@@ -387,8 +380,8 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                     mut pats: impl Iterator<Item = &'ast ast::ExprPat<'ast, 'input>>,
                 ) -> Result<
                     Option<(
-                        &'hir List<'hir, &'hir ExprPat<'hir, 'input>>,
-                        &'hir List<'hir, &'hir Type<'hir>>,
+                        &'hir List<'hir, Pat<'hir, 'input>>,
+                        &'hir List<'hir, Type<'hir>>,
                     )>,
                     PushedErrors,
                 > {
@@ -415,12 +408,12 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                 }
 
                 if let Some((exprs, ty)) = rec(self, tuple.iter_elements().copied())? {
-                    Ok(self.env.expr_pats.push(ExprPat::Tuple(ExprTuple {
-                        ty: self.env.types.push(Type::Tuple(ty)),
+                    Ok(Pat::Tuple {
+                        ty: Type::Tuple(ty),
                         exprs,
-                    })))
+                    })
                 } else {
-                    Ok(&ExprPat::Unit)
+                    Ok(Pat::Unit)
                 }
             } // When we add struct destructuring, we can unify the type of the field
               // with the returned type of the pattern in that field.
@@ -434,7 +427,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     fn lower_param(
         &mut self,
         param: &ast::ExprParam<'_, 'input>,
-    ) -> Result<&'hir ExprPat<'hir, 'input>, PushedErrors> {
+    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
         let pat_type = self.lower_pat(param.pat)?;
         if let Some((_, annotation)) = param.ty {
             let t2 = self.env.type_from_ast(annotation, self.type_map);
@@ -451,12 +444,12 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     fn type_of_many_params(
         &mut self,
         params: &ast::ExprParams<'_, 'input>,
-    ) -> Result<(&'hir ExprPat<'hir, 'input>, &'hir ExprPat<'hir, 'input>), PushedErrors> {
+    ) -> Result<(Pat<'hir, 'input>, Pat<'hir, 'input>), PushedErrors> {
         match params {
-            ast::ExprParams::Zero => Ok((&ExprPat::Unit, &ExprPat::Unit)),
+            ast::ExprParams::Zero => Ok((Pat::Unit, Pat::Unit)),
             ast::ExprParams::One(lhs) => {
                 let lhs_type = self.lower_param(lhs);
-                Ok((lhs_type?, &ExprPat::Unit))
+                Ok((lhs_type?, Pat::Unit))
             }
             ast::ExprParams::Two(lhs, _, rhs) => {
                 let lhs_type = self.lower_param(lhs);
@@ -466,43 +459,8 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
         }
     }
 
-    /// Convert an [`ast::Type`] annotation into an HIR [`Type`].
-    pub fn type_from_ast(&mut self, typ: &ast::Type<'_, 'input>) -> &'hir Type<'hir> {
-        match typ {
-            ast::Type::Named(named) => match named.name.literal {
-                "i32" => &Type::I32,
-                "bool" => &Type::Bool,
-                other => self.type_map.get(other).expect("type not found"),
-            },
-            ast::Type::Tuple(tuple) => {
-                // Build up the linked list of types from the inside out
-                fn rec<'ast, 'hir, 'input: 'ast>(
-                    env: &mut Scope<'_, 'hir, 'input>,
-                    mut types: impl Iterator<Item = &'ast ast::Type<'ast, 'input>>,
-                ) -> Option<&'hir List<'hir, &'hir Type<'hir>>> {
-                    let item = env.type_from_ast(types.next()?);
-                    Some(env.env.tuple_item_types.push(List {
-                        item,
-                        next: rec(env, types),
-                    }))
-                }
-
-                if let Some(ty) = rec(self, tuple.iter_elements().copied()) {
-                    self.env.types.push(Type::Tuple(ty))
-                } else {
-                    &Type::Unit
-                }
-            }
-            ast::Type::Function(function) => self.env.types.push(Type::Function(TypeFunction {
-                lhs: self.type_from_ast(function.lhs),
-                rhs: self.type_from_ast(function.rhs),
-                output: self.type_from_ast(function.ret),
-            })),
-        }
-    }
-
     /// Unify two types.
-    fn unify(&mut self, t1: &'hir Type<'hir>, t2: &'hir Type<'hir>) -> NodeIndex {
+    fn unify(&mut self, t1: Type<'hir>, t2: Type<'hir>) -> NodeIndex {
         match (t1, t2) {
             (Type::I32, Type::I32) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
             (Type::Bool, Type::Bool) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
@@ -510,9 +468,9 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
             (Type::Tuple(a), Type::Tuple(b)) => {
                 if a.len() == b.len() {
                     let conclusion = self.env.equations.add_rule(Node::Equiv(t1, t2));
-                    for (i, (a, b)) in a.iter().zip(b.iter()).enumerate() {
+                    for (i, (&t1, &t2)) in a.iter().zip(b.iter()).enumerate() {
                         let mut inner = self.enter_scope();
-                        let proof = inner.unify(a, b);
+                        let proof = inner.unify(t1, t2);
                         if inner.had_errors() {
                             inner.env.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
                         }
@@ -545,15 +503,15 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                     conclusion
                 } else if t1 == t2 {
                     self.env.equations.add_rule(Node::Equiv(t1, t2))
-                } else if occurs(self.env.typevars, *var, a) {
-                    self.errors.push(LowerError::CyclicType(*var, a));
+                } else if occurs(self.env.typevars, var, a) {
+                    self.errors.push(LowerError::CyclicType(var, a));
                     self.env.equations.add_rule(Node::NotEquiv(t1, t2))
                 } else {
                     // The actual binding code is here
-                    let conclusion = self.env.equations.add_rule(Node::Binding {
-                        var: *var,
-                        definition: a,
-                    });
+                    let conclusion = self
+                        .env
+                        .equations
+                        .add_rule(Node::Binding { var, definition: a });
 
                     self.env.typevars[var.0] = Some((a, conclusion));
                     conclusion
@@ -598,9 +556,9 @@ impl Drop for Scope<'_, '_, '_> {
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum LowerError<'hir> {
     #[error("Cannot unify types")]
-    Unify(&'hir Type<'hir>, &'hir Type<'hir>),
+    Unify(Type<'hir>, Type<'hir>),
     #[error("Cyclic type")]
-    CyclicType(Var, &'hir Type<'hir>),
+    CyclicType(Var, Type<'hir>),
     #[error("Identifier not found: `{0}`")]
     IdentNotFound(String),
     #[error(transparent)]
@@ -670,63 +628,23 @@ impl AllocationCounter {
     }
 }
 
-/// A base type that owns _most_ memory allocations in the HIR.
-/// This type is intended to be borrowed from by [`Env::new`],
-/// and the purpose behind creating a distinction between the two is that
-/// we only ever want to allow for immutable references to the arenas but
-/// mutable references for the vectors. By making `Env` borrow each allocation
-/// from an `Hir` appropriately, we can freely mutate `Env` because it only
-/// holds shared references to the arenas so no aliasing invariants are broken.
-pub struct Hir<'hir, 'input> {
-    types: Arena<Type<'hir>>,
-    typevars: Vec<Typevar<'hir>>,
-    exprs: Arena<Expr<'hir, 'input>>,
-    expr_pats: Arena<ExprPat<'hir, 'input>>,
-    expr_branches: Arena<ExprBranch<'hir, 'input>>,
-    equations: Equations<'hir>,
-}
-
-impl<'hir, 'input> Hir<'hir, 'input> {
-    pub fn new(counter: AllocationCounter) -> Self {
-        Hir {
-            types: Arena::with_capacity(1024), // need to precompute this...
-            typevars: Vec::new(),
-            exprs: Arena::with_capacity(counter.num_exprs),
-            expr_pats: Arena::with_capacity(counter.num_expr_pats),
-            expr_branches: Arena::with_capacity(counter.num_branches),
-            equations: Equations::new(),
-        }
-    }
-}
-
 pub struct Env<'hir, 'input> {
-    types: &'hir Arena<Type<'hir>>,
-    exprs: &'hir Arena<Expr<'hir, 'input>>,
-    expr_pats: &'hir Arena<ExprPat<'hir, 'input>>,
-    tuple_item_exprs: &'hir Arena<List<'hir, &'hir Expr<'hir, 'input>>>,
-    tuple_item_types: &'hir Arena<List<'hir, &'hir Type<'hir>>>,
-    tuple_item_expr_pats: &'hir Arena<List<'hir, &'hir ExprPat<'hir, 'input>>>,
+    type_functions: &'hir Arena<BoxedTypeFunction<'hir>>,
+    expr_appls: &'hir Arena<BoxedExprAppl<'hir, 'input>>,
+    expr_pats: &'hir Arena<Pat<'hir, 'input>>,
+    tuple_item_exprs: &'hir Arena<List<'hir, Expr<'hir, 'input>>>,
+    tuple_item_types: &'hir Arena<List<'hir, Type<'hir>>>,
+    tuple_item_expr_pats: &'hir Arena<List<'hir, Pat<'hir, 'input>>>,
     expr_branches: &'hir Arena<List<'hir, ExprBranch<'hir, 'input>>>,
     typevars: &'hir mut Vec<Typevar<'hir>>,
     equations: &'hir mut Equations<'hir>,
 }
 
 impl<'hir, 'input> Env<'hir, 'input> {
-    // pub fn new(hir: &'hir mut Hir<'hir, 'input>) -> Self {
-    //     Env {
-    //         types: &hir.types,
-    //         typevars: &mut hir.typevars,
-    //         exprs: &hir.exprs,
-    //         expr_pats: &hir.expr_pats,
-    //         expr_branches: &hir.expr_branches,
-    //         equations: &mut hir.equations,
-    //     }
-    // }
-
-    pub fn new_typevar(&mut self) -> (Var, &'hir Type<'hir>) {
+    pub fn new_typevar(&mut self) -> (Var, Type<'hir>) {
         let var_ptr = Var(self.typevars.len());
         self.typevars.push(None);
-        (var_ptr, self.types.push(Type::Var(var_ptr)))
+        (var_ptr, Type::Var(var_ptr))
     }
 
     /// Get a global environment with the type signatures of `in` and `print`
@@ -745,11 +663,11 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
                 Polytype {
                     typevars: vec![x, y],
-                    typ: self.types.push(Type::Function(TypeFunction {
+                    typ: Type::Function(self.type_functions.push(BoxedTypeFunction {
                         lhs: x_type,
-                        rhs: self.types.push(Type::Function(TypeFunction {
+                        rhs: Type::Function(self.type_functions.push(BoxedTypeFunction {
                             lhs: x_type,
-                            rhs: &Type::Unit,
+                            rhs: Type::Unit,
                             output: y_type,
                         })),
                         output: y_type,
@@ -761,10 +679,10 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
                 Polytype {
                     typevars: vec![x],
-                    typ: self.types.push(Type::Function(TypeFunction {
+                    typ: Type::Function(self.type_functions.push(BoxedTypeFunction {
                         lhs: x_type,
-                        rhs: &Type::Unit,
-                        output: &Type::Unit,
+                        rhs: Type::Unit,
+                        output: Type::Unit,
                     })),
                 }
             }),
@@ -772,32 +690,32 @@ impl<'hir, 'input> Env<'hir, 'input> {
         .into_iter()
     }
 
-    pub fn monomorphize(&mut self, polytype: &Polytype<'hir>) -> &'hir Type<'hir> {
+    pub fn monomorphize(&mut self, polytype: &Polytype<'hir>) -> Type<'hir> {
         // Takes a polymorphic type and replaces all instances of generics
         // with a fixed, unbound type.
         // For example, id: T -> T is a polymorphic type, so it goes through
         // and replaces both `T`s with an unbound type variable like `a0`,
         // which is then bound later on.
         fn replace_unbound_typevars<'hir>(
-            tbl: &HashMap<Var, &'hir Type<'hir>>,
+            tbl: &HashMap<Var, Type<'hir>>,
             env: &mut Env<'hir, '_>,
-            ty: &'hir Type<'hir>,
-        ) -> &'hir Type<'hir> {
+            ty: Type<'hir>,
+        ) -> Type<'hir> {
             match ty {
                 Type::Var(var) => {
                     if let Some((t, _)) = env.typevars[var.0] {
                         replace_unbound_typevars(tbl, env, t)
-                    } else if let Some(t) = tbl.get(var) {
+                    } else if let Some(&t) = tbl.get(&var) {
                         t
                     } else {
                         ty
                     }
                 }
-                Type::Function(TypeFunction { lhs, rhs, output }) => {
-                    env.types.push(Type::Function(TypeFunction {
-                        lhs: replace_unbound_typevars(tbl, env, lhs),
-                        rhs: replace_unbound_typevars(tbl, env, rhs),
-                        output: replace_unbound_typevars(tbl, env, output),
+                Type::Function(boxed) => {
+                    Type::Function(env.type_functions.push(BoxedTypeFunction {
+                        lhs: replace_unbound_typevars(tbl, env, boxed.lhs),
+                        rhs: replace_unbound_typevars(tbl, env, boxed.rhs),
+                        output: replace_unbound_typevars(tbl, env, boxed.output),
                     }))
                 }
                 _ => ty,
@@ -817,21 +735,21 @@ impl<'hir, 'input> Env<'hir, 'input> {
     pub fn type_from_ast(
         &mut self,
         typ: &ast::Type<'_, 'input>,
-        map: &HashMap<&str, &'hir Type<'hir>>,
-    ) -> &'hir Type<'hir> {
+        map: &HashMap<&str, Type<'hir>>,
+    ) -> Type<'hir> {
         match typ {
             ast::Type::Named(named) => match named.name.literal {
-                "i32" => &Type::I32,
-                "bool" => &Type::Bool,
-                other => map.get(other).expect("type not found"),
+                "i32" => Type::I32,
+                "bool" => Type::Bool,
+                other => map.get(other).copied().expect("type not found"),
             },
             ast::Type::Tuple(tuple) => {
                 // Build up the linked list of types from the inside out
                 fn rec<'ast, 'hir, 'input: 'ast>(
                     env: &mut Env<'hir, 'input>,
-                    map: &HashMap<&str, &'hir Type<'hir>>,
+                    map: &HashMap<&str, Type<'hir>>,
                     mut types: impl Iterator<Item = &'ast ast::Type<'ast, 'input>>,
-                ) -> Option<&'hir List<'hir, &'hir Type<'hir>>> {
+                ) -> Option<&'hir List<'hir, Type<'hir>>> {
                     let item = env.type_from_ast(types.next()?, map);
                     Some(env.tuple_item_types.push(List {
                         item,
@@ -840,16 +758,18 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 }
 
                 if let Some(ty) = rec(self, map, tuple.iter_elements().copied()) {
-                    self.types.push(Type::Tuple(ty))
+                    Type::Tuple(ty)
                 } else {
-                    &Type::Unit
+                    Type::Unit
                 }
             }
-            ast::Type::Function(function) => self.types.push(Type::Function(TypeFunction {
-                lhs: self.type_from_ast(function.lhs, map),
-                rhs: self.type_from_ast(function.rhs, map),
-                output: self.type_from_ast(function.ret, map),
-            })),
+            ast::Type::Function(function) => {
+                Type::Function(self.type_functions.push(BoxedTypeFunction {
+                    lhs: self.type_from_ast(function.lhs, map),
+                    rhs: self.type_from_ast(function.rhs, map),
+                    output: self.type_from_ast(function.ret, map),
+                }))
+            }
         }
     }
 }
@@ -857,19 +777,19 @@ impl<'hir, 'input> Env<'hir, 'input> {
 #[derive(Debug)]
 pub struct PushedErrors;
 
-fn occurs<'hir>(typevars: &[Typevar<'hir>], var: Var, ty: &'hir Type<'hir>) -> bool {
+fn occurs<'hir>(typevars: &[Typevar<'hir>], var: Var, ty: Type<'hir>) -> bool {
     match ty {
         Type::Var(typevar) => {
             if let Some((t, _)) = typevars[typevar.0] {
                 occurs(typevars, var, t)
             } else {
-                var == *typevar
+                var == typevar
             }
         }
-        Type::Function(TypeFunction { lhs, rhs, output }) => {
-            occurs(typevars, var, lhs)
-                || occurs(typevars, var, rhs)
-                || occurs(typevars, var, output)
+        Type::Function(BoxedTypeFunction { lhs, rhs, output }) => {
+            occurs(typevars, var, *lhs)
+                || occurs(typevars, var, *rhs)
+                || occurs(typevars, var, *output)
         }
         _ => false,
     }

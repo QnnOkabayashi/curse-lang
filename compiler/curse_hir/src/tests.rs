@@ -56,6 +56,9 @@ let main: () () -> () = ||
 "#;
 
 const IN2: &str = r#"
+let of A B C: (A B -> C) (A, B) -> C = |f, (a, b)|
+    a f b
+
 let in2 a b: a (a () -> b) -> b = |x, f|
     x f ()
 
@@ -77,38 +80,28 @@ let main: () () -> () = ||
 
 #[test]
 fn test_branching_typeck() {
-    let program = MATH;
+    let program = IN2;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
-    let counter = AllocationCounter::count_in_program(&program);
 
-    let mut typevars = Vec::new();
-    let types: Arena<Type> = Arena::with_capacity(1024); // need to precompute this..
-    let exprs: Arena<Expr> = Arena::with_capacity(counter.num_exprs);
-    let expr_pats: Arena<ExprPat> = Arena::with_capacity(counter.num_expr_pats);
-    let expr_branches: Arena<List<ExprBranch>> = Arena::with_capacity(counter.num_branches);
-    let tuple_item_exprs: Arena<List<&Expr>> = Arena::with_capacity(counter.num_tuple_item_exprs);
-    let tuple_item_types: Arena<List<&Type>> = Arena::with_capacity(counter.num_tuple_item_exprs);
-    let tuple_item_expr_pats: Arena<List<&ExprPat>> = Arena::with_capacity(1024);
-    let mut equations: Equations = Equations::new();
-
+    // Temporaries in struct literal constructors are allowed
     let mut env = Env {
-        types: &types,
-        typevars: &mut typevars,
-        exprs: &exprs,
-        tuple_item_exprs: &tuple_item_exprs,
-        tuple_item_types: &tuple_item_types,
-        tuple_item_expr_pats: &tuple_item_expr_pats,
-        expr_pats: &expr_pats,
-        expr_branches: &expr_branches,
-        equations: &mut equations,
+        type_functions: &Arena::with_capacity(1024),
+        typevars: &mut Vec::new(),
+        expr_appls: &Arena::with_capacity(1024),
+        expr_pats: &Arena::with_capacity(1024),
+        expr_branches: &Arena::with_capacity(1024),
+        tuple_item_exprs: &Arena::with_capacity(1024),
+        tuple_item_types: &Arena::with_capacity(1024),
+        tuple_item_expr_pats: &Arena::with_capacity(1024),
+        equations: &mut Equations::new(),
     };
 
     // temporary for now until we can have custom named types
-    let type_scope: HashMap<&str, &Type<'_>> = HashMap::new();
+    let type_scope: HashMap<&str, Type<'_>> = HashMap::new();
 
-    let mut function_to_typescope: HashMap<&str, HashMap<&str, &Type<'_>>> = HashMap::new();
+    let mut function_to_typescope: HashMap<&str, HashMap<&str, Type<'_>>> = HashMap::new();
 
     let globals: HashMap<&str, Polytype<'_>> = env
         .default_globals()
@@ -136,10 +129,10 @@ fn test_branching_typeck() {
         }))
         .collect();
 
-    let mut locals: Vec<(&str, &Type<'_>)> = Vec::with_capacity(16);
+    let mut locals: Vec<(&str, Type<'_>)> = Vec::with_capacity(16);
     let mut errors: Vec<LowerError> = Vec::with_capacity(0);
 
-    let lowered_items: Result<HashMap<&str, (Polytype<'_>, &Expr<'_, '_>)>, PushedErrors> = program
+    let lowered_items: Result<HashMap<&str, (Polytype<'_>, Expr<'_, '_>)>, PushedErrors> = program
         .items
         .iter()
         .map(|item| {
@@ -161,17 +154,13 @@ fn test_branching_typeck() {
     // Put the result into: https://edotor.net/
     // println!("{}", env.equations);
 
-    // assert_eq!(exprs.remaining_capacity(), 0);
-    // assert_eq!(expr_pats.remaining_capacity(), 0);
-    // assert_eq!(expr_branches.remaining_capacity(), 0);
-
-    if let Ok(items) = lowered_items {
-        let expr = items["main"].1;
+    if let Ok(lowered_items) = lowered_items {
         assert!(errors.is_empty());
-        // println!("{expr}");
-        let mut out = vec![];
-        dot::render(&Graph::new(expr), &mut out).unwrap();
-        let out = String::from_utf8(out).unwrap();
+        let mut builder = dot::Builder::new();
+        for (_, expr) in lowered_items.values() {
+            builder.visit_expr(*expr, None);
+        }
+        let out = builder.finish();
         println!("{out}");
     } else {
         assert!(!errors.is_empty());

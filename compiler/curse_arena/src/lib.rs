@@ -151,7 +151,6 @@ impl<T> Arena<T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
     /// Returns the total capacity of the [`Arena`].
     pub fn capacity(&self) -> usize {
         self.cap
