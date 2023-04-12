@@ -18,7 +18,7 @@ impl Builder {
 
     pub fn visit_expr(&mut self, expr: Expr<'_, '_>, parent: Option<u32>) {
         let id = self.fresh();
-        self.out.push_str("\n    ");
+        self.out += "\n    ";
 
         match expr {
             Expr::Builtin(builtin) => {

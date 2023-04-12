@@ -90,7 +90,6 @@ fn test_branching_typeck() {
         type_functions: &Arena::with_capacity(1024),
         typevars: &mut Vec::new(),
         expr_appls: &Arena::with_capacity(1024),
-        expr_pats: &Arena::with_capacity(1024),
         expr_branches: &Arena::with_capacity(1024),
         tuple_item_exprs: &Arena::with_capacity(1024),
         tuple_item_types: &Arena::with_capacity(1024),
@@ -169,24 +168,6 @@ fn test_branching_typeck() {
             println!("{i}) {err}");
         }
     }
-}
-
-// #[test]
-fn test_count_allocations() {
-    let program = r#"
-let main: () () -> () = ||
-    5 in |x|
-    4 in |y|
-    x + y
-"#;
-
-    let ctx = curse_parse::Context::new();
-    let program = curse_parse::parse_program(&ctx, program).unwrap();
-
-    let counter = AllocationCounter::count_in_program(&program);
-    assert_eq!(counter.num_exprs, 13);
-    assert_eq!(counter.num_expr_pats, 2);
-    assert_eq!(counter.num_branches, 3);
 }
 
 const PROG2: &str = r#"

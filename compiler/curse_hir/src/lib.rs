@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+// #![allow(dead_code)]
 use curse_arena::Arena;
 use curse_ast as ast;
 use displaydoc::Display;
@@ -48,16 +48,7 @@ impl fmt::Display for Type<'_> {
             Type::I32 => write!(f, "i32"),
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "()"),
-            Type::Tuple(elements) => {
-                write!(f, "(")?;
-                write!(f, "{}", elements.item)?;
-                if let Some(remaining) = elements.next {
-                    for item in remaining.iter() {
-                        write!(f, ", {item}")?;
-                    }
-                }
-                write!(f, ")")
-            }
+            Type::Tuple(elements) => write!(f, "({})", elements.delim(", ")),
             Type::Var(var) => write!(f, "{var}"),
             Type::Function(boxed) => boxed.fmt(f),
         }
@@ -85,6 +76,30 @@ impl<'list, T> List<'list, T> {
             curr = next.next;
             Some(&next.item)
         })
+    }
+}
+
+impl<'list, T: fmt::Display> List<'list, T> {
+    /// Returns a [`Display`]able type with a provided delimiter.
+    pub fn delim<'a>(&'a self, delim: &'a str) -> Delim<'a, T> {
+        Delim { list: self, delim }
+    }
+}
+
+pub struct Delim<'a, T> {
+    list: &'a List<'a, T>,
+    delim: &'a str,
+}
+
+impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.list.item.fmt(f)?;
+        if let Some(remaining) = self.list.next {
+            for item in remaining.iter() {
+                write!(f, "{}{}", self.delim, item)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -631,7 +646,6 @@ impl AllocationCounter {
 pub struct Env<'hir, 'input> {
     type_functions: &'hir Arena<BoxedTypeFunction<'hir>>,
     expr_appls: &'hir Arena<BoxedExprAppl<'hir, 'input>>,
-    expr_pats: &'hir Arena<Pat<'hir, 'input>>,
     tuple_item_exprs: &'hir Arena<List<'hir, Expr<'hir, 'input>>>,
     tuple_item_types: &'hir Arena<List<'hir, Type<'hir>>>,
     tuple_item_expr_pats: &'hir Arena<List<'hir, Pat<'hir, 'input>>>,

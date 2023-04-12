@@ -42,18 +42,6 @@ pub struct BoxedExprAppl<'hir, 'input> {
     pub rhs: Expr<'hir, 'input>,
 }
 
-// stack of ideas
-// - Make expression trees graphable using arenas
-//   - Be able to display singleton exprs like () and +, which we want to
-//     statically allocate instead of put in an arena
-//     - Inline singleton exprs into `Expr`, with pointers into arenas for
-//       more complex items like tuples and applications
-//       - Inline as many things as possible, like numbers and idents.
-//         Harder to inline tuples and closures because they inflate the size
-//         of `Expr` to 32 bytes.
-//         - Come up with a way to not have to put the types within `Tuple` and
-//           `Closure`,
-
 impl<'hir> Ty<'hir> for Expr<'hir, '_> {
     fn ty(&self) -> Type<'hir> {
         match self {
@@ -78,23 +66,10 @@ impl fmt::Display for Expr<'_, '_> {
             Expr::Unit => f.write_str("()"),
             Expr::Ident { literal, .. } => literal.fmt(f),
             Expr::Tuple { exprs, .. } => {
-                write!(f, "(")?;
-                write!(f, "{}", exprs.item)?;
-                if let Some(remaining) = exprs.next {
-                    for item in remaining.iter() {
-                        write!(f, ", {item}")?;
-                    }
-                }
-                write!(f, ")")
+                write!(f, "({})", exprs.delim(", "))
             }
             Expr::Closure { branches, .. } => {
-                write!(f, "{}", branches.item)?;
-                if let Some(branches) = branches.next {
-                    for branch in branches.iter() {
-                        write!(f, " else {}", branch)?;
-                    }
-                }
-                Ok(())
+                write!(f, "{}", branches.delim(" else "))
             }
             Expr::Appl { appl, .. } => appl.fmt(f),
         }
@@ -118,41 +93,39 @@ pub enum Builtin {
 
 impl Builtin {
     pub fn as_str(&self) -> &'static str {
+        use Builtin::*;
         match self {
-            Builtin::Add => "+",
-            Builtin::Sub => "-",
-            Builtin::Mul => "*",
-            Builtin::Rem => "%",
-            Builtin::Div => "/",
-            Builtin::Eq => "=",
-            Builtin::Lt => "<",
-            Builtin::Gt => ">",
-            Builtin::Le => "<=",
-            Builtin::Ge => ">=",
-            Builtin::Print => "print",
+            Add => "+",
+            Sub => "-",
+            Mul => "*",
+            Rem => "%",
+            Div => "/",
+            Eq => "=",
+            Lt => "<",
+            Gt => ">",
+            Le => "<=",
+            Ge => ">=",
+            Print => "print",
         }
     }
 }
 
 impl<'hir> Ty<'hir> for Builtin {
     fn ty(&self) -> Type<'hir> {
+        use Builtin::*;
         match self {
-            Builtin::Add | Builtin::Sub | Builtin::Mul | Builtin::Rem => {
-                Type::Function(&BoxedTypeFunction {
-                    lhs: Type::I32,
-                    rhs: Type::I32,
-                    output: Type::I32,
-                })
-            }
-            Builtin::Div => todo!("Type of div"),
-            Builtin::Eq | Builtin::Lt | Builtin::Gt | Builtin::Le | Builtin::Ge => {
-                Type::Function(&BoxedTypeFunction {
-                    lhs: Type::I32,
-                    rhs: Type::I32,
-                    output: Type::Bool,
-                })
-            }
-            Builtin::Print => todo!("Type of print"),
+            Add | Sub | Mul | Rem => Type::Function(&BoxedTypeFunction {
+                lhs: Type::I32,
+                rhs: Type::I32,
+                output: Type::I32,
+            }),
+            Div => todo!("Type of div"),
+            Eq | Lt | Gt | Le | Ge => Type::Function(&BoxedTypeFunction {
+                lhs: Type::I32,
+                rhs: Type::I32,
+                output: Type::Bool,
+            }),
+            Print => todo!("Type of print"),
         }
     }
 }
@@ -160,44 +133,6 @@ impl<'hir> Ty<'hir> for Builtin {
 impl fmt::Display for Builtin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
-    }
-}
-
-#[derive(Copy, Clone, Debug, Display)]
-#[displaydoc("{literal}")]
-pub struct ExprIdent<'hir, 'input> {
-    pub literal: &'input str,
-    pub ty: Type<'hir>,
-}
-
-impl<'hir> Ty<'hir> for ExprIdent<'hir, '_> {
-    fn ty(&self) -> Type<'hir> {
-        self.ty
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct ExprTuple<'hir, T> {
-    pub ty: Type<'hir>,
-    pub exprs: &'hir List<'hir, T>,
-}
-
-impl<'hir, T> Ty<'hir> for ExprTuple<'hir, T> {
-    fn ty(&self) -> Type<'hir> {
-        self.ty
-    }
-}
-
-impl<T: fmt::Display> fmt::Display for ExprTuple<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(")?;
-        write!(f, "{}", self.exprs.item)?;
-        if let Some(remaining) = self.exprs.next {
-            for item in remaining.iter() {
-                write!(f, ", {item}")?;
-            }
-        }
-        write!(f, ")")
     }
 }
 
@@ -231,16 +166,7 @@ impl fmt::Display for Pat<'_, '_> {
             Pat::I32(i) => i.fmt(f),
             Pat::Unit => f.write_str("()"),
             Pat::Ident { literal, .. } => f.write_str(literal),
-            Pat::Tuple { exprs, .. } => {
-                write!(f, "(")?;
-                write!(f, "{}", exprs.item)?;
-                if let Some(remaining) = exprs.next {
-                    for item in remaining.iter() {
-                        write!(f, ", {item}")?;
-                    }
-                }
-                write!(f, ")")
-            }
+            Pat::Tuple { exprs, .. } => write!(f, "({})", exprs.delim(", ")),
         }
     }
 }

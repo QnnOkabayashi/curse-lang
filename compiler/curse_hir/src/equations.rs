@@ -20,15 +20,15 @@ pub enum Node<'hir> {
 /// a conclusion (another node).
 #[derive(Display)]
 pub enum Edge {
-    /// lhs
+    #[displaydoc("lhs")]
     FunctionLhs,
-    /// rhs
+    #[displaydoc("rhs")]
     FunctionRhs,
-    /// output
+    #[displaydoc("output")]
     FunctionOutput,
-    /// transitivity
+    #[displaydoc("transitivity")]
     Transitivity,
-    /// tuple_{0}
+    #[displaydoc("tuple_{0}")]
     Tuple(usize),
 }
 
