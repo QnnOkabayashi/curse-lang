@@ -583,24 +583,32 @@ pub enum LowerError<'hir> {
 /// Count the number of allocations in an [`ast::Program<'_, '_>`].
 #[derive(Debug)]
 pub struct AllocationCounter {
-    pub num_exprs: usize,
-    pub num_tuple_item_exprs: usize,
-    pub num_expr_pats: usize,
-    pub num_branches: usize,
+    pub type_functions: usize,
+    pub expr_appls: usize,
+    pub expr_branches: usize,
+    pub tuple_item_exprs: usize,
+    pub tuple_item_types: usize,
+    pub tuple_item_expr_pats: usize,
 }
 
 impl AllocationCounter {
     pub fn count_in_program(program: &ast::Program<'_, '_>) -> Self {
+        const TYPE_FUNCTIONS_ALLOCATED_IN_DEFAULT_GLOBALS: usize = 3;
+        const GENERIC_FNS_INSTANTIATED_GUESS: usize = 64;
+
         let mut counter = AllocationCounter {
-            num_exprs: 0,
-            num_tuple_item_exprs: 0,
-            num_expr_pats: 0,
-            num_branches: 0,
+            type_functions: TYPE_FUNCTIONS_ALLOCATED_IN_DEFAULT_GLOBALS + GENERIC_FNS_INSTANTIATED_GUESS,
+            expr_appls: 0,
+            expr_branches: 0,
+            tuple_item_exprs: 0,
+            tuple_item_types: 0,
+            tuple_item_expr_pats: 0,
         };
 
         for item in program.items.iter() {
             counter.count_in_expr(item.expr);
         }
+
         counter
     }
 
@@ -608,36 +616,78 @@ impl AllocationCounter {
         match expr {
             ast::Expr::Paren(parens) => self.count_in_expr(parens.expr),
             ast::Expr::Tuple(tuple) => {
-                self.num_exprs += 1;
-                self.num_tuple_item_exprs += tuple.len();
+                self.tuple_item_exprs += tuple.len();
+                // self.tuple_item_expr_pats += tuple.len();
                 for element in tuple.iter_elements() {
                     self.count_in_expr(element);
                 }
             }
             ast::Expr::Closure(closure) => {
-                self.num_exprs += 1;
-                self.num_branches += closure.num_branches();
-
+                self.expr_branches += closure.num_branches();
+                self.type_functions += 1;
                 for branch in closure.iter_branches() {
-                    self.num_expr_pats += match branch.params {
-                        ast::ExprParams::Zero => 0,
-                        ast::ExprParams::One(..) => 1,
-                        ast::ExprParams::Two(..) => 2,
+                    fn pat_rec(counter: &mut AllocationCounter, pat: &ast::Pat<'_, ast::ExprLit<'_>>) {
+                        if let ast::Pat::Tuple(tuple) = pat {
+                            counter.tuple_item_expr_pats += tuple.len();
+                            counter.tuple_item_types += tuple.len();
+                            for pat in tuple.iter_elements() {
+                                pat_rec(counter, pat);
+                            }
+                        }
+                    }
+
+                    fn type_from_ast_rec(counter: &mut AllocationCounter, ty: &ast::Type<'_, '_>) {
+                        match ty {
+                            ast::Type::Tuple(tuple) => {
+                                counter.tuple_item_types += tuple.len();
+                                for element in tuple.iter_elements() {
+                                    type_from_ast_rec(counter, element);
+                                }
+                            }
+                            ast::Type::Function(function) => {
+                                counter.type_functions += 1;
+                                type_from_ast_rec(counter, function.lhs);
+                                type_from_ast_rec(counter, function.rhs);
+                                type_from_ast_rec(counter, function.ret);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    match &branch.params {
+                        ast::ExprParams::Zero => {}
+                        ast::ExprParams::One(p1) => {
+                            pat_rec(self, p1.pat);
+                            if let Some((_, ty)) = p1.ty {
+                                type_from_ast_rec(self, ty);
+                            }
+                        }
+                        ast::ExprParams::Two(p1, _, p2) => {
+                            pat_rec(self, p1.pat);
+                            pat_rec(self, p2.pat);
+                            if let Some((_, ty)) = p1.ty {
+                                type_from_ast_rec(self, ty);
+                            }
+                            if let Some((_, ty)) = p2.ty {
+                                type_from_ast_rec(self, ty);
+                            }
+                        }
                     };
 
                     self.count_in_expr(branch.body);
                 }
             }
             ast::Expr::Appl(appl) => {
-                self.num_exprs += 1;
+                self.expr_appls += 1; // new
+                self.type_functions += 1;
                 self.count_in_expr(appl.lhs);
                 self.count_in_expr(appl.function);
                 self.count_in_expr(appl.rhs);
             }
             ast::Expr::Symbol(_) => {}
             ast::Expr::Lit(lit) => match lit {
-                ast::ExprLit::Integer(_) | ast::ExprLit::Ident(_) => self.num_exprs += 1,
-                ast::ExprLit::True(_) | ast::ExprLit::False(_) => {}
+                ast::ExprLit::Integer(_) | ast::ExprLit::Ident(_) => {},
+                _ => {}
             },
         }
     }
@@ -670,6 +720,8 @@ impl<'hir, 'input> Env<'hir, 'input> {
     ///
     /// `print`: `x () -> ()`
     pub fn default_globals(&mut self) -> impl Iterator<Item = (&'hir str, Polytype<'hir>)> {
+        // If you change the default globals, make sure
+        // to update the 
         [
             ("in", {
                 let (x, x_type) = self.new_typevar();

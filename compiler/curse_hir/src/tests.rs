@@ -85,15 +85,29 @@ fn test_branching_typeck() {
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
 
+    let counter = AllocationCounter::count_in_program(&program);
+
+    println!("{counter:#?}");
+
+    // TODO(quinn):
+    // - Make types use a u32 ptr so we can reduce type size and put them in a vec
+    //   so that we can put them in a vec and not have to reallocate them.
+    //   Then you could do resolution and swap out the underlying arena of types
+    //   without having to change the expression tree at all :)
+    //   - Also make some abstraction so the allocation counter doesn't have to
+    //     do its own tracking. Ideally we want it to just plug into some kind
+    //     of visitor trait to keep things straightforward.
+    // - Update to logos v0.13.0
+
     // Temporaries in struct literal constructors are allowed
     let mut env = Env {
-        type_functions: &Arena::with_capacity(1024),
+        type_functions: &Arena::with_capacity(counter.type_functions),
         typevars: &mut Vec::new(),
-        expr_appls: &Arena::with_capacity(1024),
-        expr_branches: &Arena::with_capacity(1024),
-        tuple_item_exprs: &Arena::with_capacity(1024),
-        tuple_item_types: &Arena::with_capacity(1024),
-        tuple_item_expr_pats: &Arena::with_capacity(1024),
+        expr_appls: &Arena::with_capacity(counter.expr_appls),
+        expr_branches: &Arena::with_capacity(counter.expr_branches),
+        tuple_item_exprs: &Arena::with_capacity(counter.tuple_item_exprs),
+        tuple_item_types: &Arena::with_capacity(counter.tuple_item_types),
+        tuple_item_expr_pats: &Arena::with_capacity(counter.tuple_item_expr_pats),
         equations: &mut Equations::new(),
     };
 
@@ -149,6 +163,13 @@ fn test_branching_typeck() {
             Ok((item_name, (polytype, body)))
         })
         .collect();
+
+    println!("{}", env.type_functions.remaining_capacity());
+    println!("{}", env.expr_appls.remaining_capacity());
+    println!("{}", env.expr_branches.remaining_capacity());
+    println!("{}", env.tuple_item_exprs.remaining_capacity());
+    println!("{}", env.tuple_item_types.remaining_capacity());
+    println!("{}", env.tuple_item_expr_pats.remaining_capacity());
 
     // Put the result into: https://edotor.net/
     // println!("{}", env.equations);
