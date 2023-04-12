@@ -597,7 +597,8 @@ impl AllocationCounter {
         const GENERIC_FNS_INSTANTIATED_GUESS: usize = 64;
 
         let mut counter = AllocationCounter {
-            type_functions: TYPE_FUNCTIONS_ALLOCATED_IN_DEFAULT_GLOBALS + GENERIC_FNS_INSTANTIATED_GUESS,
+            type_functions: TYPE_FUNCTIONS_ALLOCATED_IN_DEFAULT_GLOBALS
+                + GENERIC_FNS_INSTANTIATED_GUESS,
             expr_appls: 0,
             expr_branches: 0,
             tuple_item_exprs: 0,
@@ -626,7 +627,10 @@ impl AllocationCounter {
                 self.expr_branches += closure.num_branches();
                 self.type_functions += 1;
                 for branch in closure.iter_branches() {
-                    fn pat_rec(counter: &mut AllocationCounter, pat: &ast::Pat<'_, ast::ExprLit<'_>>) {
+                    fn pat_rec(
+                        counter: &mut AllocationCounter,
+                        pat: &ast::Pat<'_, ast::ExprLit<'_>>,
+                    ) {
                         if let ast::Pat::Tuple(tuple) = pat {
                             counter.tuple_item_expr_pats += tuple.len();
                             counter.tuple_item_types += tuple.len();
@@ -686,7 +690,7 @@ impl AllocationCounter {
             }
             ast::Expr::Symbol(_) => {}
             ast::Expr::Lit(lit) => match lit {
-                ast::ExprLit::Integer(_) | ast::ExprLit::Ident(_) => {},
+                ast::ExprLit::Integer(_) | ast::ExprLit::Ident(_) => {}
                 _ => {}
             },
         }
@@ -720,8 +724,6 @@ impl<'hir, 'input> Env<'hir, 'input> {
     ///
     /// `print`: `x () -> ()`
     pub fn default_globals(&mut self) -> impl Iterator<Item = (&'hir str, Polytype<'hir>)> {
-        // If you change the default globals, make sure
-        // to update the 
         [
             ("in", {
                 let (x, x_type) = self.new_typevar();
