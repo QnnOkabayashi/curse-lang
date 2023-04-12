@@ -1,19 +1,16 @@
 use crate::{Type, Var};
 use displaydoc::Display;
-use petgraph::dot::Dot;
-use petgraph::graph::{DiGraph, EdgeReference, NodeIndex};
-use petgraph::visit::EdgeRef;
-use std::fmt;
+use petgraph::graph::{DiGraph, NodeIndex};
 
 /// A node on the inference graph.
-#[derive(Copy, Clone, Debug, Display, PartialEq)]
-pub enum Node<'hir> {
-    #[displaydoc("{0} ≡ {1}")]
-    Equiv(Type<'hir>, Type<'hir>),
-    #[displaydoc("{0} ≢ {1}")]
-    NotEquiv(Type<'hir>, Type<'hir>),
-    #[displaydoc("{var} := {definition}")]
-    Binding { var: Var, definition: Type<'hir> },
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Node {
+    // #[displaydoc("{0} ≡ {1}")]
+    Equiv(Type, Type),
+    // #[displaydoc("{0} ≢ {1}")]
+    NotEquiv(Type, Type),
+    // #[displaydoc("{var} := {definition}")]
+    Binding { var: Var, definition: Type },
 }
 
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to
@@ -33,18 +30,18 @@ pub enum Edge {
 }
 
 #[derive(Default)]
-pub struct Equations<'hir> {
-    pub graph: DiGraph<Node<'hir>, Edge>,
+pub struct Equations {
+    pub graph: DiGraph<Node, Edge>,
 }
 
-impl<'hir> Equations<'hir> {
+impl Equations {
     pub fn new() -> Self {
         Equations {
             graph: DiGraph::new(),
         }
     }
 
-    pub fn add_rule(&mut self, rule: Node<'hir>) -> NodeIndex {
+    pub fn add_rule(&mut self, rule: Node) -> NodeIndex {
         self.graph.add_node(rule)
     }
 
@@ -53,30 +50,30 @@ impl<'hir> Equations<'hir> {
     }
 }
 
-impl fmt::Display for Equations<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn get_edge_attributes(
-            graph: &DiGraph<Node<'_>, Edge>,
-            edge: EdgeReference<Edge>,
-        ) -> String {
-            if let Node::NotEquiv(_, _) = &graph[edge.source()] {
-                "color = red".to_string()
-            } else {
-                String::new()
-            }
-        }
+// impl fmt::Display for Equations<'_> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         fn get_edge_attributes(
+//             graph: &DiGraph<Node<'_>, Edge>,
+//             edge: EdgeReference<Edge>,
+//         ) -> String {
+//             if let Node::NotEquiv(_, _) = &graph[edge.source()] {
+//                 "color = red".to_string()
+//             } else {
+//                 String::new()
+//             }
+//         }
 
-        fn get_node_attributes(
-            _graph: &DiGraph<Node<'_>, Edge>,
-            (_ix, rule): (NodeIndex, &Node<'_>),
-        ) -> String {
-            if let Node::NotEquiv(_, _) = rule {
-                "color = red".to_string()
-            } else {
-                String::new()
-            }
-        }
+//         fn get_node_attributes(
+//             _graph: &DiGraph<Node<'_>, Edge>,
+//             (_ix, rule): (NodeIndex, &Node<'_>),
+//         ) -> String {
+//             if let Node::NotEquiv(_, _) = rule {
+//                 "color = red".to_string()
+//             } else {
+//                 String::new()
+//             }
+//         }
 
-        Dot::with_attr_getters(&self.graph, &[], &get_edge_attributes, &get_node_attributes).fmt(f)
-    }
-}
+//         Dot::with_attr_getters(&self.graph, &[], &get_edge_attributes, &get_node_attributes).fmt(f)
+//     }
+// }

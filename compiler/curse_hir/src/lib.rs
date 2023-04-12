@@ -1,5 +1,4 @@
 // #![allow(dead_code)]
-use curse_arena::Arena;
 use curse_ast as ast;
 use displaydoc::Display;
 use petgraph::graph::NodeIndex;
@@ -16,42 +15,107 @@ mod dot;
 mod tests;
 
 /// `Some` is bound, `None` is unbound.
-pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
+pub type Typevar = Option<(Type, NodeIndex)>;
+
+pub struct Display<F: Fn(&mut fmt::Formatter) -> fmt::Result>(F);
+
+impl<F: Fn(&mut fmt::Formatter) -> fmt::Result> fmt::Display for Display<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.0)(f)
+    }
+}
 
 /// Newtype around a `usize` used to index into the `typevars` field of `Env`.
 #[derive(Copy, Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[displaydoc("T{0}")]
-pub struct Var(usize); // TODO(quinn): change to u32
+pub struct Var(u32);
 
-/// Cheap type that is intended to be inlined.
+// Just 8 bytes :D
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Type<'hir> {
+pub enum Type {
     I32,
     Bool,
     Unit,
-    Tuple(&'hir List<'hir, Self>),
+    Tuple(TupleItemExprIx),
     Var(Var),
-    Function(&'hir BoxedTypeFunction<'hir>),
+    Function(BoxedTypeFunctionIx),
 }
 
-#[derive(Copy, Clone, Debug, Display, PartialEq)]
-#[displaydoc("({lhs} {rhs} -> {output})")]
-pub struct BoxedTypeFunction<'hir> {
-    lhs: Type<'hir>,
-    rhs: Type<'hir>,
-    output: Type<'hir>,
-}
-
-impl fmt::Display for Type<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
+impl Type {
+    /// Display a [`Type`] using a provided context.
+    pub fn display<'a>(&'a self, env: &'a Env) -> impl fmt::Display + 'a {
+        Display(move |f| match self {
             Type::I32 => write!(f, "i32"),
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "()"),
-            Type::Tuple(elements) => write!(f, "({})", elements.delim(", ")),
-            Type::Var(var) => write!(f, "{var}"),
-            Type::Function(boxed) => boxed.fmt(f),
+            Type::Tuple(tuple) => {
+                let base = &env.tuple_item_types_vec[..];
+                let mut x = &base[ix(*tuple)];
+                write!(f, "(")?;
+                write!(f, "{}", x.item.display(env))?;
+                while next(&mut x, base) {
+                    write!(f, ", {}", x.item.display(env))?;
+                }
+                write!(f, ")")
+            }
+            Type::Var(var) => {
+                if let Some((ty, _)) = &env.typevars[ix(var.0)] {
+                    write!(f, "{}", ty.display(env))
+                } else {
+                    write!(f, "{}", var)
+                }
+            }
+            Type::Function(fun) => {
+                let fun = env.type_functions_vec[ix(*fun)];
+
+                let lhs = fun.lhs.display(env);
+                let rhs = fun.rhs.display(env);
+                let output = fun.output.display(env);
+
+                write!(f, "({lhs} {rhs} -> {output})")
+            }
+        })
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+// #[displaydoc("({lhs} {rhs} -> {output})")]
+pub struct BoxedTypeFunction {
+    lhs: Type,
+    rhs: Type,
+    output: Type,
+}
+
+pub type ListIx = u32;
+
+#[derive(Copy, Clone)]
+pub struct List2<T> {
+    item: T,
+    next: Option<ListIx>,
+}
+
+impl<T> List2<T> {
+    /// Returns the number of elements in the list.
+    // Never empty
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self, base: &[Self]) -> usize {
+        // TODO(quinn): make this iterative
+        1 + self.next.map(|i| base[ix(i)].len(base)).unwrap_or(0)
+    }
+
+    // /// Returns the next element in the linked list.
+    // pub fn next<'a>(&self, base: &'a [Self]) -> Option<&List2<T>> {
+    //     self.next.map(|index| &base[ix(index)])
+    // }
+}
+
+pub fn next<'a, T>(list: &mut &'a List2<T>, base: &'a [List2<T>]) -> bool {
+    match list.next {
+        Some(index) => {
+            *list = &base[ix(index)];
+            true
         }
+        None => false,
     }
 }
 
@@ -104,13 +168,13 @@ impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
 }
 
 #[derive(Clone)]
-pub struct Polytype<'hir> {
+pub struct Polytype {
     typevars: Vec<Var>,
-    typ: Type<'hir>,
+    typ: Type,
 }
 
-impl<'hir> Polytype<'hir> {
-    pub fn new(ty: Type<'hir>) -> Self {
+impl Polytype {
+    pub fn new(ty: Type) -> Self {
         Polytype {
             typevars: vec![],
             typ: ty,
@@ -119,22 +183,22 @@ impl<'hir> Polytype<'hir> {
 }
 
 pub struct Scope<'outer, 'hir, 'input> {
-    env: &'outer mut Env<'hir, 'input>,
-    type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-    errors: &'outer mut Vec<LowerError<'hir>>,
+    env: &'outer mut Env<'input>,
+    type_map: &'outer HashMap<&'outer str, Type>,
+    errors: &'outer mut Vec<LowerError>,
     original_errors_len: usize,
-    globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
-    locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
+    globals: &'hir HashMap<&'hir str, Polytype>,
+    locals: &'outer mut Vec<(&'hir str, Type)>,
     original_locals_len: usize,
 }
 
-impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
+impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     pub fn new(
-        env: &'outer mut Env<'hir, 'input>,
-        type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-        errors: &'outer mut Vec<LowerError<'hir>>,
-        globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
-        locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
+        env: &'outer mut Env<'input>,
+        type_map: &'outer HashMap<&'outer str, Type>,
+        errors: &'outer mut Vec<LowerError>,
+        globals: &'hir HashMap<&'hir str, Polytype>,
+        locals: &'outer mut Vec<(&'hir str, Type)>,
     ) -> Self {
         let original_errors_len = errors.len();
         let original_locals_len = locals.len();
@@ -150,7 +214,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     }
 
     /// Search through local variables first, then search through global variables.
-    pub fn type_of(&mut self, var: &str) -> Option<Type<'hir>> {
+    pub fn type_of(&mut self, var: &str) -> Option<Type> {
         self.locals
             .iter()
             .rev()
@@ -162,7 +226,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
             })
     }
 
-    pub fn add_local(&mut self, var: &'hir str, ty: Type<'hir>) {
+    pub fn add_local(&mut self, var: &'hir str, ty: Type) {
         self.locals.push((var, ty));
     }
 
@@ -187,10 +251,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
         self.errors.len() > self.original_errors_len
     }
 
-    pub fn lower(
-        &mut self,
-        expr: &ast::Expr<'_, 'input>,
-    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
+    pub fn lower(&mut self, expr: &ast::Expr<'_, 'input>) -> Result<Expr<'input>, PushedErrors> {
         match expr {
             ast::Expr::Paren(paren) => self.lower(paren.expr),
             ast::Expr::Symbol(symbol) => match symbol {
@@ -232,16 +293,11 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                 ast::ExprLit::False(_) => Ok(Expr::Bool(false)),
             },
             ast::Expr::Tuple(tuple) => {
-                fn rec<'ast, 'hir, 'input: 'ast>(
+                fn rec<'ast, 'hir, 'input: 'ast + 'hir>(
                     scope: &mut Scope<'_, 'hir, 'input>,
                     mut exprs: impl Iterator<Item = &'ast ast::Expr<'ast, 'input>>,
-                ) -> Result<
-                    Option<(
-                        &'hir List<'hir, Expr<'hir, 'input>>,
-                        &'hir List<'hir, Type<'hir>>,
-                    )>,
-                    PushedErrors,
-                > {
+                ) -> Result<Option<(TupleItemExprIx, TupleItemExprIx)>, PushedErrors>
+                {
                     let Some(expr) = exprs.next() else {
                         return Ok(None);
                     };
@@ -253,11 +309,11 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                     };
 
                     Ok(Some((
-                        scope.env.tuple_item_exprs.push(List {
+                        scope.env.push_tuple_item_exprs(List2 {
                             item: expr,
                             next: Some(next_expr),
                         }),
-                        scope.env.tuple_item_types.push(List {
+                        scope.env.push_tuple_item_types(List2 {
                             item: expr.ty(),
                             next: Some(next_type),
                         }),
@@ -283,12 +339,11 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
 
                 drop(inner);
 
-                fn rec<'ast, 'hir, 'input: 'ast>(
+                fn rec<'ast, 'hir, 'input: 'ast + 'hir>(
                     scope: &mut Scope<'_, 'hir, 'input>,
-                    head: &ExprBranch<'hir, 'input>,
+                    head: &ExprBranch<'input>,
                     mut branches: impl Iterator<Item = &'ast ast::ExprBranch<'ast, 'input>>,
-                ) -> Result<Option<&'hir List<'hir, ExprBranch<'hir, 'input>>>, PushedErrors>
-                {
+                ) -> Result<Option<ExprBranchIx>, PushedErrors> {
                     let Some(branch) = branches.next() else {
                         return Ok(None);
                     };
@@ -305,9 +360,10 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                     if scope.had_errors() {
                         Err(PushedErrors)
                     } else {
-                        Ok(Some(scope.env.expr_branches.push(List {
+                        let next = rec(scope, head, branches)?;
+                        Ok(Some(scope.env.push_expr_branches(List2 {
                             item: ExprBranch { lhs, rhs, body },
-                            next: rec(scope, head, branches)?,
+                            next,
                         })))
                     }
                 }
@@ -316,9 +372,9 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
 
                 let next = rec(self, &head, closure.tail.iter().map(|(_, branch)| branch))?;
 
-                let branches = self.env.expr_branches.push(List { item: head, next });
+                let branches = self.env.push_expr_branches(List2 { item: head, next });
 
-                let ty = Type::Function(self.env.type_functions.push(BoxedTypeFunction {
+                let ty = Type::Function(self.env.push_type_function(BoxedTypeFunction {
                     lhs: head.lhs.ty(),
                     rhs: head.rhs.ty(),
                     output: head.body.ty(),
@@ -337,14 +393,13 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
 
                 let ty = self.env.new_typevar().1;
 
-                self.unify(
-                    function.ty(),
-                    Type::Function(self.env.type_functions.push(BoxedTypeFunction {
-                        lhs: lhs.ty(),
-                        rhs: rhs.ty(),
-                        output: ty,
-                    })),
-                );
+                let index_of_function = self.env.push_type_function(BoxedTypeFunction {
+                    lhs: lhs.ty(),
+                    rhs: rhs.ty(),
+                    output: ty,
+                });
+
+                self.unify(function.ty(), Type::Function(index_of_function));
 
                 if self.had_errors() {
                     Err(PushedErrors)
@@ -353,8 +408,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                         ty,
                         appl: self
                             .env
-                            .expr_appls
-                            .push(BoxedExprAppl { lhs, function, rhs }),
+                            .push_expr_appl(BoxedExprAppl { lhs, function, rhs }),
                     })
                 }
             }
@@ -362,10 +416,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     }
 
     /// Returns the [`Type`] of an [`ast::ExprPat`].
-    fn lower_pat(
-        &mut self,
-        pat: &ast::ExprPat<'_, 'input>,
-    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
+    fn lower_pat(&mut self, pat: &ast::ExprPat<'_, 'input>) -> Result<Pat<'input>, PushedErrors> {
         match pat {
             ast::Pat::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
@@ -390,16 +441,11 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                 // TODO(quinn): this is mostly copy pasted from `Env::lower`,
                 // can we try to generalize them? Patterns are basically just
                 // expressions without closures or function application...
-                fn rec<'ast, 'hir, 'input: 'ast>(
+                fn rec<'ast, 'hir, 'input: 'ast + 'hir>(
                     bindings: &mut Scope<'_, 'hir, 'input>,
                     mut pats: impl Iterator<Item = &'ast ast::ExprPat<'ast, 'input>>,
-                ) -> Result<
-                    Option<(
-                        &'hir List<'hir, Pat<'hir, 'input>>,
-                        &'hir List<'hir, Type<'hir>>,
-                    )>,
-                    PushedErrors,
-                > {
+                ) -> Result<Option<(TupleItemExprPatIx, TupleItemTypeIx)>, PushedErrors>
+                {
                     let Some(pat) = pats.next() else {
                         return Ok(None);
                     };
@@ -411,11 +457,11 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                     };
 
                     Ok(Some((
-                        bindings.env.tuple_item_expr_pats.push(List {
+                        bindings.env.push_tuple_item_expr_pats(List2 {
                             item: pat,
                             next: Some(next_pat),
                         }),
-                        bindings.env.tuple_item_types.push(List {
+                        bindings.env.push_tuple_item_types(List2 {
                             item: pat.ty(),
                             next: Some(next_type),
                         }),
@@ -442,7 +488,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     fn lower_param(
         &mut self,
         param: &ast::ExprParam<'_, 'input>,
-    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
+    ) -> Result<Pat<'input>, PushedErrors> {
         let pat_type = self.lower_pat(param.pat)?;
         if let Some((_, annotation)) = param.ty {
             let t2 = self.env.type_from_ast(annotation, self.type_map);
@@ -459,7 +505,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     fn type_of_many_params(
         &mut self,
         params: &ast::ExprParams<'_, 'input>,
-    ) -> Result<(Pat<'hir, 'input>, Pat<'hir, 'input>), PushedErrors> {
+    ) -> Result<(Pat<'input>, Pat<'input>), PushedErrors> {
         match params {
             ast::ExprParams::Zero => Ok((Pat::Unit, Pat::Unit)),
             ast::ExprParams::One(lhs) => {
@@ -475,15 +521,21 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
     }
 
     /// Unify two types.
-    fn unify(&mut self, t1: Type<'hir>, t2: Type<'hir>) -> NodeIndex {
+    fn unify(&mut self, t1: Type, t2: Type) -> NodeIndex {
         match (t1, t2) {
             (Type::I32, Type::I32) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
             (Type::Bool, Type::Bool) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
             (Type::Unit, Type::Unit) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
             (Type::Tuple(a), Type::Tuple(b)) => {
-                if a.len() == b.len() {
+                let base = &self.env.tuple_item_types_vec[..];
+                let mut a = base[ix(a)];
+                let mut b = base[ix(b)];
+                if a.len(base) == b.len(base) {
                     let conclusion = self.env.equations.add_rule(Node::Equiv(t1, t2));
-                    for (i, (&t1, &t2)) in a.iter().zip(b.iter()).enumerate() {
+
+                    for i in 0.. {
+                        let t1 = a.item;
+                        let t2 = b.item;
                         let mut inner = self.enter_scope();
                         let proof = inner.unify(t1, t2);
                         if inner.had_errors() {
@@ -493,7 +545,48 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                             .env
                             .equations
                             .add_proof(proof, conclusion, Edge::Tuple(i));
+                        drop(inner);
+
+                        let base = &self.env.tuple_item_types_vec[..];
+
+                        if let (Some(next_a), Some(next_b)) = (a.next, b.next) {
+                            a = base[ix(next_a)];
+                            b = base[ix(next_b)];
+                        } else {
+                            break;
+                        }
                     }
+                    // do this weird dance to avoid holding a borrow to base
+                    // while let (Some(l1), Some(l2)) = (a.next(&self.env.tuple_item_types_vec[..]), b.next(&self.env.tuple_item_types_vec[..])) {
+                    //     a = l1;
+                    //     b = l2;
+                    //     let (t1, t2) = (l1.item, l2.item);
+                    //     drop(l1);
+                    //     drop(l2);
+
+                    //     let mut inner = self.enter_scope();
+                    //     let proof = inner.unify(t1, t2);
+                    //     if inner.had_errors() {
+                    //         inner.env.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
+                    //     }
+                    //     inner
+                    //         .env
+                    //         .equations
+                    //         .add_proof(proof, conclusion, Edge::Tuple(i));
+                    //     i += 1;
+                    // }
+
+                    // for (i, (&t1, &t2)) in a.iter(base).zip(b.iter(base)).enumerate() {
+                    //     let mut inner = self.enter_scope();
+                    //     let proof = inner.unify(t1, t2);
+                    //     if inner.had_errors() {
+                    //         inner.env.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
+                    //     }
+                    //     inner
+                    //         .env
+                    //         .equations
+                    //         .add_proof(proof, conclusion, Edge::Tuple(i));
+                    // }
                     conclusion
                 } else {
                     // different length tuples
@@ -502,7 +595,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                 }
             }
             (Type::Var(var), a) | (a, Type::Var(var)) => {
-                if let Some((b, _binding_source)) = self.env.typevars[var.0] {
+                if let Some((b, _binding_source)) = self.env.typevars[ix(var.0)] {
                     let proof = self.unify(a, b);
 
                     let conclusion = if self.had_errors() {
@@ -518,7 +611,7 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                     conclusion
                 } else if t1 == t2 {
                     self.env.equations.add_rule(Node::Equiv(t1, t2))
-                } else if occurs(self.env.typevars, var, a) {
+                } else if occurs(&self.env.typevars, var, a, &self.env.type_functions_vec) {
                     self.errors.push(LowerError::CyclicType(var, a));
                     self.env.equations.add_rule(Node::NotEquiv(t1, t2))
                 } else {
@@ -528,11 +621,15 @@ impl<'outer, 'hir, 'input> Scope<'outer, 'hir, 'input> {
                         .equations
                         .add_rule(Node::Binding { var, definition: a });
 
-                    self.env.typevars[var.0] = Some((a, conclusion));
+                    self.env.typevars[ix(var.0)] = Some((a, conclusion));
                     conclusion
                 }
             }
             (Type::Function(f1), Type::Function(f2)) => {
+                let base = &self.env.type_functions_vec[..];
+                let f1 = base[ix(f1)];
+                let f2 = base[ix(f2)];
+
                 let conclusion = self.env.equations.add_rule(Node::Equiv(t1, t2));
                 let lhs_proof = self.unify(f1.lhs, f2.lhs);
                 let rhs_proof = self.unify(f1.rhs, f2.rhs);
@@ -569,11 +666,11 @@ impl Drop for Scope<'_, '_, '_> {
 }
 
 #[derive(Clone, Debug, Error, PartialEq)]
-pub enum LowerError<'hir> {
+pub enum LowerError {
     #[error("Cannot unify types")]
-    Unify(Type<'hir>, Type<'hir>),
+    Unify(Type, Type),
     #[error("Cyclic type")]
-    CyclicType(Var, Type<'hir>),
+    CyclicType(Var, Type),
     #[error("Identifier not found: `{0}`")]
     IdentNotFound(String),
     #[error(transparent)]
@@ -697,20 +794,45 @@ impl AllocationCounter {
     }
 }
 
-pub struct Env<'hir, 'input> {
-    type_functions: &'hir Arena<BoxedTypeFunction<'hir>>,
-    expr_appls: &'hir Arena<BoxedExprAppl<'hir, 'input>>,
-    tuple_item_exprs: &'hir Arena<List<'hir, Expr<'hir, 'input>>>,
-    tuple_item_types: &'hir Arena<List<'hir, Type<'hir>>>,
-    tuple_item_expr_pats: &'hir Arena<List<'hir, Pat<'hir, 'input>>>,
-    expr_branches: &'hir Arena<List<'hir, ExprBranch<'hir, 'input>>>,
-    typevars: &'hir mut Vec<Typevar<'hir>>,
-    equations: &'hir mut Equations<'hir>,
+pub struct Env<'input> {
+    type_functions_vec: Vec<BoxedTypeFunction>,
+    expr_appls_vec: Vec<BoxedExprAppl<'input>>,
+    tuple_item_exprs_vec: Vec<List2<Expr<'input>>>,
+    tuple_item_types_vec: Vec<List2<Type>>,
+    tuple_item_expr_pats_vec: Vec<List2<Pat<'input>>>,
+    expr_branches_vec: Vec<List2<ExprBranch<'input>>>,
+    typevars: Vec<Typevar>,
+    equations: Equations,
 }
 
-impl<'hir, 'input> Env<'hir, 'input> {
-    pub fn new_typevar(&mut self) -> (Var, Type<'hir>) {
-        let var_ptr = Var(self.typevars.len());
+impl<'input> Env<'input> {
+    pub fn new() -> Self {
+        Env {
+            typevars: vec![],
+            equations: Equations::new(),
+            type_functions_vec: vec![
+                // For `Builtin`s impl of the `Ty` trait.
+                BoxedTypeFunction {
+                    lhs: Type::I32,
+                    rhs: Type::I32,
+                    output: Type::I32,
+                },
+                BoxedTypeFunction {
+                    lhs: Type::I32,
+                    rhs: Type::I32,
+                    output: Type::Bool,
+                },
+            ],
+            expr_appls_vec: vec![],
+            tuple_item_exprs_vec: vec![],
+            tuple_item_types_vec: vec![],
+            tuple_item_expr_pats_vec: vec![],
+            expr_branches_vec: vec![],
+        }
+    }
+
+    pub fn new_typevar(&mut self) -> (Var, Type) {
+        let var_ptr = Var(self.typevars.len() as _);
         self.typevars.push(None);
         (var_ptr, Type::Var(var_ptr))
     }
@@ -723,21 +845,23 @@ impl<'hir, 'input> Env<'hir, 'input> {
     /// and
     ///
     /// `print`: `x () -> ()`
-    pub fn default_globals(&mut self) -> impl Iterator<Item = (&'hir str, Polytype<'hir>)> {
+    pub fn default_globals(&mut self) -> impl Iterator<Item = (&'static str, Polytype)> {
         [
             ("in", {
                 let (x, x_type) = self.new_typevar();
                 let (y, y_type) = self.new_typevar();
 
+                let rhs = Type::Function(self.push_type_function(BoxedTypeFunction {
+                    lhs: x_type,
+                    rhs: Type::Unit,
+                    output: y_type,
+                }));
+
                 Polytype {
                     typevars: vec![x, y],
-                    typ: Type::Function(self.type_functions.push(BoxedTypeFunction {
+                    typ: Type::Function(self.push_type_function(BoxedTypeFunction {
                         lhs: x_type,
-                        rhs: Type::Function(self.type_functions.push(BoxedTypeFunction {
-                            lhs: x_type,
-                            rhs: Type::Unit,
-                            output: y_type,
-                        })),
+                        rhs,
                         output: y_type,
                     })),
                 }
@@ -747,7 +871,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
 
                 Polytype {
                     typevars: vec![x],
-                    typ: Type::Function(self.type_functions.push(BoxedTypeFunction {
+                    typ: Type::Function(self.push_type_function(BoxedTypeFunction {
                         lhs: x_type,
                         rhs: Type::Unit,
                         output: Type::Unit,
@@ -758,20 +882,16 @@ impl<'hir, 'input> Env<'hir, 'input> {
         .into_iter()
     }
 
-    pub fn monomorphize(&mut self, polytype: &Polytype<'hir>) -> Type<'hir> {
+    pub fn monomorphize(&mut self, polytype: &Polytype) -> Type {
         // Takes a polymorphic type and replaces all instances of generics
         // with a fixed, unbound type.
         // For example, id: T -> T is a polymorphic type, so it goes through
         // and replaces both `T`s with an unbound type variable like `a0`,
         // which is then bound later on.
-        fn replace_unbound_typevars<'hir>(
-            tbl: &HashMap<Var, Type<'hir>>,
-            env: &mut Env<'hir, '_>,
-            ty: Type<'hir>,
-        ) -> Type<'hir> {
+        fn replace_unbound_typevars(tbl: &HashMap<Var, Type>, env: &mut Env<'_>, ty: Type) -> Type {
             match ty {
                 Type::Var(var) => {
-                    if let Some((t, _)) = env.typevars[var.0] {
+                    if let Some((t, _)) = env.typevars[ix(var.0)] {
                         replace_unbound_typevars(tbl, env, t)
                     } else if let Some(&t) = tbl.get(&var) {
                         t
@@ -780,11 +900,13 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     }
                 }
                 Type::Function(boxed) => {
-                    Type::Function(env.type_functions.push(BoxedTypeFunction {
+                    let boxed = env.type_functions_vec[ix(boxed)];
+                    let boxed = BoxedTypeFunction {
                         lhs: replace_unbound_typevars(tbl, env, boxed.lhs),
                         rhs: replace_unbound_typevars(tbl, env, boxed.rhs),
                         output: replace_unbound_typevars(tbl, env, boxed.output),
-                    }))
+                    };
+                    Type::Function(env.push_type_function(boxed))
                 }
                 _ => ty,
             }
@@ -799,12 +921,48 @@ impl<'hir, 'input> Env<'hir, 'input> {
         replace_unbound_typevars(&tvs_to_replace, self, polytype.typ)
     }
 
+    pub fn push_type_function(&mut self, boxed: BoxedTypeFunction) -> BoxedTypeFunctionIx {
+        let ix = self.type_functions_vec.len() as _;
+        self.type_functions_vec.push(boxed);
+        ix
+    }
+
+    pub fn push_expr_appl(&mut self, boxed: BoxedExprAppl<'input>) -> BoxedExprApplIx {
+        let ix = self.expr_appls_vec.len() as _;
+        self.expr_appls_vec.push(boxed);
+        ix
+    }
+
+    pub fn push_tuple_item_exprs(&mut self, boxed: List2<Expr<'input>>) -> TupleItemExprIx {
+        let ix = self.tuple_item_exprs_vec.len() as _;
+        self.tuple_item_exprs_vec.push(boxed);
+        ix
+    }
+
+    pub fn push_tuple_item_types(&mut self, boxed: List2<Type>) -> TupleItemTypeIx {
+        let ix = self.tuple_item_types_vec.len() as _;
+        self.tuple_item_types_vec.push(boxed);
+        ix
+    }
+
+    pub fn push_tuple_item_expr_pats(&mut self, boxed: List2<Pat<'input>>) -> TupleItemExprPatIx {
+        let ix = self.tuple_item_expr_pats_vec.len() as _;
+        self.tuple_item_expr_pats_vec.push(boxed);
+        ix
+    }
+
+    pub fn push_expr_branches(&mut self, boxed: List2<ExprBranch<'input>>) -> ExprBranchIx {
+        let ix = self.expr_branches_vec.len() as _;
+        self.expr_branches_vec.push(boxed);
+        ix
+    }
+
     /// Convert an [`ast::Type`] annotation into an HIR [`Type`].
     pub fn type_from_ast(
         &mut self,
         typ: &ast::Type<'_, 'input>,
-        map: &HashMap<&str, Type<'hir>>,
-    ) -> Type<'hir> {
+        map: &HashMap<&str, Type>,
+    ) -> Type {
         match typ {
             ast::Type::Named(named) => match named.name.literal {
                 "i32" => Type::I32,
@@ -813,16 +971,14 @@ impl<'hir, 'input> Env<'hir, 'input> {
             },
             ast::Type::Tuple(tuple) => {
                 // Build up the linked list of types from the inside out
-                fn rec<'ast, 'hir, 'input: 'ast>(
-                    env: &mut Env<'hir, 'input>,
-                    map: &HashMap<&str, Type<'hir>>,
+                fn rec<'ast, 'input: 'ast>(
+                    env: &mut Env<'input>,
+                    map: &HashMap<&str, Type>,
                     mut types: impl Iterator<Item = &'ast ast::Type<'ast, 'input>>,
-                ) -> Option<&'hir List<'hir, Type<'hir>>> {
+                ) -> Option<TupleItemExprIx> {
                     let item = env.type_from_ast(types.next()?, map);
-                    Some(env.tuple_item_types.push(List {
-                        item,
-                        next: rec(env, map, types),
-                    }))
+                    let next = rec(env, map, types);
+                    Some(env.push_tuple_item_types(List2 { item, next }))
                 }
 
                 if let Some(ty) = rec(self, map, tuple.iter_elements().copied()) {
@@ -832,11 +988,11 @@ impl<'hir, 'input> Env<'hir, 'input> {
                 }
             }
             ast::Type::Function(function) => {
-                Type::Function(self.type_functions.push(BoxedTypeFunction {
-                    lhs: self.type_from_ast(function.lhs, map),
-                    rhs: self.type_from_ast(function.rhs, map),
-                    output: self.type_from_ast(function.ret, map),
-                }))
+                let lhs = self.type_from_ast(function.lhs, map);
+                let rhs = self.type_from_ast(function.rhs, map);
+                let output = self.type_from_ast(function.ret, map);
+
+                Type::Function(self.push_type_function(BoxedTypeFunction { lhs, rhs, output }))
             }
         }
     }
@@ -845,19 +1001,20 @@ impl<'hir, 'input> Env<'hir, 'input> {
 #[derive(Debug)]
 pub struct PushedErrors;
 
-fn occurs<'hir>(typevars: &[Typevar<'hir>], var: Var, ty: Type<'hir>) -> bool {
+fn occurs(typevars: &[Typevar], var: Var, ty: Type, base: &[BoxedTypeFunction]) -> bool {
     match ty {
         Type::Var(typevar) => {
-            if let Some((t, _)) = typevars[typevar.0] {
-                occurs(typevars, var, t)
+            if let Some((t, _)) = typevars[ix(typevar.0)] {
+                occurs(typevars, var, t, base)
             } else {
                 var == typevar
             }
         }
-        Type::Function(BoxedTypeFunction { lhs, rhs, output }) => {
-            occurs(typevars, var, *lhs)
-                || occurs(typevars, var, *rhs)
-                || occurs(typevars, var, *output)
+        Type::Function(index) => {
+            let BoxedTypeFunction { lhs, rhs, output } = base[ix(index)];
+            occurs(typevars, var, lhs, base)
+                || occurs(typevars, var, rhs, base)
+                || occurs(typevars, var, output, base)
         }
         _ => false,
     }

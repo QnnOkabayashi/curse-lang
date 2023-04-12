@@ -80,43 +80,25 @@ let main: () () -> () = ||
 
 #[test]
 fn test_branching_typeck() {
-    let program = IN2;
+    let program = SUPERCHARGE;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
-
-    let counter = AllocationCounter::count_in_program(&program);
-
-    println!("{counter:#?}");
 
     // TODO(quinn):
     // - Make types use a u32 ptr so we can reduce type size and put them in a vec
     //   so that we can put them in a vec and not have to reallocate them.
     //   Then you could do resolution and swap out the underlying arena of types
-    //   without having to change the expression tree at all :)
-    //   - Also make some abstraction so the allocation counter doesn't have to
-    //     do its own tracking. Ideally we want it to just plug into some kind
-    //     of visitor trait to keep things straightforward.
     // - Update to logos v0.13.0
 
-    // Temporaries in struct literal constructors are allowed
-    let mut env = Env {
-        type_functions: &Arena::with_capacity(counter.type_functions),
-        typevars: &mut Vec::new(),
-        expr_appls: &Arena::with_capacity(counter.expr_appls),
-        expr_branches: &Arena::with_capacity(counter.expr_branches),
-        tuple_item_exprs: &Arena::with_capacity(counter.tuple_item_exprs),
-        tuple_item_types: &Arena::with_capacity(counter.tuple_item_types),
-        tuple_item_expr_pats: &Arena::with_capacity(counter.tuple_item_expr_pats),
-        equations: &mut Equations::new(),
-    };
+    let mut env = Env::new();
 
     // temporary for now until we can have custom named types
-    let type_scope: HashMap<&str, Type<'_>> = HashMap::new();
+    let type_scope: HashMap<&str, Type> = HashMap::new();
 
-    let mut function_to_typescope: HashMap<&str, HashMap<&str, Type<'_>>> = HashMap::new();
+    let mut function_to_typescope: HashMap<&str, HashMap<&str, Type>> = HashMap::new();
 
-    let globals: HashMap<&str, Polytype<'_>> = env
+    let globals: HashMap<&str, Polytype> = env
         .default_globals()
         .chain(program.items.iter().map(|item| {
             // Since items (i.e. functions for now) can be generic over types,
@@ -142,10 +124,10 @@ fn test_branching_typeck() {
         }))
         .collect();
 
-    let mut locals: Vec<(&str, Type<'_>)> = Vec::with_capacity(16);
+    let mut locals: Vec<(&str, Type)> = Vec::with_capacity(16);
     let mut errors: Vec<LowerError> = Vec::with_capacity(0);
 
-    let lowered_items: Result<HashMap<&str, (Polytype<'_>, Expr<'_, '_>)>, PushedErrors> = program
+    let lowered_items: Result<HashMap<&str, (Polytype, Expr<'_>)>, PushedErrors> = program
         .items
         .iter()
         .map(|item| {
@@ -164,21 +146,14 @@ fn test_branching_typeck() {
         })
         .collect();
 
-    println!("{}", env.type_functions.remaining_capacity());
-    println!("{}", env.expr_appls.remaining_capacity());
-    println!("{}", env.expr_branches.remaining_capacity());
-    println!("{}", env.tuple_item_exprs.remaining_capacity());
-    println!("{}", env.tuple_item_types.remaining_capacity());
-    println!("{}", env.tuple_item_expr_pats.remaining_capacity());
-
     // Put the result into: https://edotor.net/
     // println!("{}", env.equations);
 
     if let Ok(lowered_items) = lowered_items {
         assert!(errors.is_empty());
-        let mut builder = dot::Builder::new();
-        for (_, expr) in lowered_items.values() {
-            builder.visit_expr(*expr, None);
+        let mut builder = dot::Builder::new(&env);
+        for (name, (_, expr)) in lowered_items.iter() {
+            builder.visit_expr(*expr, None, Some(name));
         }
         let out = builder.finish();
         println!("{out}");

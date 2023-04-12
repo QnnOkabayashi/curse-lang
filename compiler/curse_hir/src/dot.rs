@@ -1,22 +1,21 @@
 //! Utilities for writing an AST in dot format for Graphviz.
-use crate::{expr::Ty, Expr};
+use crate::{expr::Ty, ix, Env, Expr};
 use std::fmt::Write as _;
 
-pub struct Builder {
+pub struct Builder<'env> {
+    env: &'env Env<'env>,
     count: u32,
     out: String,
 }
 
-impl Builder {
-    pub fn new() -> Self {
-        let out = String::with_capacity(2048);
-        Builder {
-            count: 0,
-            out: out + "digraph example {",
-        }
+impl<'env> Builder<'env> {
+    pub fn new(env: &'env Env) -> Self {
+        let out = String::with_capacity(2048) + "digraph example {";
+
+        Builder { env, count: 0, out }
     }
 
-    pub fn visit_expr(&mut self, expr: Expr<'_, '_>, parent: Option<u32>) {
+    pub fn visit_expr(&mut self, expr: Expr<'_>, parent: Option<u32>, name: Option<&str>) {
         let id = self.fresh();
         self.out += "\n    ";
 
@@ -25,7 +24,7 @@ impl Builder {
                 write!(
                     self.out,
                     "p{id}[label = \"{builtin}: {ty}\"]",
-                    ty = builtin.ty(),
+                    ty = builtin.ty().display(self.env),
                 )
                 .unwrap();
             }
@@ -39,25 +38,53 @@ impl Builder {
                 write!(self.out, "p{id}[label = \"(): ()\"]").unwrap();
             }
             Expr::Ident { ty, literal } => {
-                write!(self.out, "p{id}[label = \"{literal}: {ty}\"]").unwrap();
+                write!(
+                    self.out,
+                    "p{id}[label = \"{literal}: {ty}\"]",
+                    ty = ty.display(self.env)
+                )
+                .unwrap();
             }
             Expr::Tuple { ty, exprs } => {
-                write!(self.out, "p{id}[label = \"tuple: {ty}\"]").unwrap();
-                for element in exprs.iter() {
-                    self.visit_expr(*element, Some(id));
-                }
+                write!(
+                    self.out,
+                    "p{id}[label = \"tuple: {ty}\"]",
+                    ty = ty.display(self.env)
+                )
+                .unwrap();
+                let base = &self.env.tuple_item_exprs_vec[..];
+                let mut a = &base[ix(exprs)];
+                while {
+                    self.visit_expr(a.item, Some(id), None);
+                    crate::next(&mut a, base)
+                } {}
             }
             Expr::Closure { ty, branches } => {
-                write!(self.out, "p{id}[label = \"<closure>: {ty}\"]").unwrap();
-                for branch in branches.iter() {
-                    self.visit_expr(branch.body, Some(id));
-                }
+                let name = name.unwrap_or("<closure>");
+                write!(
+                    self.out,
+                    "p{id}[label = \"{name}: {ty}\"]",
+                    ty = ty.display(self.env)
+                )
+                .unwrap();
+                let base = &self.env.expr_branches_vec[..];
+                let mut a = &base[ix(branches)];
+                while {
+                    self.visit_expr(a.item.body, Some(id), None);
+                    crate::next(&mut a, base)
+                } {}
             }
             Expr::Appl { ty, appl } => {
-                write!(self.out, "p{id}[label = \"<appl>: {ty}\"]").unwrap();
-                self.visit_expr(appl.lhs, Some(id));
-                self.visit_expr(appl.function, Some(id));
-                self.visit_expr(appl.rhs, Some(id));
+                write!(
+                    self.out,
+                    "p{id}[label = \"<appl>: {ty}\"]",
+                    ty = ty.display(self.env)
+                )
+                .unwrap();
+                let appl = &self.env.expr_appls_vec[ix(appl)];
+                self.visit_expr(appl.lhs, Some(id), None);
+                self.visit_expr(appl.function, Some(id), None);
+                self.visit_expr(appl.rhs, Some(id), None);
             }
         }
 
