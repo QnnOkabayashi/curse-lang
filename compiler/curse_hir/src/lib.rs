@@ -25,7 +25,7 @@ pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
 #[displaydoc("T{0}")]
 pub struct Var(usize);
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum Type<'hir> {
     I32,
     Bool,
@@ -33,6 +33,19 @@ pub enum Type<'hir> {
     Tuple(&'hir List<'hir, Type<'hir>>),
     Var(Var),
     Function(&'hir TypeFunction<'hir>),
+}
+
+impl fmt::Debug for Type<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::I32 => write!(f, "I32"),
+            Self::Bool => write!(f, "Bool"),
+            Self::Unit => write!(f, "Unit"),
+            Self::Tuple(tuple) => f.debug_tuple("Tuple").field(tuple).finish(),
+            Self::Var(var) => fmt::Debug::fmt(var, f),
+            Self::Function(fun) => fmt::Debug::fmt(fun, f),
+        }
+    }
 }
 
 impl fmt::Display for Type<'_> {
@@ -56,7 +69,7 @@ pub struct TypeFunction<'hir> {
     output: Type<'hir>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct List<'list, T> {
     item: T,
     next: Option<&'list Self>,
@@ -87,6 +100,12 @@ impl<'list, T: fmt::Display> List<'list, T> {
     }
 }
 
+impl<T: fmt::Debug> fmt::Debug for List<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
 pub struct Delim<'a, T> {
     list: &'a List<'a, T>,
     delim: &'a str,
@@ -104,7 +123,7 @@ impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Polytype<'hir> {
     typevars: Vec<Var>,
     typ: Type<'hir>,
@@ -122,7 +141,7 @@ impl<'hir> Polytype<'hir> {
 pub struct Scope<'outer, 'hir, 'input> {
     env: &'outer mut Env<'hir, 'input>,
     type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-    errors: &'outer mut Vec<LowerError<'hir>>,
+    errors: &'outer mut Vec<LowerError<'hir, 'input>>,
     original_errors_len: usize,
     globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
     locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
@@ -133,7 +152,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     pub fn new(
         env: &'outer mut Env<'hir, 'input>,
         type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-        errors: &'outer mut Vec<LowerError<'hir>>,
+        errors: &'outer mut Vec<LowerError<'hir, 'input>>,
         globals: &'hir HashMap<&'hir str, Polytype>,
         locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
     ) -> Self {
@@ -212,8 +231,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             ast::Expr::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
                     Ok(int) => Ok(Expr::I32(int)),
-                    Err(e) => {
-                        self.errors.push(LowerError::ParseInt(e));
+                    Err(source) => {
+                        self.errors.push(LowerError::ParseInt {
+                            token: *integer,
+                            source,
+                        });
                         Err(PushedErrors)
                     }
                 },
@@ -225,7 +247,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         })
                     } else {
                         self.errors
-                            .push(LowerError::IdentNotFound(ident.literal.to_string()));
+                            .push(LowerError::IdentNotFound { token: *ident });
                         Err(PushedErrors)
                     }
                 }
@@ -279,7 +301,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
                 // Need to parse the params _before_ the body...
                 // Duh.
-                let (lhs, rhs) = inner.type_of_many_params(&closure.head.params)?;
+                let [lhs, rhs] = inner.type_of_many_params(&closure.head.params)?;
                 let body = inner.lower(closure.head.body)?;
 
                 drop(inner);
@@ -295,7 +317,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     };
 
                     let mut inner = scope.enter_scope();
-                    let (lhs, rhs) = inner.type_of_many_params(&branch.params)?;
+                    let [lhs, rhs] = inner.type_of_many_params(&branch.params)?;
                     let body = inner.lower(branch.body)?;
                     drop(inner);
 
@@ -368,8 +390,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             ast::Pat::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
                     Ok(int) => Ok(Pat::I32(int)),
-                    Err(e) => {
-                        self.errors.push(LowerError::ParseInt(e));
+                    Err(source) => {
+                        self.errors.push(LowerError::ParseInt {
+                            token: *integer,
+                            source,
+                        });
                         Err(PushedErrors)
                     }
                 },
@@ -389,7 +414,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 // can we try to generalize them? Patterns are basically just
                 // expressions without closures or function application...
                 fn rec<'ast, 'hir, 'input: 'ast + 'hir>(
-                    bindings: &mut Scope<'_, 'hir, 'input>,
+                    scope: &mut Scope<'_, 'hir, 'input>,
                     mut pats: impl Iterator<Item = &'ast ast::ExprPat<'ast, 'input>>,
                 ) -> Result<
                     Option<(
@@ -402,20 +427,18 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         return Ok(None);
                     };
 
-                    let pat = bindings.lower_pat(pat)?;
+                    let pat = scope.lower_pat(pat)?;
 
-                    let Some((next_pat, next_type)) = rec(bindings, pats)? else {
-                        return Ok(None);
-                    };
+                    let (next_pat, next_type) = rec(scope, pats)?.unzip();
 
                     Ok(Some((
-                        bindings.env.list_pats.alloc(List {
+                        scope.env.list_pats.alloc(List {
                             item: pat,
-                            next: Some(next_pat),
+                            next: next_pat,
                         }),
-                        bindings.env.list_types.alloc(List {
+                        scope.env.list_types.alloc(List {
                             item: pat.ty(),
-                            next: Some(next_type),
+                            next: next_type,
                         }),
                     )))
                 }
@@ -441,33 +464,33 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         &mut self,
         param: &ast::ExprParam<'_, 'input>,
     ) -> Result<Pat<'hir, 'input>, PushedErrors> {
-        let pat_type = self.lower_pat(param.pat)?;
+        let pat = self.lower_pat(param.pat)?;
         if let Some((_, annotation)) = param.ty {
             let t2 = self.env.type_from_ast(annotation, self.type_map);
-            self.unify(pat_type.ty(), t2);
+            self.unify(pat.ty(), t2);
             if self.had_errors() {
                 return Err(PushedErrors);
             }
         }
 
-        Ok(pat_type)
+        Ok(pat)
     }
 
     /// Returns the [`Type<'hir>`]s of various [`ast::ExprParams`].
     fn type_of_many_params(
         &mut self,
         params: &ast::ExprParams<'_, 'input>,
-    ) -> Result<(Pat<'hir, 'input>, Pat<'hir, 'input>), PushedErrors> {
+    ) -> Result<[Pat<'hir, 'input>; 2], PushedErrors> {
         match params {
-            ast::ExprParams::Zero => Ok((Pat::Unit, Pat::Unit)),
+            ast::ExprParams::Zero => Ok([Pat::Unit, Pat::Unit]),
             ast::ExprParams::One(lhs) => {
                 let lhs_type = self.lower_param(lhs);
-                Ok((lhs_type?, Pat::Unit))
+                Ok([lhs_type?, Pat::Unit])
             }
             ast::ExprParams::Two(lhs, _, rhs) => {
                 let lhs_type = self.lower_param(lhs);
                 let rhs_type = self.lower_param(rhs);
-                Ok((lhs_type?, rhs_type?))
+                Ok([lhs_type?, rhs_type?])
             }
         }
     }
@@ -567,16 +590,19 @@ impl Drop for Scope<'_, '_, '_> {
     }
 }
 
-#[derive(Clone, Debug, Error, PartialEq)]
-pub enum LowerError<'hir> {
-    #[error("Cannot unify types")]
+#[derive(Clone, Debug, Error)]
+pub enum LowerError<'hir, 'input> {
+    #[error("Cannot unify types: {0} and {1}")]
     Unify(Type<'hir>, Type<'hir>),
-    #[error("Cyclic type")]
+    #[error("Cyclic type: var is {0}, while type is {1}")]
     CyclicType(Var, Type<'hir>),
-    #[error("Identifier not found: `{0}`")]
-    IdentNotFound(String),
-    #[error(transparent)]
-    ParseInt(num::ParseIntError),
+    #[error("Identifier not found: `{token}`")]
+    IdentNotFound { token: ast::tok::Ident<'input> },
+    #[error("Cannot parse integer {token}: {source}")]
+    ParseInt {
+        token: ast::tok::Integer<'input>,
+        source: num::ParseIntError,
+    },
 }
 
 pub struct Env<'hir, 'input> {

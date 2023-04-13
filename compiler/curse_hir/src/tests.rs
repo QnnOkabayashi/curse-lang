@@ -107,7 +107,6 @@ fn test_branching_typeck() {
 
     let globals: HashMap<&str, Polytype> = env
         .default_globals()
-        .into_iter()
         .chain(program.items.iter().map(|item| {
             // Since items (i.e. functions for now) can be generic over types,
             // we need to extend the set of currently in-scope types with the
@@ -132,8 +131,8 @@ fn test_branching_typeck() {
         }))
         .collect();
 
-    let mut locals: Vec<(&str, Type)> = Vec::with_capacity(16);
-    let mut errors: Vec<LowerError> = Vec::with_capacity(0);
+    let mut locals: Vec<(&str, Type<'_>)> = Vec::with_capacity(16);
+    let mut errors: Vec<LowerError<'_, '_>> = Vec::with_capacity(0);
 
     let lowered_items: Result<HashMap<&str, (Polytype, Expr<'_, '_>)>, PushedErrors> = program
         .items
@@ -150,6 +149,12 @@ fn test_branching_typeck() {
 
             let polytype = globals[item_name].clone();
             let body = scope.lower(item.expr)?;
+            // the below should work...
+            // let ty = scope.env.monomorphize(&polytype);
+            // scope.unify(body.ty(), ty);
+            // if scope.had_errors() {
+            //     return Err(PushedErrors);
+            // }
             Ok((item_name, (polytype, body)))
         })
         .collect();
@@ -166,7 +171,7 @@ fn test_branching_typeck() {
         let out = builder.finish();
         println!("{out}");
 
-        // let (_, ref of) = lowered_items["of"];
+        // let (_, of) = &lowered_items["of"];
         // println!("{}", of.ty());
     } else {
         assert!(!errors.is_empty());
