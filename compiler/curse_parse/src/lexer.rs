@@ -6,14 +6,13 @@ macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
 
         #[derive(Clone, Debug, Logos)]
-        // #[logos(subpattern ws = r"[ \t\v\r\n\f]")]
-        #[logos(skip r"[ \t\v\r\n\f]+|//[^\r\n]*")]
+        #[logos(skip r"[ \t\v\r\n\f]+")] // Whitespace
+        #[logos(skip r"//[^\r\n]*")] // Comments
         enum LogosToken {
             #[regex("[_a-zA-Z][_a-zA-Z0-9]*")]
             Ident,
             #[regex("[0-9]+")]
             Integer,
-
             $(
                 #[token($tok)]
                 $name,
