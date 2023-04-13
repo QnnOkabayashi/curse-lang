@@ -6,7 +6,8 @@ macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
 
         #[derive(Clone, Debug, Logos)]
-        #[logos(subpattern ws = r"[ \t\v\r\n\f]")]
+        // #[logos(subpattern ws = r"[ \t\v\r\n\f]")]
+        #[logos(skip r"[ \t\v\r\n\f]+|//[^\r\n]*")]
         enum LogosToken {
             #[regex("[_a-zA-Z][_a-zA-Z0-9]*")]
             Ident,
@@ -17,13 +18,6 @@ macro_rules! declare_tokens {
                 #[token($tok)]
                 $name,
             )*
-
-            #[regex(r"(?&ws)+", logos::skip)]
-            Whitespace,
-            #[regex("//[^\r\n]*", logos::skip)]
-            Comment,
-            #[error]
-            Unknown,
         }
 
         #[derive(Copy, Clone, Debug)]
@@ -80,23 +74,22 @@ macro_rules! declare_tokens {
                 let token = self.lex.next()?;
                 let std::ops::Range { start, end } = self.lex.span();
                 let token = match token {
-                    LogosToken::Ident => Token::Ident(tok::Ident {
+                    Ok(LogosToken::Ident) => Token::Ident(tok::Ident {
                         location: start,
                         literal: self.lex.slice(),
                     }),
-                    LogosToken::Integer => Token::Integer(tok::Integer {
+                    Ok(LogosToken::Integer) => Token::Integer(tok::Integer {
                         location: start,
                         literal: self.lex.slice(),
                     }),
                     $(
-                        LogosToken::$name => Token::$name(tok::$name {
+                        Ok(LogosToken::$name) => Token::$name(tok::$name {
                             location: start,
                         }),
                     )*
-                    LogosToken::Unknown => return Some(Err(LexError {
+                    Err(()) => return Some(Err(LexError {
                         span: (start, end - start),
                     })),
-                    _ => unreachable!("remaining patterns are skipped"),
                 };
 
                 Some(Ok((start, token, end)))

@@ -9,7 +9,7 @@ lalrpop = "0.19.7"
 [dependencies]
 lalrpop-util = "0.19.7"
 curse_ast = { path = "../curse_ast" }
-logos = "0.12.1"
+logos = "0.13"
 miette = "5.6.0"
 typed-arena = "2.0.2"
 thiserror = "1.0.39"

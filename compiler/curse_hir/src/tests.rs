@@ -56,8 +56,8 @@ let main: () () -> () = ||
 "#;
 
 const IN2: &str = r#"
-let of A B C: (A B -> C) (A, B) -> C = |f, (a, b)|
-    a f b
+let of a b c: (a b -> c) (a, b) -> c = |f, (lhs, rhs)|
+    lhs f rhs
 
 let in2 a b: a (a () -> b) -> b = |x, f|
     x f ()
@@ -86,7 +86,6 @@ fn test_branching_typeck() {
     let program = curse_parse::parse_program(&ctx, program).unwrap();
 
     // TODO(quinn):
-    // - Update to logos v0.13.0
     // - Make iterating through `List<T>`s less painful
 
     let mut env = Env::new();
