@@ -1,16 +1,16 @@
-use crate::{arena::P, Type, Typevar};
+use crate::{Type, Var};
 use displaydoc::Display;
 use petgraph::graph::{DiGraph, NodeIndex};
 
 /// A node on the inference graph.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Node {
+pub enum Node<'hir> {
     // #[displaydoc("{0} ≡ {1}")]
-    Equiv(Type, Type),
+    Equiv(Type<'hir>, Type<'hir>),
     // #[displaydoc("{0} ≢ {1}")]
-    NotEquiv(Type, Type),
+    NotEquiv(Type<'hir>, Type<'hir>),
     // #[displaydoc("{var} := {definition}")]
-    Binding { var: P<Typevar>, definition: Type },
+    Binding { var: Var, definition: Type<'hir> },
 }
 
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to
@@ -30,18 +30,18 @@ pub enum Edge {
 }
 
 #[derive(Default)]
-pub struct Equations {
-    pub graph: DiGraph<Node, Edge>,
+pub struct Equations<'hir> {
+    pub graph: DiGraph<Node<'hir>, Edge>,
 }
 
-impl Equations {
+impl<'hir> Equations<'hir> {
     pub fn new() -> Self {
         Equations {
             graph: DiGraph::new(),
         }
     }
 
-    pub fn add_rule(&mut self, rule: Node) -> NodeIndex {
+    pub fn add_rule(&mut self, rule: Node<'hir>) -> NodeIndex {
         self.graph.add_node(rule)
     }
 

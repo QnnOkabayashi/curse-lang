@@ -91,6 +91,7 @@ dependencies = [
  "displaydoc",
  "petgraph",
  "thiserror",
+ "typed-arena",
 ]
 
 [[package]]

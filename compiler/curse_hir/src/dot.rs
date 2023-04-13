@@ -3,19 +3,19 @@ use crate::{expr::Ty, Env, Expr};
 use std::fmt::Write as _;
 
 pub struct Builder<'env> {
-    env: &'env Env<'env>,
+    env: &'env Env<'env, 'env>,
     count: u32,
     out: String,
 }
 
 impl<'env> Builder<'env> {
-    pub fn new(env: &'env Env) -> Self {
+    pub fn new(env: &'env Env<'env, 'env>) -> Self {
         let out = String::with_capacity(2048) + "digraph example {";
 
         Builder { env, count: 0, out }
     }
 
-    pub fn visit_expr(&mut self, expr: Expr<'_>, parent: Option<u32>, name: Option<&str>) {
+    pub fn visit_expr(&mut self, expr: Expr<'_, '_>, parent: Option<u32>, name: Option<&str>) {
         let id = self.fresh();
         self.out += "\n    ";
 
@@ -24,7 +24,7 @@ impl<'env> Builder<'env> {
                 write!(
                     self.out,
                     "p{id}[label = \"{builtin}: {ty}\"]",
-                    ty = builtin.ty().display(self.env),
+                    ty = builtin.ty(),
                 )
                 .unwrap();
             }
@@ -38,48 +38,23 @@ impl<'env> Builder<'env> {
                 write!(self.out, "p{id}[label = \"(): ()\"]").unwrap();
             }
             Expr::Ident { ty, literal } => {
-                write!(
-                    self.out,
-                    "p{id}[label = \"{literal}: {ty}\"]",
-                    ty = ty.display(self.env)
-                )
-                .unwrap();
+                write!(self.out, "p{id}[label = \"{literal}: {ty}\"]",).unwrap();
             }
             Expr::Tuple { ty, exprs } => {
-                write!(
-                    self.out,
-                    "p{id}[label = \"tuple: {ty}\"]",
-                    ty = ty.display(self.env)
-                )
-                .unwrap();
-                let mut a = &self.env[exprs];
-                while {
-                    self.visit_expr(a.item, Some(id), None);
-                    crate::next(&mut a, &self.env.tuple_item_exprs)
-                } {}
+                write!(self.out, "p{id}[label = \"tuple: {ty}\"]",).unwrap();
+                for expr in exprs.iter() {
+                    self.visit_expr(*expr, Some(id), None);
+                }
             }
             Expr::Closure { ty, branches } => {
                 let name = name.unwrap_or("<closure>");
-                write!(
-                    self.out,
-                    "p{id}[label = \"{name}: {ty}\"]",
-                    ty = ty.display(self.env)
-                )
-                .unwrap();
-                let mut a = &self.env[branches];
-                while {
-                    self.visit_expr(a.item.body, Some(id), None);
-                    crate::next(&mut a, &self.env.expr_branches)
-                } {}
+                write!(self.out, "p{id}[label = \"{name}: {ty}\"]",).unwrap();
+                for branch in branches.iter() {
+                    self.visit_expr(branch.body, Some(id), None);
+                }
             }
             Expr::Appl { ty, appl } => {
-                write!(
-                    self.out,
-                    "p{id}[label = \"<appl>: {ty}\"]",
-                    ty = ty.display(self.env)
-                )
-                .unwrap();
-                let appl = &self.env[appl];
+                write!(self.out, "p{id}[label = \"<appl>: {ty}\"]",).unwrap();
                 self.visit_expr(appl.lhs, Some(id), None);
                 self.visit_expr(appl.function, Some(id), None);
                 self.visit_expr(appl.rhs, Some(id), None);

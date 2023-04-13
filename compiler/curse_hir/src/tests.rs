@@ -86,9 +86,19 @@ fn test_branching_typeck() {
     let program = curse_parse::parse_program(&ctx, program).unwrap();
 
     // TODO(quinn):
-    // - Make iterating through `List<T>`s less painful
+    // - Why does it say that the type of `of` is ((T9 T10 -> T11) () -> T11)?
+    //   The second argument should be (T9, T10).
 
-    let mut env = Env::new();
+    let mut env = Env {
+        type_functions: &Arena::new(),
+        expr_appls: &Arena::new(),
+        list_expr_branches: &Arena::new(),
+        list_exprs: &Arena::new(),
+        list_types: &Arena::new(),
+        list_pats: &Arena::new(),
+        typevars: Vec::new(),
+        equations: Equations::new(),
+    };
 
     // temporary for now until we can have custom named types
     let type_scope: HashMap<&str, Type> = HashMap::new();
@@ -97,6 +107,7 @@ fn test_branching_typeck() {
 
     let globals: HashMap<&str, Polytype> = env
         .default_globals()
+        .into_iter()
         .chain(program.items.iter().map(|item| {
             // Since items (i.e. functions for now) can be generic over types,
             // we need to extend the set of currently in-scope types with the
@@ -124,7 +135,7 @@ fn test_branching_typeck() {
     let mut locals: Vec<(&str, Type)> = Vec::with_capacity(16);
     let mut errors: Vec<LowerError> = Vec::with_capacity(0);
 
-    let lowered_items: Result<HashMap<&str, (Polytype, Expr<'_>)>, PushedErrors> = program
+    let lowered_items: Result<HashMap<&str, (Polytype, Expr<'_, '_>)>, PushedErrors> = program
         .items
         .iter()
         .map(|item| {
@@ -154,6 +165,9 @@ fn test_branching_typeck() {
         }
         let out = builder.finish();
         println!("{out}");
+
+        // let (_, ref of) = lowered_items["of"];
+        // println!("{}", of.ty());
     } else {
         assert!(!errors.is_empty());
         println!("Errors:");
