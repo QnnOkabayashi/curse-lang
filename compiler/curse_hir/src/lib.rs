@@ -13,8 +13,6 @@ mod equations;
 use equations::{Edge, Equations, Node};
 mod expr;
 use expr::*;
-// mod arena;
-// use arena::{Arena, P};
 mod dot;
 
 #[cfg(test)]
@@ -519,7 +517,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     conclusion
                 } else if t1 == t2 {
                     self.env.equations.add_rule(Node::Equiv(t1, t2))
-                } else if occurs(&self.env, var, a) {
+                } else if self.env.occurs(var, a) {
                     self.errors.push(LowerError::CyclicType(var, a));
                     self.env.equations.add_rule(Node::NotEquiv(t1, t2))
                 } else {
@@ -723,6 +721,24 @@ impl<'hir, 'input> Env<'hir, 'input> {
             }
         }
     }
+
+    fn occurs(&self, var: Var, ty: Type<'_>) -> bool {
+        match ty {
+            Type::Var(typevar) => {
+                if let Some((t, _)) = self[typevar] {
+                    self.occurs(var, t)
+                } else {
+                    var == typevar
+                }
+            }
+            Type::Function(fun) => {
+                self.occurs(var, fun.lhs)
+                    || self.occurs(var, fun.rhs)
+                    || self.occurs(var, fun.output)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl<'hir> Index<Var> for Env<'hir, '_> {
@@ -741,20 +757,3 @@ impl<'hir> IndexMut<Var> for Env<'hir, '_> {
 
 #[derive(Debug)]
 pub struct PushedErrors;
-
-// TODO(quinn): make this a method of `Env`
-fn occurs(env: &Env<'_, '_>, var: Var, ty: Type<'_>) -> bool {
-    match ty {
-        Type::Var(typevar) => {
-            if let Some((t, _)) = env[typevar] {
-                occurs(env, var, t)
-            } else {
-                var == typevar
-            }
-        }
-        Type::Function(fun) => {
-            occurs(env, var, fun.lhs) || occurs(env, var, fun.rhs) || occurs(env, var, fun.output)
-        }
-        _ => false,
-    }
-}
