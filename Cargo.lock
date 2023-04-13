@@ -86,7 +86,6 @@ dependencies = [
 name = "curse_hir"
 version = "0.1.0"
 dependencies = [
- "curse_arena",
  "curse_ast",
  "curse_parse",
  "displaydoc",

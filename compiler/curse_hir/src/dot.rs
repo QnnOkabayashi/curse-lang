@@ -1,5 +1,5 @@
 //! Utilities for writing an AST in dot format for Graphviz.
-use crate::{expr::Ty, ix, Env, Expr};
+use crate::{expr::Ty, Env, Expr};
 use std::fmt::Write as _;
 
 pub struct Builder<'env> {
@@ -52,11 +52,10 @@ impl<'env> Builder<'env> {
                     ty = ty.display(self.env)
                 )
                 .unwrap();
-                let base = &self.env.tuple_item_exprs_vec[..];
-                let mut a = &base[ix(exprs)];
+                let mut a = &self.env[exprs];
                 while {
                     self.visit_expr(a.item, Some(id), None);
-                    crate::next(&mut a, base)
+                    crate::next(&mut a, &self.env.tuple_item_exprs)
                 } {}
             }
             Expr::Closure { ty, branches } => {
@@ -67,11 +66,10 @@ impl<'env> Builder<'env> {
                     ty = ty.display(self.env)
                 )
                 .unwrap();
-                let base = &self.env.expr_branches_vec[..];
-                let mut a = &base[ix(branches)];
+                let mut a = &self.env[branches];
                 while {
                     self.visit_expr(a.item.body, Some(id), None);
-                    crate::next(&mut a, base)
+                    crate::next(&mut a, &self.env.expr_branches)
                 } {}
             }
             Expr::Appl { ty, appl } => {
@@ -81,7 +79,7 @@ impl<'env> Builder<'env> {
                     ty = ty.display(self.env)
                 )
                 .unwrap();
-                let appl = &self.env.expr_appls_vec[ix(appl)];
+                let appl = &self.env[appl];
                 self.visit_expr(appl.lhs, Some(id), None);
                 self.visit_expr(appl.function, Some(id), None);
                 self.visit_expr(appl.rhs, Some(id), None);

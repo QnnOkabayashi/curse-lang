@@ -80,16 +80,14 @@ let main: () () -> () = ||
 
 #[test]
 fn test_branching_typeck() {
-    let program = SUPERCHARGE;
+    let program = IN2;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
 
     // TODO(quinn):
-    // - Make types use a u32 ptr so we can reduce type size and put them in a vec
-    //   so that we can put them in a vec and not have to reallocate them.
-    //   Then you could do resolution and swap out the underlying arena of types
     // - Update to logos v0.13.0
+    // - Make iterating through `List<T>`s less painful
 
     let mut env = Env::new();
 

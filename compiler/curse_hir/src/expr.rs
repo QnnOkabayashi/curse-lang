@@ -1,19 +1,5 @@
-use crate::Type;
+use crate::{arena::P, List, Type};
 use std::fmt;
-
-pub type Ix = u32;
-
-pub type TupleExprsIx = Ix;
-pub type BoxedTypeFunctionIx = Ix;
-pub type BoxedExprApplIx = Ix;
-pub type TupleItemExprIx = Ix;
-pub type TupleItemTypeIx = Ix;
-pub type TupleItemExprPatIx = Ix;
-pub type ExprBranchIx = Ix;
-
-pub fn ix(ix: Ix) -> usize {
-    ix as usize
-}
 
 pub trait Ty {
     fn ty(&self) -> Type;
@@ -35,15 +21,15 @@ pub enum Expr<'input> {
     },
     Tuple {
         ty: Type,
-        exprs: TupleExprsIx, // &'hir List<'hir, Self>,
+        exprs: P<List<Expr<'input>>>,
     },
     Closure {
         ty: Type,
-        branches: ExprBranchIx, // &'hir List<'hir, ExprBranch<'hir, 'input>>,
+        branches: P<List<ExprBranch<'input>>>,
     },
     Appl {
         ty: Type,
-        appl: BoxedExprApplIx, // &'hir BoxedExprAppl<'hir, 'input>,
+        appl: P<BoxedExprAppl<'input>>,
     },
 }
 
@@ -129,9 +115,9 @@ impl Ty for Builtin {
         // These indices are enforced by by `Env::new`, which starts by placing
         // the types for these operators at these indices.
         match self {
-            Add | Sub | Mul | Rem => Type::Function(0),
+            Add | Sub | Mul | Rem => Type::Function(P::new(0)),
             Div => todo!("Type of div"),
-            Eq | Lt | Gt | Le | Ge => Type::Function(1),
+            Eq | Lt | Gt | Le | Ge => Type::Function(P::new(1)),
             Print => todo!("Type of print"),
         }
     }
@@ -156,8 +142,14 @@ pub enum Pat<'input> {
     Bool(bool),
     I32(i32),
     Unit,
-    Ident { ty: Type, literal: &'input str },
-    Tuple { ty: Type, exprs: TupleItemExprPatIx },
+    Ident {
+        ty: Type,
+        literal: &'input str,
+    },
+    Tuple {
+        ty: Type,
+        exprs: P<List<Pat<'input>>>,
+    },
 }
 
 // impl fmt::Display for Pat<'_, '_> {

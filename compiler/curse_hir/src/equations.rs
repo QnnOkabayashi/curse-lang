@@ -1,4 +1,4 @@
-use crate::{Type, Var};
+use crate::{arena::P, Type, Typevar};
 use displaydoc::Display;
 use petgraph::graph::{DiGraph, NodeIndex};
 
@@ -10,7 +10,7 @@ pub enum Node {
     // #[displaydoc("{0} ≢ {1}")]
     NotEquiv(Type, Type),
     // #[displaydoc("{var} := {definition}")]
-    Binding { var: Var, definition: Type },
+    Binding { var: P<Typevar>, definition: Type },
 }
 
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to
