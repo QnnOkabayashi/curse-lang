@@ -38,8 +38,8 @@ pub enum Type<'hir> {
 impl<'hir> Type<'hir> {
     /// Returns a [`Display`](fmt::Display)able type that prints a [`Type`],
     /// except with all type variables fully expanded as much as possible.
-    pub fn pretty(self, env: &'hir Env<'hir, 'hir>) -> TypePrinter<'hir> {
-        TypePrinter { ty: self, env }
+    pub fn pretty(self, hir: &'hir Hir<'hir, 'hir>) -> TypePrinter<'hir> {
+        TypePrinter { ty: self, hir }
     }
 }
 
@@ -71,7 +71,7 @@ impl fmt::Display for Type<'_> {
 
 pub struct TypePrinter<'a> {
     ty: Type<'a>,
-    env: &'a Env<'a, 'a>,
+    hir: &'a Hir<'a, 'a>,
 }
 
 impl fmt::Display for TypePrinter<'_> {
@@ -84,16 +84,16 @@ impl fmt::Display for TypePrinter<'_> {
                 write!(f, "(")?;
                 let mut iter = tuple.iter();
                 if let Some(item) = iter.next() {
-                    write!(f, "{}", item.pretty(self.env))?;
+                    write!(f, "{}", item.pretty(self.hir))?;
                 }
                 for item in iter {
-                    write!(f, ", {}", item.pretty(self.env))?;
+                    write!(f, ", {}", item.pretty(self.hir))?;
                 }
                 write!(f, ")")
             }
             Type::Var(var) => {
-                if let Some((ty, _)) = &self.env[var] {
-                    write!(f, "{}", ty.pretty(self.env))
+                if let Some((ty, _)) = &self.hir[var] {
+                    write!(f, "{}", ty.pretty(self.hir))
                 } else {
                     write!(f, "{var}")
                 }
@@ -102,9 +102,9 @@ impl fmt::Display for TypePrinter<'_> {
                 write!(
                     f,
                     "({} {} -> {})",
-                    fun.lhs.pretty(self.env),
-                    fun.rhs.pretty(self.env),
-                    fun.output.pretty(self.env)
+                    fun.lhs.pretty(self.hir),
+                    fun.rhs.pretty(self.hir),
+                    fun.output.pretty(self.hir)
                 )
             }
         }
@@ -189,7 +189,7 @@ impl<'hir> Polytype<'hir> {
 }
 
 pub struct Scope<'outer, 'hir, 'input> {
-    env: &'outer mut Env<'hir, 'input>,
+    hir: &'outer mut Hir<'hir, 'input>,
     type_map: &'outer HashMap<&'outer str, Type<'hir>>,
     errors: &'outer mut Vec<LowerError<'hir, 'input>>,
     original_errors_len: usize,
@@ -200,7 +200,7 @@ pub struct Scope<'outer, 'hir, 'input> {
 
 impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     pub fn new(
-        env: &'outer mut Env<'hir, 'input>,
+        hir: &'outer mut Hir<'hir, 'input>,
         type_map: &'outer HashMap<&'outer str, Type<'hir>>,
         errors: &'outer mut Vec<LowerError<'hir, 'input>>,
         globals: &'hir HashMap<&'hir str, Polytype>,
@@ -209,7 +209,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         let original_errors_len = errors.len();
         let original_locals_len = locals.len();
         Scope {
-            env,
+            hir,
             type_map,
             errors,
             original_errors_len,
@@ -228,7 +228,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             .or_else(|| {
                 self.globals
                     .get(var)
-                    .map(|polytype| self.env.monomorphize(polytype))
+                    .map(|polytype| self.hir.monomorphize(polytype))
             })
     }
 
@@ -238,14 +238,14 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
     /// Enter a new scope.
     ///
-    /// This method will uniquely borrow a `Bindings` to create another `Bindings`,
+    /// This method will uniquely borrow a `Scope` to create another `Scope`,
     /// which represents an inner scope. When the returned type is dropped,
     /// all bindings that were added in the inner scope will be removed,
     /// leaving the original scope in its initial state and accessible again
     /// since it's no longer borrowed.
     pub fn enter_scope(&mut self) -> Scope<'_, 'hir, 'input> {
         Scope::new(
-            self.env,
+            self.hir,
             self.type_map,
             self.errors,
             self.globals,
@@ -324,11 +324,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     let (next_expr, next_type) = rec(scope, exprs)?.unzip();
 
                     Ok(Some((
-                        scope.env.list_exprs.alloc(List {
+                        scope.hir.list_exprs.alloc(List {
                             item: expr,
                             next: next_expr,
                         }),
-                        scope.env.list_types.alloc(List {
+                        scope.hir.list_types.alloc(List {
                             item: expr.ty(),
                             next: next_type,
                         }),
@@ -375,7 +375,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         Err(PushedErrors)
                     } else {
                         let next = rec(scope, head, branches)?;
-                        Ok(Some(scope.env.list_expr_branches.alloc(List {
+                        Ok(Some(scope.hir.list_expr_branches.alloc(List {
                             item: ExprBranch { lhs, rhs, body },
                             next,
                         })))
@@ -386,9 +386,9 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
                 let next = rec(self, &head, closure.tail.iter().map(|(_, branch)| branch))?;
 
-                let branches = self.env.list_expr_branches.alloc(List { item: head, next });
+                let branches = self.hir.list_expr_branches.alloc(List { item: head, next });
 
-                let ty = Type::Function(self.env.type_functions.alloc(TypeFunction {
+                let ty = Type::Function(self.hir.type_functions.alloc(TypeFunction {
                     lhs: head.lhs.ty(),
                     rhs: head.rhs.ty(),
                     output: head.body.ty(),
@@ -405,9 +405,9 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     return Err(PushedErrors);
                 };
 
-                let ty = self.env.new_typevar().1;
+                let ty = self.hir.new_typevar().1;
 
-                let index_of_function = self.env.type_functions.alloc(TypeFunction {
+                let index_of_function = self.hir.type_functions.alloc(TypeFunction {
                     lhs: lhs.ty(),
                     rhs: rhs.ty(),
                     output: ty,
@@ -420,7 +420,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 } else {
                     Ok(Expr::Appl {
                         ty,
-                        appl: self.env.expr_appls.alloc(ExprAppl { lhs, function, rhs }),
+                        appl: self.hir.expr_appls.alloc(ExprAppl { lhs, function, rhs }),
                     })
                 }
             }
@@ -445,7 +445,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     }
                 },
                 ast::ExprLit::Ident(ident) => {
-                    let ty = self.env.new_typevar().1;
+                    let ty = self.hir.new_typevar().1;
                     self.add_local(ident.literal, ty);
                     Ok(Pat::Ident {
                         literal: ident.literal,
@@ -478,11 +478,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     let (next_pat, next_type) = rec(scope, pats)?.unzip();
 
                     Ok(Some((
-                        scope.env.list_pats.alloc(List {
+                        scope.hir.list_pats.alloc(List {
                             item: pat,
                             next: next_pat,
                         }),
-                        scope.env.list_types.alloc(List {
+                        scope.hir.list_types.alloc(List {
                             item: pat.ty(),
                             next: next_type,
                         }),
@@ -512,7 +512,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     ) -> Result<Pat<'hir, 'input>, PushedErrors> {
         let pat = self.lower_pat(param.pat)?;
         if let Some((_, annotation)) = param.ty {
-            let t2 = self.env.type_from_ast(annotation, self.type_map);
+            let t2 = self.hir.type_from_ast(annotation, self.type_map);
             self.unify(pat.ty(), t2);
             if self.had_errors() {
                 return Err(PushedErrors);
@@ -544,21 +544,21 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     /// Unify two types.
     fn unify(&mut self, t1: Type<'hir>, t2: Type<'hir>) -> NodeIndex {
         match (t1, t2) {
-            (Type::I32, Type::I32) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
-            (Type::Bool, Type::Bool) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
-            (Type::Unit, Type::Unit) => self.env.equations.add_rule(Node::Equiv(t1, t2)),
+            (Type::I32, Type::I32) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
+            (Type::Bool, Type::Bool) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
+            (Type::Unit, Type::Unit) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
             (Type::Tuple(a), Type::Tuple(b)) => {
                 if a.len() == b.len() {
-                    let conclusion = self.env.equations.add_rule(Node::Equiv(t1, t2));
+                    let conclusion = self.hir.equations.add_rule(Node::Equiv(t1, t2));
 
                     for (i, (&t1, &t2)) in a.iter().zip(b.iter()).enumerate() {
                         let mut inner = self.enter_scope();
                         let proof = inner.unify(t1, t2);
                         if inner.had_errors() {
-                            inner.env.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
+                            inner.hir.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
                         }
                         inner
-                            .env
+                            .hir
                             .equations
                             .add_proof(proof, conclusion, Edge::Tuple(i));
                     }
@@ -566,57 +566,57 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 } else {
                     // different length tuples
                     self.errors.push(LowerError::Unify(t1, t2));
-                    self.env.equations.add_rule(Node::NotEquiv(t1, t2))
+                    self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
                 }
             }
             (Type::Var(var), a) | (a, Type::Var(var)) => {
-                if let Some((b, _binding_source)) = self.env[var] {
+                if let Some((b, _binding_source)) = self.hir[var] {
                     let proof = self.unify(a, b);
 
                     let conclusion = if self.had_errors() {
-                        self.env.equations.add_rule(Node::NotEquiv(t1, t2))
+                        self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
                     } else {
-                        self.env.equations.add_rule(Node::Equiv(t1, t2))
+                        self.hir.equations.add_rule(Node::Equiv(t1, t2))
                     };
                     // If we wanted, we could also add an edge with `_binding_source`,
                     // which tells us exactly where the typevar was bound.
-                    self.env
+                    self.hir
                         .equations
                         .add_proof(proof, conclusion, Edge::Transitivity);
                     conclusion
-                } else if self.env.check_equivalence(var, a) {
-                    self.env.equations.add_rule(Node::Equiv(t1, t2))
-                } else if self.env.occurs(var, a) {
+                } else if self.hir.check_equivalence(var, a) {
+                    self.hir.equations.add_rule(Node::Equiv(t1, t2))
+                } else if self.hir.occurs(var, a) {
                     self.errors.push(LowerError::CyclicType(var, a));
-                    self.env.equations.add_rule(Node::NotEquiv(t1, t2))
+                    self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
                 } else {
                     // The actual binding code is here
                     let conclusion = self
-                        .env
+                        .hir
                         .equations
                         .add_rule(Node::Binding { var, definition: a });
 
-                    self.env[var] = Some((a, conclusion));
+                    self.hir[var] = Some((a, conclusion));
                     conclusion
                 }
             }
             (Type::Function(f1), Type::Function(f2)) => {
-                let conclusion = self.env.equations.add_rule(Node::Equiv(t1, t2));
+                let conclusion = self.hir.equations.add_rule(Node::Equiv(t1, t2));
                 let lhs_proof = self.unify(f1.lhs, f2.lhs);
                 let rhs_proof = self.unify(f1.rhs, f2.rhs);
                 let output_proof = self.unify(f1.output, f2.output); // here
 
                 if self.had_errors() {
-                    self.env.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
+                    self.hir.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
                 }
 
-                self.env
+                self.hir
                     .equations
                     .add_proof(lhs_proof, conclusion, Edge::FunctionLhs);
-                self.env
+                self.hir
                     .equations
                     .add_proof(rhs_proof, conclusion, Edge::FunctionRhs);
-                self.env
+                self.hir
                     .equations
                     .add_proof(output_proof, conclusion, Edge::FunctionOutput);
 
@@ -624,7 +624,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             }
             _ => {
                 self.errors.push(LowerError::Unify(t1, t2));
-                self.env.equations.add_rule(Node::NotEquiv(t1, t2))
+                self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
             }
         }
     }
@@ -651,7 +651,7 @@ pub enum LowerError<'hir, 'input> {
     },
 }
 
-pub struct Env<'hir, 'input> {
+pub struct Hir<'hir, 'input> {
     type_functions: &'hir Arena<TypeFunction<'hir>>,
     expr_appls: &'hir Arena<ExprAppl<'hir, 'input>>,
     list_expr_branches: &'hir Arena<List<'hir, ExprBranch<'hir, 'input>>>,
@@ -662,7 +662,7 @@ pub struct Env<'hir, 'input> {
     equations: Equations<'hir>,
 }
 
-impl<'hir, 'input> Env<'hir, 'input> {
+impl<'hir, 'input> Hir<'hir, 'input> {
     fn new_typevar(&mut self) -> (Var, Type<'hir>) {
         let var = Var(self.typevars.len());
         self.typevars.push(None);
@@ -720,31 +720,31 @@ impl<'hir, 'input> Env<'hir, 'input> {
         // which is then bound later on.
         fn replace_unbound_typevars<'hir>(
             tbl: &HashMap<Var, Type<'hir>>,
-            env: &mut Env<'hir, '_>,
+            hir: &mut Hir<'hir, '_>,
             ty: Type<'hir>,
         ) -> Type<'hir> {
             match ty {
                 Type::Var(var) => {
                     tbl[&var] // generics should always be in the map
                 }
-                Type::Function(fun) => Type::Function(env.type_functions.alloc(TypeFunction {
-                    lhs: replace_unbound_typevars(tbl, env, fun.lhs),
-                    rhs: replace_unbound_typevars(tbl, env, fun.rhs),
-                    output: replace_unbound_typevars(tbl, env, fun.output),
+                Type::Function(fun) => Type::Function(hir.type_functions.alloc(TypeFunction {
+                    lhs: replace_unbound_typevars(tbl, hir, fun.lhs),
+                    rhs: replace_unbound_typevars(tbl, hir, fun.rhs),
+                    output: replace_unbound_typevars(tbl, hir, fun.output),
                 })),
                 Type::Tuple(types) => {
                     fn rec<'hir>(
                         tbl: &HashMap<Var, Type<'hir>>,
-                        env: &mut Env<'hir, '_>,
+                        hir: &mut Hir<'hir, '_>,
                         types: &'hir List<'hir, Type<'hir>>,
                     ) -> &'hir List<'hir, Type<'hir>> {
-                        let next = types.next.map(|next| rec(tbl, env, next));
-                        env.list_types.alloc(List {
-                            item: replace_unbound_typevars(tbl, env, types.item),
+                        let next = types.next.map(|next| rec(tbl, hir, next));
+                        hir.list_types.alloc(List {
+                            item: replace_unbound_typevars(tbl, hir, types.item),
                             next,
                         })
                     }
-                    Type::Tuple(rec(tbl, env, types))
+                    Type::Tuple(rec(tbl, hir, types))
                 }
                 _ => ty,
             }
@@ -774,13 +774,13 @@ impl<'hir, 'input> Env<'hir, 'input> {
             ast::Type::Tuple(tuple) => {
                 // Build up the linked list of types from the inside out
                 fn rec<'hir, 'ast, 'input: 'ast>(
-                    env: &mut Env<'hir, 'input>,
+                    hir: &mut Hir<'hir, 'input>,
                     map: &HashMap<&str, Type<'hir>>,
                     mut types: impl Iterator<Item = &'ast ast::Type<'ast, 'input>>,
                 ) -> Option<&'hir List<'hir, Type<'hir>>> {
-                    let item = env.type_from_ast(types.next()?, map);
-                    let next = rec(env, map, types);
-                    Some(env.list_types.alloc(List { item, next }))
+                    let item = hir.type_from_ast(types.next()?, map);
+                    let next = rec(hir, map, types);
+                    Some(hir.list_types.alloc(List { item, next }))
                 }
 
                 if let Some(ty) = rec(self, map, tuple.iter_elements().copied()) {
@@ -830,7 +830,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
     }
 }
 
-impl<'hir> Index<Var> for Env<'hir, '_> {
+impl<'hir> Index<Var> for Hir<'hir, '_> {
     type Output = Typevar<'hir>;
 
     fn index(&self, index: Var) -> &Self::Output {
@@ -838,7 +838,7 @@ impl<'hir> Index<Var> for Env<'hir, '_> {
     }
 }
 
-impl<'hir> IndexMut<Var> for Env<'hir, '_> {
+impl<'hir> IndexMut<Var> for Hir<'hir, '_> {
     fn index_mut(&mut self, index: Var) -> &mut Self::Output {
         &mut self.typevars[index.0 as usize]
     }

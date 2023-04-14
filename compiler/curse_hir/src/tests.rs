@@ -26,11 +26,11 @@ let inc: i32 () -> i32 = |n|
     n + 1
 
 // Given a function, return a function thats like it but calls the provided fn twice!
-let supercharge: (i32 () -> i32) () -> i32 () -> i32 = |f|
+let supercharge a: (a () -> a) () -> a () -> a = |f|
     |x| x f () f ()
 
 let main: () () -> () = ||
-    5 (inc supercharge ()) () print ()
+    5 (inc in supercharge in supercharge) () print ()
 "#;
 
 const INVALID: &str = r#"
@@ -82,10 +82,10 @@ let main: () () -> () = ||
 fn test_branching_typeck() {
     let program = SUPERCHARGE;
 
-    let ctx = curse_parse::Context::new();
-    let program = curse_parse::parse_program(&ctx, program).unwrap();
+    let ast = curse_parse::Ast::new();
+    let program = curse_parse::parse_program(&ast, program).unwrap();
 
-    let mut env = Env {
+    let mut hir = Hir {
         type_functions: &Arena::new(),
         expr_appls: &Arena::new(),
         list_expr_branches: &Arena::new(),
@@ -101,7 +101,7 @@ fn test_branching_typeck() {
 
     let mut function_to_typescope: HashMap<&str, HashMap<&str, Type>> = HashMap::new();
 
-    let globals: HashMap<&str, Polytype> = env
+    let globals: HashMap<&str, Polytype> = hir
         .default_globals()
         .chain(program.items.iter().map(|item| {
             // Since items (i.e. functions for now) can be generic over types,
@@ -114,12 +114,12 @@ fn test_branching_typeck() {
             inner_type_scope.reserve(item.generics.len());
 
             for generic in item.generics.iter() {
-                let (var, ty) = env.new_typevar();
+                let (var, ty) = hir.new_typevar();
                 typevars.push(var);
                 inner_type_scope.insert(generic.literal, ty);
             }
 
-            let typ = env.type_from_ast(item.typ, &inner_type_scope);
+            let typ = hir.type_from_ast(item.typ, &inner_type_scope);
 
             function_to_typescope.insert(item.name.literal, inner_type_scope);
 
@@ -136,7 +136,7 @@ fn test_branching_typeck() {
         .map(|item| {
             let item_name = item.name.literal;
             let mut scope = Scope::new(
-                &mut env,
+                &mut hir,
                 &function_to_typescope[item_name],
                 &mut errors,
                 &globals,
@@ -147,7 +147,7 @@ fn test_branching_typeck() {
             let expr = scope.lower(item.expr)?;
 
             // Make sure the function actually lines up with its type signature.
-            let ty = scope.env.monomorphize(&polytype);
+            let ty = scope.hir.monomorphize(&polytype);
             scope.unify(expr.ty(), ty);
             if scope.had_errors() {
                 return Err(PushedErrors);
@@ -157,19 +157,16 @@ fn test_branching_typeck() {
         .collect();
 
     // Put the result into: https://edotor.net/
-    // println!("{}", env.equations);
+    // println!("{}", hir.equations);
 
     if let Ok(lowered_items) = lowered_items {
         assert!(errors.is_empty());
-        let mut builder = dot::Builder::new(&env);
+        let mut builder = dot::Builder::new(&hir);
         for (name, (_, expr)) in lowered_items.iter() {
             builder.visit_expr(*expr, None, Some(name));
         }
         let out = builder.finish();
         println!("{out}");
-
-        // let (_, of) = &lowered_items["of"];
-        // println!("{}", of.ty());
     } else {
         assert!(!errors.is_empty());
         println!("Errors:");

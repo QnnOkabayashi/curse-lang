@@ -1,15 +1,15 @@
 //! Utilities for writing an AST in dot format for Graphviz.
-use crate::{expr::Ty, Env, Expr};
+use crate::{expr::Ty, Hir, Expr};
 use std::fmt::Write as _;
 
 pub struct Builder<'env> {
-    env: &'env Env<'env, 'env>,
+    env: &'env Hir<'env, 'env>,
     count: u32,
     out: String,
 }
 
 impl<'env> Builder<'env> {
-    pub fn new(env: &'env Env<'env, 'env>) -> Self {
+    pub fn new(env: &'env Hir<'env, 'env>) -> Self {
         let out = String::with_capacity(2048) + "digraph example {";
 
         Builder { env, count: 0, out }

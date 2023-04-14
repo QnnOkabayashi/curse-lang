@@ -1,7 +1,7 @@
-use crate::{lexer::*, Context, Error};
+use crate::{lexer::*, Ast, Error};
 use curse_ast::*;
 
-grammar<'ast, 'input>(ctx: &'ast Context<'ast, 'input>, errors: &mut Vec<Error>);
+grammar<'ast, 'input>(ast: &'ast Ast<'ast, 'input>, errors: &mut Vec<Error>);
 
 extern {
     type Location = usize;
@@ -64,8 +64,8 @@ Item: Option<Item<'ast, 'input>> = "let" Ident (Ident)* ":" Type "=" EndExpr => 
 };
 
 StartType: Option<&'ast Type<'ast, 'input>> = {
-    Ident => Some(ctx.typ(Type::Named(TypeNamed::new(<>)))),
-    Tuple<Type> => <>.fold().map(|tup| ctx.typ(Type::Tuple(tup))),
+    Ident => Some(ast.typ(Type::Named(TypeNamed::new(<>)))),
+    Tuple<Type> => <>.fold().map(|tup| ast.typ(Type::Tuple(tup))),
     "(" <Type> ")",
     ! => {
         errors.push(<>.error.into());
@@ -76,7 +76,7 @@ StartType: Option<&'ast Type<'ast, 'input>> = {
 Type = {
     StartType StartType "->" Type => match (<>) {
         (Some(lhs), Some(rhs), arrow, Some(res)) => {
-            Some(ctx.typ(Type::Function(TypeFunction::new(lhs, rhs, arrow, res))))
+            Some(ast.typ(Type::Function(TypeFunction::new(lhs, rhs, arrow, res))))
         }
         _ => None,
     },
@@ -84,8 +84,8 @@ Type = {
 };
 
 Pat: &'ast ExprPat<'ast, 'input> = {
-    Lit => ctx.pat(ExprPat::Lit(<>)),
-    Tuple<Pat> => ctx.pat(ExprPat::Tuple(<>)),
+    Lit => ast.pat(ExprPat::Lit(<>)),
+    Tuple<Pat> => ast.pat(ExprPat::Tuple(<>)),
 };
 
 Paren: Option<ExprParen<'ast, 'input>> = "(" EndExpr ")" => match (<>) {
@@ -160,10 +160,10 @@ Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Term Rhs => match (<>) {
 };
 
 Term: Option<&'ast Expr<'ast, 'input>> = {
-    Paren => <>.map(|paren| ctx.expr(Expr::Paren(paren))),
-    Symbol => Some(ctx.expr(Expr::Symbol(<>))),
-    Lit => Some(ctx.expr(Expr::Lit(<>))),
-    Tuple<EndExpr> => <>.fold().map(|tup| ctx.expr(Expr::Tuple(tup))),
+    Paren => <>.map(|paren| ast.expr(Expr::Paren(paren))),
+    Symbol => Some(ast.expr(Expr::Symbol(<>))),
+    Lit => Some(ast.expr(Expr::Lit(<>))),
+    Tuple<EndExpr> => <>.fold().map(|tup| ast.expr(Expr::Tuple(tup))),
     ! => {
         errors.push(<>.error.into());
         None
@@ -172,25 +172,25 @@ Term: Option<&'ast Expr<'ast, 'input>> = {
 
 InternalTerm = {
     Term,
-    Branch => <>.map(|branch| ctx.expr(Expr::Closure(ExprClosure::new(branch)))),
+    Branch => <>.map(|branch| ast.expr(Expr::Closure(ExprClosure::new(branch)))),
 };
 
 EndTerm = {
     Term,
-    Closure => <>.map(|closure| ctx.expr(Expr::Closure(closure))),
+    Closure => <>.map(|closure| ast.expr(Expr::Closure(closure))),
 };
 
 Expr = {
     Term,
-    Appl<Term> => <>.map(|appl| ctx.expr(Expr::Appl(appl))),
+    Appl<Term> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
 };
 
 InternalExpr = {
     InternalTerm,
-    Appl<InternalTerm> => <>.map(|appl| ctx.expr(Expr::Appl(appl))),
+    Appl<InternalTerm> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => <>.map(|appl| ctx.expr(Expr::Appl(appl))),
+    Appl<EndTerm> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
 };

@@ -13,21 +13,21 @@ lalrpop_mod!(
     grammar
 );
 
-pub struct Context<'ast, 'input> {
+pub struct Ast<'ast, 'input> {
     exprs: Arena<Expr<'ast, 'input>>,
     pats: Arena<ExprPat<'ast, 'input>>,
     types: Arena<Type<'ast, 'input>>,
 }
 
-impl Default for Context<'_, '_> {
+impl Default for Ast<'_, '_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'ast, 'input> Context<'ast, 'input> {
+impl<'ast, 'input> Ast<'ast, 'input> {
     pub fn new() -> Self {
-        Context {
+        Ast {
             exprs: Arena::with_capacity(1024),
             pats: Arena::with_capacity(1024),
             types: Arena::with_capacity(1024),
@@ -48,11 +48,11 @@ impl<'ast, 'input> Context<'ast, 'input> {
 }
 
 pub fn parse_program<'ast, 'input>(
-    context: &'ast Context<'ast, 'input>,
+    ast: &'ast Ast<'ast, 'input>,
     input: &'input str,
 ) -> Result<Program<'ast, 'input>, Vec<Error>> {
     let mut errors = Vec::with_capacity(0);
-    match grammar::ProgramParser::new().parse(context, &mut errors, Lexer::new(input)) {
+    match grammar::ProgramParser::new().parse(ast, &mut errors, Lexer::new(input)) {
         Ok(Some(program)) => Ok(program),
         Ok(None) => Err(errors),
         Err(err) => {
@@ -63,7 +63,7 @@ pub fn parse_program<'ast, 'input>(
 }
 
 pub fn parse_expr<'ast, 'input>(
-    context: &'ast Context<'ast, 'input>,
+    context: &'ast Ast<'ast, 'input>,
     input: &'input str,
 ) -> Result<&'ast Expr<'ast, 'input>, Vec<Error>> {
     let mut errors = Vec::with_capacity(0);
