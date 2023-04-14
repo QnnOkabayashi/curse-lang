@@ -15,7 +15,7 @@ impl<'env> Builder<'env> {
         Builder { env, count: 0, out }
     }
 
-    pub fn visit_expr(&mut self, expr: Expr<'_, '_>, parent: Option<u32>, name: Option<&str>) {
+    pub fn visit_expr(&mut self, expr: Expr<'env, '_>, parent: Option<u32>, name: Option<&str>) {
         let id = self.fresh();
         self.out += "\n    ";
 
@@ -24,7 +24,7 @@ impl<'env> Builder<'env> {
                 write!(
                     self.out,
                     "p{id}[label = \"{builtin}: {ty}\"]",
-                    ty = builtin.ty(),
+                    ty = builtin.ty().pretty(self.env),
                 )
                 .unwrap();
             }
@@ -38,23 +38,43 @@ impl<'env> Builder<'env> {
                 write!(self.out, "p{id}[label = \"(): ()\"]").unwrap();
             }
             Expr::Ident { ty, literal } => {
-                write!(self.out, "p{id}[label = \"{literal}: {ty}\"]").unwrap();
+                write!(
+                    self.out,
+                    "p{id}[label = \"{literal}: {ty}\"]",
+                    ty = ty.pretty(self.env)
+                )
+                .unwrap();
             }
             Expr::Tuple { ty, exprs } => {
-                write!(self.out, "p{id}[label = \"tuple: {ty}\"]").unwrap();
+                write!(
+                    self.out,
+                    "p{id}[label = \"tuple: {ty}\"]",
+                    ty = ty.pretty(self.env)
+                )
+                .unwrap();
                 for expr in exprs.iter() {
                     self.visit_expr(*expr, Some(id), None);
                 }
             }
             Expr::Closure { ty, branches } => {
                 let name = name.unwrap_or("<closure>");
-                write!(self.out, "p{id}[label = \"{name}: {ty}\"]").unwrap();
+                write!(
+                    self.out,
+                    "p{id}[label = \"{name}: {ty}\"]",
+                    ty = ty.pretty(self.env)
+                )
+                .unwrap();
                 for branch in branches.iter() {
                     self.visit_expr(branch.body, Some(id), None);
                 }
             }
             Expr::Appl { ty, appl } => {
-                write!(self.out, "p{id}[label = \"<appl>: {ty}\"]").unwrap();
+                write!(
+                    self.out,
+                    "p{id}[label = \"<appl>: {ty}\"]",
+                    ty = ty.pretty(self.env)
+                )
+                .unwrap();
                 self.visit_expr(appl.lhs, Some(id), None);
                 self.visit_expr(appl.function, Some(id), None);
                 self.visit_expr(appl.rhs, Some(id), None);

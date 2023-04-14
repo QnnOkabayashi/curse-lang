@@ -80,14 +80,10 @@ let main: () () -> () = ||
 
 #[test]
 fn test_branching_typeck() {
-    let program = IN2;
+    let program = SUPERCHARGE;
 
     let ctx = curse_parse::Context::new();
     let program = curse_parse::parse_program(&ctx, program).unwrap();
-
-    // TODO(quinn):
-    // - Why does it say that the type of `of` is ((T9 T10 -> T11) () -> T11)?
-    //   The second argument should be (T9, T10).
 
     let mut env = Env {
         type_functions: &Arena::new(),
@@ -148,14 +144,15 @@ fn test_branching_typeck() {
             );
 
             let polytype = globals[item_name].clone();
-            let body = scope.lower(item.expr)?;
-            // the below should work...
-            // let ty = scope.env.monomorphize(&polytype);
-            // scope.unify(body.ty(), ty);
-            // if scope.had_errors() {
-            //     return Err(PushedErrors);
-            // }
-            Ok((item_name, (polytype, body)))
+            let expr = scope.lower(item.expr)?;
+
+            // Make sure the function actually lines up with its type signature.
+            let ty = scope.env.monomorphize(&polytype);
+            scope.unify(expr.ty(), ty);
+            if scope.had_errors() {
+                return Err(PushedErrors);
+            }
+            Ok((item_name, (polytype, expr)))
         })
         .collect();
 

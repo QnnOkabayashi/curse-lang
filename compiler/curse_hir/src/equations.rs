@@ -3,7 +3,7 @@ use displaydoc::Display;
 use petgraph::graph::{DiGraph, NodeIndex};
 
 /// A node on the inference graph.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub enum Node<'hir> {
     // #[displaydoc("{0} ≡ {1}")]
     Equiv(Type<'hir>, Type<'hir>),

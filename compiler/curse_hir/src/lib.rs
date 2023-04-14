@@ -25,14 +25,22 @@ pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
 #[displaydoc("T{0}")]
 pub struct Var(usize);
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone)]
 pub enum Type<'hir> {
     I32,
     Bool,
     Unit,
-    Tuple(&'hir List<'hir, Type<'hir>>),
     Var(Var),
+    Tuple(&'hir List<'hir, Type<'hir>>),
     Function(&'hir TypeFunction<'hir>),
+}
+
+impl<'hir> Type<'hir> {
+    /// Returns a [`Display`](fmt::Display)able type that prints a [`Type`],
+    /// except with all type variables fully expanded as much as possible.
+    pub fn pretty(self, env: &'hir Env<'hir, 'hir>) -> TypePrinter<'hir> {
+        TypePrinter { ty: self, env }
+    }
 }
 
 impl fmt::Debug for Type<'_> {
@@ -61,7 +69,49 @@ impl fmt::Display for Type<'_> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Display, PartialEq)]
+pub struct TypePrinter<'a> {
+    ty: Type<'a>,
+    env: &'a Env<'a, 'a>,
+}
+
+impl fmt::Display for TypePrinter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.ty {
+            Type::I32 => write!(f, "i32"),
+            Type::Bool => write!(f, "bool"),
+            Type::Unit => write!(f, "()"),
+            Type::Tuple(tuple) => {
+                write!(f, "(")?;
+                let mut iter = tuple.iter();
+                if let Some(item) = iter.next() {
+                    write!(f, "{}", item.pretty(self.env))?;
+                }
+                for item in iter {
+                    write!(f, ", {}", item.pretty(self.env))?;
+                }
+                write!(f, ")")
+            }
+            Type::Var(var) => {
+                if let Some((ty, _)) = &self.env[var] {
+                    write!(f, "{}", ty.pretty(self.env))
+                } else {
+                    write!(f, "{var}")
+                }
+            }
+            Type::Function(fun) => {
+                write!(
+                    f,
+                    "({} {} -> {})",
+                    fun.lhs.pretty(self.env),
+                    fun.rhs.pretty(self.env),
+                    fun.output.pretty(self.env)
+                )
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("({lhs} {rhs} -> {output})")]
 pub struct TypeFunction<'hir> {
     lhs: Type<'hir>,
@@ -255,7 +305,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 ast::ExprLit::False(_) => Ok(Expr::Bool(false)),
             },
             ast::Expr::Tuple(tuple) => {
-                fn rec<'ast, 'hir, 'input: 'ast + 'hir>(
+                fn rec<'ast, 'hir, 'input: 'ast>(
                     scope: &mut Scope<'_, 'hir, 'input>,
                     mut exprs: impl Iterator<Item = &'ast ast::Expr<'ast, 'input>>,
                 ) -> Result<
@@ -271,18 +321,16 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
                     let expr = scope.lower(expr)?;
 
-                    let Some((next_expr, next_type)) = rec(scope, exprs)? else {
-                        return Ok(None);
-                    };
+                    let (next_expr, next_type) = rec(scope, exprs)?.unzip();
 
                     Ok(Some((
                         scope.env.list_exprs.alloc(List {
                             item: expr,
-                            next: Some(next_expr),
+                            next: next_expr,
                         }),
                         scope.env.list_types.alloc(List {
                             item: expr.ty(),
-                            next: Some(next_type),
+                            next: next_type,
                         }),
                     )))
                 }
@@ -299,14 +347,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             ast::Expr::Closure(closure) => {
                 let mut inner = self.enter_scope();
 
-                // Need to parse the params _before_ the body...
-                // Duh.
                 let [lhs, rhs] = inner.type_of_many_params(&closure.head.params)?;
                 let body = inner.lower(closure.head.body)?;
 
                 drop(inner);
 
-                fn rec<'ast, 'hir, 'input: 'ast + 'hir>(
+                fn rec<'ast, 'hir, 'input: 'ast>(
                     scope: &mut Scope<'_, 'hir, 'input>,
                     head: &ExprBranch<'hir, 'input>,
                     mut branches: impl Iterator<Item = &'ast ast::ExprBranch<'ast, 'input>>,
@@ -413,7 +459,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 // TODO(quinn): this is mostly copy pasted from `Env::lower`,
                 // can we try to generalize them? Patterns are basically just
                 // expressions without closures or function application...
-                fn rec<'ast, 'hir, 'input: 'ast + 'hir>(
+                fn rec<'ast, 'hir, 'input: 'ast>(
                     scope: &mut Scope<'_, 'hir, 'input>,
                     mut pats: impl Iterator<Item = &'ast ast::ExprPat<'ast, 'input>>,
                 ) -> Result<
@@ -538,7 +584,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         .equations
                         .add_proof(proof, conclusion, Edge::Transitivity);
                     conclusion
-                } else if t1 == t2 {
+                } else if self.env.check_equivalence(var, a) {
                     self.env.equations.add_rule(Node::Equiv(t1, t2))
                 } else if self.env.occurs(var, a) {
                     self.errors.push(LowerError::CyclicType(var, a));
@@ -558,7 +604,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 let conclusion = self.env.equations.add_rule(Node::Equiv(t1, t2));
                 let lhs_proof = self.unify(f1.lhs, f2.lhs);
                 let rhs_proof = self.unify(f1.rhs, f2.rhs);
-                let output_proof = self.unify(f1.output, f2.output);
+                let output_proof = self.unify(f1.output, f2.output); // here
 
                 if self.had_errors() {
                     self.env.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
@@ -679,21 +725,26 @@ impl<'hir, 'input> Env<'hir, 'input> {
         ) -> Type<'hir> {
             match ty {
                 Type::Var(var) => {
-                    if let Some((t, _)) = env[var] {
-                        replace_unbound_typevars(tbl, env, t)
-                    } else if let Some(&t) = tbl.get(&var) {
-                        t
-                    } else {
-                        ty
-                    }
+                    tbl[&var] // generics should always be in the map
                 }
-                Type::Function(fun) => {
-                    let boxed = TypeFunction {
-                        lhs: replace_unbound_typevars(tbl, env, fun.lhs),
-                        rhs: replace_unbound_typevars(tbl, env, fun.rhs),
-                        output: replace_unbound_typevars(tbl, env, fun.output),
-                    };
-                    Type::Function(env.type_functions.alloc(boxed))
+                Type::Function(fun) => Type::Function(env.type_functions.alloc(TypeFunction {
+                    lhs: replace_unbound_typevars(tbl, env, fun.lhs),
+                    rhs: replace_unbound_typevars(tbl, env, fun.rhs),
+                    output: replace_unbound_typevars(tbl, env, fun.output),
+                })),
+                Type::Tuple(types) => {
+                    fn rec<'hir>(
+                        tbl: &HashMap<Var, Type<'hir>>,
+                        env: &mut Env<'hir, '_>,
+                        types: &'hir List<'hir, Type<'hir>>,
+                    ) -> &'hir List<'hir, Type<'hir>> {
+                        let next = types.next.map(|next| rec(tbl, env, next));
+                        env.list_types.alloc(List {
+                            item: replace_unbound_typevars(tbl, env, types.item),
+                            next,
+                        })
+                    }
+                    Type::Tuple(rec(tbl, env, types))
                 }
                 _ => ty,
             }
@@ -708,7 +759,7 @@ impl<'hir, 'input> Env<'hir, 'input> {
         replace_unbound_typevars(&tvs_to_replace, self, polytype.typ)
     }
 
-    /// Convert an [`ast::Type<'hir>`] annotation into an HIR [`Type<'hir>`].
+    /// Convert an [`ast::Type<'_, 'input>`] annotation into an HIR [`Type<'hir>`].
     pub fn type_from_ast(
         &mut self,
         typ: &ast::Type<'_, 'input>,
@@ -763,6 +814,18 @@ impl<'hir, 'input> Env<'hir, 'input> {
                     || self.occurs(var, fun.output)
             }
             _ => false,
+        }
+    }
+
+    fn check_equivalence(&self, var: Var, ty: Type<'_>) -> bool {
+        if let Type::Var(typevar) = ty {
+            if let Some((t, _)) = self[typevar] {
+                self.check_equivalence(var, t)
+            } else {
+                var == typevar
+            }
+        } else {
+            false
         }
     }
 }
