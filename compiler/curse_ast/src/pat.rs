@@ -1,4 +1,4 @@
-use crate::tok;
+use crate::{tok, Span};
 use std::fmt;
 
 #[derive(Clone, Debug)]
@@ -12,6 +12,13 @@ pub struct PatTuple<T> {
     pub lparen: tok::LParen,
     pub kind: Option<TupleNonempty<T>>,
     pub rparen: tok::RParen,
+}
+
+impl<T> Span for PatTuple<T> {
+    fn span(&self) -> (usize, usize) {
+        // Span::span_between(&self.lparen, self.rparen)
+        self.lparen.span_between(self.rparen)
+    }
 }
 
 #[derive(Clone, Debug)]

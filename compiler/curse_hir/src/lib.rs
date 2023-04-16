@@ -1,25 +1,28 @@
+#![allow(dead_code)]
+use ast::Span;
 use curse_ast as ast;
 use displaydoc::Display;
 use petgraph::graph::NodeIndex;
+use smallvec::{smallvec, SmallVec};
 use std::{
     collections::HashMap,
-    fmt, num,
+    fmt,
     ops::{Index, IndexMut},
 };
-use thiserror::Error;
 use typed_arena::Arena;
 
 mod equations;
-use equations::{Edge, Equations, Node};
+pub use equations::{Edge, Equations, Node};
 mod expr;
-use expr::*;
-mod dot;
-
-#[cfg(test)]
-mod tests;
+pub use expr::*;
+pub mod dot;
+mod error;
+pub use error::*;
+mod spanned;
+pub use spanned::{WithSpan, S};
 
 /// `Some` is bound, `None` is unbound.
-pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
+pub type Typevar<'hir> = Option<(S<Type<'hir>>, NodeIndex)>;
 
 #[derive(Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[displaydoc("T{0}")]
@@ -31,7 +34,7 @@ pub enum Type<'hir> {
     Bool,
     Unit,
     Var(Var),
-    Tuple(&'hir List<'hir, Type<'hir>>),
+    Tuple(&'hir List<'hir, S<Type<'hir>>>),
     Function(&'hir TypeFunction<'hir>),
 }
 
@@ -83,17 +86,17 @@ impl fmt::Display for TypePrinter<'_> {
             Type::Tuple(tuple) => {
                 write!(f, "(")?;
                 let mut iter = tuple.iter();
-                if let Some(item) = iter.next() {
-                    write!(f, "{}", item.pretty(self.hir))?;
+                if let Some(ty) = iter.next() {
+                    write!(f, "{}", ty.value().pretty(self.hir))?;
                 }
-                for item in iter {
-                    write!(f, ", {}", item.pretty(self.hir))?;
+                for ty in iter {
+                    write!(f, ", {}", ty.value().pretty(self.hir))?;
                 }
                 write!(f, ")")
             }
             Type::Var(var) => {
                 if let Some((ty, _)) = &self.hir[var] {
-                    write!(f, "{}", ty.pretty(self.hir))
+                    write!(f, "{}", ty.value().pretty(self.hir))
                 } else {
                     write!(f, "{var}")
                 }
@@ -102,9 +105,9 @@ impl fmt::Display for TypePrinter<'_> {
                 write!(
                     f,
                     "({} {} -> {})",
-                    fun.lhs.pretty(self.hir),
-                    fun.rhs.pretty(self.hir),
-                    fun.output.pretty(self.hir)
+                    fun.lhs.value().pretty(self.hir),
+                    fun.rhs.value().pretty(self.hir),
+                    fun.output.value().pretty(self.hir)
                 )
             }
         }
@@ -114,9 +117,9 @@ impl fmt::Display for TypePrinter<'_> {
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("({lhs} {rhs} -> {output})")]
 pub struct TypeFunction<'hir> {
-    lhs: Type<'hir>,
-    rhs: Type<'hir>,
-    output: Type<'hir>,
+    lhs: S<Type<'hir>>,
+    rhs: S<Type<'hir>>,
+    output: S<Type<'hir>>,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -144,9 +147,12 @@ impl<'list, T> List<'list, T> {
 }
 
 impl<'list, T: fmt::Display> List<'list, T> {
-    /// Returns a [`Display`]able type with a provided delimiter.
+    /// Returns a [`Display`](fmt::Display)able type with a provided delimiter.
     pub fn delim<'a>(&'a self, delim: &'a str) -> Delim<'a, T> {
-        Delim { list: self, delim }
+        Delim {
+            list: self,
+            sep: delim,
+        }
     }
 }
 
@@ -158,7 +164,7 @@ impl<T: fmt::Debug> fmt::Debug for List<'_, T> {
 
 pub struct Delim<'a, T> {
     list: &'a List<'a, T>,
-    delim: &'a str,
+    sep: &'a str,
 }
 
 impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
@@ -166,7 +172,7 @@ impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
         self.list.item.fmt(f)?;
         if let Some(remaining) = self.list.next {
             for item in remaining.iter() {
-                write!(f, "{}{}", self.delim, item)?;
+                write!(f, "{}{}", self.sep, item)?;
             }
         }
         Ok(())
@@ -175,36 +181,36 @@ impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
 
 #[derive(Clone, Debug)]
 pub struct Polytype<'hir> {
-    typevars: Vec<Var>,
-    typ: Type<'hir>,
+    pub typevars: SmallVec<[Var; 4]>,
+    pub ty: S<Type<'hir>>,
 }
 
 impl<'hir> Polytype<'hir> {
-    pub fn new(ty: Type<'hir>) -> Self {
+    pub fn new(ty: S<Type<'hir>>) -> Self {
         Polytype {
-            typevars: vec![],
-            typ: ty,
+            typevars: SmallVec::new(),
+            ty,
         }
     }
 }
 
 pub struct Scope<'outer, 'hir, 'input> {
-    hir: &'outer mut Hir<'hir, 'input>,
-    type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-    errors: &'outer mut Vec<LowerError<'hir, 'input>>,
+    pub hir: &'outer mut Hir<'hir, 'input>,
+    type_map: &'outer HashMap<&'outer str, S<Type<'hir>>>,
+    errors: &'outer mut Vec<LowerError<'hir>>,
     original_errors_len: usize,
     globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
-    locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
+    locals: &'outer mut Vec<(&'hir str, S<Type<'hir>>)>,
     original_locals_len: usize,
 }
 
 impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     pub fn new(
         hir: &'outer mut Hir<'hir, 'input>,
-        type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-        errors: &'outer mut Vec<LowerError<'hir, 'input>>,
+        type_map: &'outer HashMap<&'outer str, S<Type<'hir>>>,
+        errors: &'outer mut Vec<LowerError<'hir>>,
         globals: &'hir HashMap<&'hir str, Polytype>,
-        locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
+        locals: &'outer mut Vec<(&'hir str, S<Type<'hir>>)>,
     ) -> Self {
         let original_errors_len = errors.len();
         let original_locals_len = locals.len();
@@ -220,7 +226,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     }
 
     /// Search through local variables first, then search through global variables.
-    pub fn type_of(&mut self, var: &str) -> Option<Type<'hir>> {
+    pub fn type_of(&mut self, var: &str) -> Option<S<Type<'hir>>> {
         self.locals
             .iter()
             .rev()
@@ -232,7 +238,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             })
     }
 
-    pub fn add_local(&mut self, var: &'hir str, ty: Type<'hir>) {
+    pub fn add_local(&mut self, var: &'hir str, ty: S<Type<'hir>>) {
         self.locals.push((var, ty));
     }
 
@@ -260,32 +266,49 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     pub fn lower(
         &mut self,
         expr: &ast::Expr<'_, 'input>,
-    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
+    ) -> Result<S<Expr<'hir, 'input>>, PushedErrors> {
         match expr {
             ast::Expr::Paren(paren) => self.lower(paren.expr),
             ast::Expr::Symbol(symbol) => match symbol {
-                ast::ExprSymbol::Plus(_) => Ok(Expr::Builtin(Builtin::Add)),
-                ast::ExprSymbol::Minus(_) => Ok(Expr::Builtin(Builtin::Sub)),
-                ast::ExprSymbol::Star(_) => Ok(Expr::Builtin(Builtin::Mul)),
-                ast::ExprSymbol::Percent(_) => Ok(Expr::Builtin(Builtin::Rem)),
-                ast::ExprSymbol::Slash(_) => Ok(Expr::Builtin(Builtin::Div)),
-                ast::ExprSymbol::Dot(_) => todo!("lower `.`"),
-                ast::ExprSymbol::DotDot(_) => todo!("lower `..`"),
-                ast::ExprSymbol::Semi(_) => todo!("lower `;`"),
-                ast::ExprSymbol::Equal(_) => Ok(Expr::Builtin(Builtin::Eq)),
-                ast::ExprSymbol::Less(_) => Ok(Expr::Builtin(Builtin::Lt)),
-                ast::ExprSymbol::Greater(_) => Ok(Expr::Builtin(Builtin::Gt)),
-                ast::ExprSymbol::LessEqual(_) => Ok(Expr::Builtin(Builtin::Le)),
-                ast::ExprSymbol::GreaterEqual(_) => Ok(Expr::Builtin(Builtin::Ge)),
+                ast::ExprSymbol::Plus(plus) => {
+                    Ok(Expr::Builtin(Builtin::Add).with_span(plus.span()))
+                }
+                ast::ExprSymbol::Minus(minus) => {
+                    Ok(Expr::Builtin(Builtin::Sub).with_span(minus.span()))
+                }
+                ast::ExprSymbol::Star(star) => {
+                    Ok(Expr::Builtin(Builtin::Mul).with_span(star.span()))
+                }
+                ast::ExprSymbol::Percent(percent) => {
+                    Ok(Expr::Builtin(Builtin::Rem).with_span(percent.span()))
+                }
+                ast::ExprSymbol::Slash(slash) => {
+                    Ok(Expr::Builtin(Builtin::Div).with_span(slash.span()))
+                }
+                ast::ExprSymbol::Dot(_dot) => todo!("lower `.`"),
+                ast::ExprSymbol::DotDot(_dotdot) => todo!("lower `..`"),
+                ast::ExprSymbol::Semi(_semi) => todo!("lower `;`"),
+                ast::ExprSymbol::Equal(equal) => {
+                    Ok(Expr::Builtin(Builtin::Eq).with_span(equal.span()))
+                }
+                ast::ExprSymbol::Less(less) => {
+                    Ok(Expr::Builtin(Builtin::Lt).with_span(less.span()))
+                }
+                ast::ExprSymbol::Greater(greater) => {
+                    Ok(Expr::Builtin(Builtin::Gt).with_span(greater.span()))
+                }
+                ast::ExprSymbol::LessEqual(less_equal) => {
+                    Ok(Expr::Builtin(Builtin::Le).with_span(less_equal.span()))
+                }
+                ast::ExprSymbol::GreaterEqual(greater_equal) => {
+                    Ok(Expr::Builtin(Builtin::Ge).with_span(greater_equal.span()))
+                }
             },
             ast::Expr::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Ok(Expr::I32(int)),
-                    Err(source) => {
-                        self.errors.push(LowerError::ParseInt {
-                            token: *integer,
-                            source,
-                        });
+                    Ok(int) => Ok(Expr::I32(int).with_span(integer.span())),
+                    Err(_) => {
+                        self.errors.push(LowerError::from(integer));
                         Err(PushedErrors)
                     }
                 },
@@ -294,15 +317,15 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         Ok(Expr::Ident {
                             literal: ident.literal,
                             ty,
-                        })
+                        }
+                        .with_span(ident.span()))
                     } else {
-                        self.errors
-                            .push(LowerError::IdentNotFound { token: *ident });
+                        self.errors.push(LowerError::from(ident));
                         Err(PushedErrors)
                     }
                 }
-                ast::ExprLit::True(_) => Ok(Expr::Bool(true)),
-                ast::ExprLit::False(_) => Ok(Expr::Bool(false)),
+                ast::ExprLit::True(t) => Ok(Expr::Bool(true).with_span(t.span())),
+                ast::ExprLit::False(f) => Ok(Expr::Bool(false).with_span(f.span())),
             },
             ast::Expr::Tuple(tuple) => {
                 fn rec<'ast, 'hir, 'input: 'ast>(
@@ -310,26 +333,26 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     mut exprs: impl Iterator<Item = &'ast ast::Expr<'ast, 'input>>,
                 ) -> Result<
                     Option<(
-                        &'hir List<'hir, Expr<'hir, 'input>>,
-                        &'hir List<'hir, Type<'hir>>,
+                        &'hir List<'hir, S<Expr<'hir, 'input>>>,
+                        &'hir List<'hir, S<Type<'hir>>>,
                     )>,
                     PushedErrors,
                 > {
-                    let Some(expr) = exprs.next() else {
+                    let Some(ast_expr) = exprs.next() else {
                         return Ok(None);
                     };
 
-                    let expr = scope.lower(expr)?;
+                    let hir_expr = scope.lower(ast_expr)?;
 
                     let (next_expr, next_type) = rec(scope, exprs)?.unzip();
 
                     Ok(Some((
                         scope.hir.list_exprs.alloc(List {
-                            item: expr,
+                            item: hir_expr,
                             next: next_expr,
                         }),
                         scope.hir.list_types.alloc(List {
-                            item: expr.ty(),
+                            item: hir_expr.ty(),
                             next: next_type,
                         }),
                     )))
@@ -337,33 +360,34 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
                 if let Some((exprs, ty)) = rec(self, tuple.iter_elements().copied())? {
                     Ok(Expr::Tuple {
-                        ty: Type::Tuple(ty),
+                        ty: Type::Tuple(ty).with_span(tuple.span()),
                         exprs,
-                    })
+                    }
+                    .with_span(tuple.span()))
                 } else {
-                    Ok(Expr::Unit)
+                    Ok(Expr::Unit.with_span(tuple.span()))
                 }
             }
             ast::Expr::Closure(closure) => {
                 let mut inner = self.enter_scope();
 
-                let [lhs, rhs] = inner.type_of_many_params(&closure.head.params)?;
+                let [lhs, rhs] = inner.type_of_many_params(&closure.head)?;
                 let body = inner.lower(closure.head.body)?;
 
                 drop(inner);
 
                 fn rec<'ast, 'hir, 'input: 'ast>(
                     scope: &mut Scope<'_, 'hir, 'input>,
-                    head: &ExprBranch<'hir, 'input>,
-                    mut branches: impl Iterator<Item = &'ast ast::ExprBranch<'ast, 'input>>,
-                ) -> Result<Option<&'hir List<'hir, ExprBranch<'hir, 'input>>>, PushedErrors>
+                    head: &ExprArm<'hir, 'input>,
+                    mut branches: impl Iterator<Item = &'ast ast::ExprArm<'ast, 'input>>,
+                ) -> Result<Option<&'hir List<'hir, ExprArm<'hir, 'input>>>, PushedErrors>
                 {
                     let Some(branch) = branches.next() else {
                         return Ok(None);
                     };
 
                     let mut inner = scope.enter_scope();
-                    let [lhs, rhs] = inner.type_of_many_params(&branch.params)?;
+                    let [lhs, rhs] = inner.type_of_many_params(branch)?;
                     let body = inner.lower(branch.body)?;
                     drop(inner);
 
@@ -376,25 +400,26 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     } else {
                         let next = rec(scope, head, branches)?;
                         Ok(Some(scope.hir.list_expr_branches.alloc(List {
-                            item: ExprBranch { lhs, rhs, body },
+                            item: ExprArm { lhs, rhs, body },
                             next,
                         })))
                     }
                 }
 
-                let head = ExprBranch { lhs, rhs, body };
+                let head = ExprArm { lhs, rhs, body };
 
-                let next = rec(self, &head, closure.tail.iter().map(|(_, branch)| branch))?;
+                let next = rec(self, &head, closure.tail.iter().map(|(_, arm)| arm))?;
 
-                let branches = self.hir.list_expr_branches.alloc(List { item: head, next });
+                let arms = self.hir.list_expr_branches.alloc(List { item: head, next });
 
                 let ty = Type::Function(self.hir.type_functions.alloc(TypeFunction {
                     lhs: head.lhs.ty(),
                     rhs: head.rhs.ty(),
                     output: head.body.ty(),
-                }));
+                }))
+                .with_span(closure.head.span());
 
-                Ok(Expr::Closure { ty, branches })
+                Ok(Expr::Closure { ty, arms }.with_span(closure.span()))
             }
             ast::Expr::Appl(appl) => {
                 let lhs = self.lower(appl.lhs);
@@ -405,15 +430,18 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     return Err(PushedErrors);
                 };
 
-                let ty = self.hir.new_typevar().1;
+                let ty = Type::Var(self.hir.new_typevar()).with_span(appl.span());
 
-                let index_of_function = self.hir.type_functions.alloc(TypeFunction {
+                let expected_function = self.hir.type_functions.alloc(TypeFunction {
                     lhs: lhs.ty(),
                     rhs: rhs.ty(),
                     output: ty,
                 });
 
-                self.unify(function.ty(), Type::Function(index_of_function));
+                self.unify(
+                    function.ty(),
+                    Type::Function(expected_function).with_span(appl.function.span()),
+                );
 
                 if self.had_errors() {
                     Err(PushedErrors)
@@ -421,7 +449,8 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     Ok(Expr::Appl {
                         ty,
                         appl: self.hir.expr_appls.alloc(ExprAppl { lhs, function, rhs }),
-                    })
+                    }
+                    .with_span(appl.span()))
                 }
             }
         }
@@ -431,29 +460,27 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     fn lower_pat(
         &mut self,
         pat: &ast::ExprPat<'_, 'input>,
-    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
+    ) -> Result<S<Pat<'hir, 'input>>, PushedErrors> {
         match pat {
             ast::Pat::Lit(lit) => match lit {
                 ast::ExprLit::Integer(integer) => match integer.literal.parse() {
-                    Ok(int) => Ok(Pat::I32(int)),
-                    Err(source) => {
-                        self.errors.push(LowerError::ParseInt {
-                            token: *integer,
-                            source,
-                        });
+                    Ok(int) => Ok(Pat::I32(int).with_span(integer.span())),
+                    Err(_) => {
+                        self.errors.push(LowerError::from(integer));
                         Err(PushedErrors)
                     }
                 },
                 ast::ExprLit::Ident(ident) => {
-                    let ty = self.hir.new_typevar().1;
+                    let ty = Type::Var(self.hir.new_typevar()).with_span(ident.span());
                     self.add_local(ident.literal, ty);
                     Ok(Pat::Ident {
                         literal: ident.literal,
                         ty,
-                    })
+                    }
+                    .with_span(ident.span()))
                 }
-                ast::ExprLit::True(_) => Ok(Pat::Bool(true)),
-                ast::ExprLit::False(_) => Ok(Pat::Bool(false)),
+                ast::ExprLit::True(_) => Ok(Pat::Bool(true).with_span(lit.span())),
+                ast::ExprLit::False(_) => Ok(Pat::Bool(false).with_span(lit.span())),
             },
             ast::Pat::Tuple(tuple) => {
                 // TODO(quinn): this is mostly copy pasted from `Env::lower`,
@@ -464,8 +491,8 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     mut pats: impl Iterator<Item = &'ast ast::ExprPat<'ast, 'input>>,
                 ) -> Result<
                     Option<(
-                        &'hir List<'hir, Pat<'hir, 'input>>,
-                        &'hir List<'hir, Type<'hir>>,
+                        &'hir List<'hir, S<Pat<'hir, 'input>>>,
+                        &'hir List<'hir, S<Type<'hir>>>,
                     )>,
                     PushedErrors,
                 > {
@@ -478,7 +505,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     let (next_pat, next_type) = rec(scope, pats)?.unzip();
 
                     Ok(Some((
-                        scope.hir.list_pats.alloc(List {
+                        &*scope.hir.list_pats.alloc(List {
                             item: pat,
                             next: next_pat,
                         }),
@@ -491,11 +518,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
                 if let Some((exprs, ty)) = rec(self, tuple.iter_elements().copied())? {
                     Ok(Pat::Tuple {
-                        ty: Type::Tuple(ty),
+                        ty: Type::Tuple(ty).with_span(tuple.span()),
                         pats: exprs,
-                    })
+                    }
+                    .with_span(tuple.span()))
                 } else {
-                    Ok(Pat::Unit)
+                    Ok(Pat::Unit.with_span(tuple.span()))
                 }
             } // When we add struct destructuring, we can unify the type of the field
               // with the returned type of the pattern in that field.
@@ -509,7 +537,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     fn lower_param(
         &mut self,
         param: &ast::ExprParam<'_, 'input>,
-    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
+    ) -> Result<S<Pat<'hir, 'input>>, PushedErrors> {
         let pat = self.lower_pat(param.pat)?;
         if let Some((_, annotation)) = param.ty {
             let t2 = self.hir.type_from_ast(annotation, self.type_map);
@@ -525,13 +553,13 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     /// Returns the [`Type<'hir>`]s of various [`ast::ExprParams`].
     fn type_of_many_params(
         &mut self,
-        params: &ast::ExprParams<'_, 'input>,
-    ) -> Result<[Pat<'hir, 'input>; 2], PushedErrors> {
-        match params {
-            ast::ExprParams::Zero => Ok([Pat::Unit, Pat::Unit]),
+        arm: &ast::ExprArm<'_, 'input>,
+    ) -> Result<[S<Pat<'hir, 'input>>; 2], PushedErrors> {
+        match &arm.params {
+            ast::ExprParams::Zero => Ok([Pat::Unit.with_span(arm.close.span()); 2]),
             ast::ExprParams::One(lhs) => {
                 let lhs_type = self.lower_param(lhs);
-                Ok([lhs_type?, Pat::Unit])
+                Ok([lhs_type?, Pat::Unit.with_span(arm.close.span())])
             }
             ast::ExprParams::Two(lhs, _, rhs) => {
                 let lhs_type = self.lower_param(lhs);
@@ -542,12 +570,16 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     }
 
     /// Unify two types.
-    fn unify(&mut self, t1: Type<'hir>, t2: Type<'hir>) -> NodeIndex {
+    pub fn unify(&mut self, t1: S<Type<'hir>>, t2: S<Type<'hir>>) -> NodeIndex {
         match (t1, t2) {
-            (Type::I32, Type::I32) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
-            (Type::Bool, Type::Bool) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
-            (Type::Unit, Type::Unit) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
-            (Type::Tuple(a), Type::Tuple(b)) => {
+            (S(Type::I32, _), S(Type::I32, _)) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
+            (S(Type::Bool, _), S(Type::Bool, _)) => {
+                self.hir.equations.add_rule(Node::Equiv(t1, t2))
+            }
+            (S(Type::Unit, _), S(Type::Unit, _)) => {
+                self.hir.equations.add_rule(Node::Equiv(t1, t2))
+            }
+            (S(Type::Tuple(a), _), S(Type::Tuple(b), _)) => {
                 if a.len() == b.len() {
                     let conclusion = self.hir.equations.add_rule(Node::Equiv(t1, t2));
 
@@ -565,11 +597,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     conclusion
                 } else {
                     // different length tuples
-                    self.errors.push(LowerError::Unify(t1, t2));
+                    self.errors.push(LowerError::unify(t1, t2));
                     self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
                 }
             }
-            (Type::Var(var), a) | (a, Type::Var(var)) => {
+            (S(Type::Var(var), var_span), a) | (a, S(Type::Var(var), var_span)) => {
                 if let Some((b, _binding_source)) = self.hir[var] {
                     let proof = self.unify(a, b);
 
@@ -587,7 +619,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 } else if self.hir.check_equivalence(var, a) {
                     self.hir.equations.add_rule(Node::Equiv(t1, t2))
                 } else if self.hir.occurs(var, a) {
-                    self.errors.push(LowerError::CyclicType(var, a));
+                    self.errors.push(LowerError::CyclicType {
+                        var_span,
+                        var,
+                        ty_span: a.span(),
+                        ty: *a.value(),
+                    });
                     self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
                 } else {
                     // The actual binding code is here
@@ -600,7 +637,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     conclusion
                 }
             }
-            (Type::Function(f1), Type::Function(f2)) => {
+            (S(Type::Function(f1), _), S(Type::Function(f2), _)) => {
                 let conclusion = self.hir.equations.add_rule(Node::Equiv(t1, t2));
                 let lhs_proof = self.unify(f1.lhs, f2.lhs);
                 let rhs_proof = self.unify(f1.rhs, f2.rhs);
@@ -623,7 +660,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 conclusion
             }
             _ => {
-                self.errors.push(LowerError::Unify(t1, t2));
+                self.errors.push(LowerError::unify(t1, t2));
                 self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
             }
         }
@@ -636,37 +673,22 @@ impl Drop for Scope<'_, '_, '_> {
     }
 }
 
-#[derive(Clone, Debug, Error)]
-pub enum LowerError<'hir, 'input> {
-    #[error("Cannot unify types: {0} and {1}")]
-    Unify(Type<'hir>, Type<'hir>),
-    #[error("Cyclic type: var is {0}, while type is {1}")]
-    CyclicType(Var, Type<'hir>),
-    #[error("Identifier not found: `{token}`")]
-    IdentNotFound { token: ast::tok::Ident<'input> },
-    #[error("Cannot parse integer {token}: {source}")]
-    ParseInt {
-        token: ast::tok::Integer<'input>,
-        source: num::ParseIntError,
-    },
-}
-
 pub struct Hir<'hir, 'input> {
-    type_functions: &'hir Arena<TypeFunction<'hir>>,
-    expr_appls: &'hir Arena<ExprAppl<'hir, 'input>>,
-    list_expr_branches: &'hir Arena<List<'hir, ExprBranch<'hir, 'input>>>,
-    list_exprs: &'hir Arena<List<'hir, Expr<'hir, 'input>>>,
-    list_types: &'hir Arena<List<'hir, Type<'hir>>>,
-    list_pats: &'hir Arena<List<'hir, Pat<'hir, 'input>>>,
-    typevars: Vec<Typevar<'hir>>,
-    equations: Equations<'hir>,
+    pub type_functions: &'hir Arena<TypeFunction<'hir>>,
+    pub expr_appls: &'hir Arena<ExprAppl<'hir, 'input>>,
+    pub list_expr_branches: &'hir Arena<List<'hir, ExprArm<'hir, 'input>>>,
+    pub list_exprs: &'hir Arena<List<'hir, S<Expr<'hir, 'input>>>>,
+    pub list_types: &'hir Arena<List<'hir, S<Type<'hir>>>>,
+    pub list_pats: &'hir Arena<List<'hir, S<Pat<'hir, 'input>>>>,
+    pub typevars: Vec<Typevar<'hir>>,
+    pub equations: Equations<'hir>,
 }
 
 impl<'hir, 'input> Hir<'hir, 'input> {
-    fn new_typevar(&mut self) -> (Var, Type<'hir>) {
+    pub fn new_typevar(&mut self) -> Var {
         let var = Var(self.typevars.len());
         self.typevars.push(None);
-        (var, Type::Var(var))
+        var
     }
 
     /// Get a global environment with the type signatures of `in` and `print`
@@ -678,41 +700,50 @@ impl<'hir, 'input> Hir<'hir, 'input> {
     ///
     /// `print`: `x () -> ()`
     pub fn default_globals(&mut self) -> impl Iterator<Item = (&'static str, Polytype<'hir>)> {
+        let dummy = (0, 0);
         [
             ("in", {
-                let (x, x_type) = self.new_typevar();
-                let (y, y_type) = self.new_typevar();
+                let x = self.new_typevar();
+                let x_type = Type::Var(x).with_span(dummy);
+                let y = self.new_typevar();
+                let y_type = Type::Var(x).with_span(dummy);
 
                 Polytype {
-                    typevars: vec![x, y],
-                    typ: Type::Function(self.type_functions.alloc(TypeFunction {
-                        lhs: x_type,
-                        rhs: Type::Function(self.type_functions.alloc(TypeFunction {
+                    typevars: smallvec![x, y],
+                    ty: Type::Function(
+                        self.type_functions.alloc(TypeFunction {
                             lhs: x_type,
-                            rhs: Type::Unit,
+                            rhs: Type::Function(self.type_functions.alloc(TypeFunction {
+                                lhs: x_type,
+                                rhs: Type::Unit.with_span(dummy),
+                                output: y_type,
+                            }))
+                            .with_span(dummy),
                             output: y_type,
-                        })),
-                        output: y_type,
-                    })),
+                        }),
+                    )
+                    .with_span(dummy),
                 }
             }),
             ("print", {
-                let (x, x_type) = self.new_typevar();
+                let x = self.new_typevar();
+                let x_type = Type::Var(x).with_span((0, 0));
 
                 Polytype {
-                    typevars: vec![x],
-                    typ: Type::Function(self.type_functions.alloc(TypeFunction {
+                    typevars: smallvec![x],
+                    ty: Type::Function(self.type_functions.alloc(TypeFunction {
                         lhs: x_type,
-                        rhs: Type::Unit,
-                        output: Type::Unit,
-                    })),
+                        rhs: Type::Unit.with_span((0, 0)),
+                        output: Type::Unit.with_span((0, 0)),
+                    }))
+                    .with_span(dummy),
                 }
             }),
         ]
         .into_iter()
     }
 
-    pub fn monomorphize(&mut self, polytype: &Polytype<'hir>) -> Type<'hir> {
+    pub fn monomorphize(&mut self, polytype: &Polytype<'hir>) -> S<Type<'hir>> {
         // Takes a polymorphic type and replaces all instances of generics
         // with a fixed, unbound type.
         // For example, id: T -> T is a polymorphic type, so it goes through
@@ -721,30 +752,31 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         fn replace_unbound_typevars<'hir>(
             tbl: &HashMap<Var, Type<'hir>>,
             hir: &mut Hir<'hir, '_>,
-            ty: Type<'hir>,
-        ) -> Type<'hir> {
-            match ty {
+            ty: S<Type<'hir>>,
+        ) -> S<Type<'hir>> {
+            match ty.value() {
                 Type::Var(var) => {
-                    tbl[&var] // generics should always be in the map
+                    tbl[&var].with_span(ty.span()) // generics should always be in the map
                 }
                 Type::Function(fun) => Type::Function(hir.type_functions.alloc(TypeFunction {
                     lhs: replace_unbound_typevars(tbl, hir, fun.lhs),
                     rhs: replace_unbound_typevars(tbl, hir, fun.rhs),
                     output: replace_unbound_typevars(tbl, hir, fun.output),
-                })),
+                }))
+                .with_span(ty.span()),
                 Type::Tuple(types) => {
                     fn rec<'hir>(
                         tbl: &HashMap<Var, Type<'hir>>,
                         hir: &mut Hir<'hir, '_>,
-                        types: &'hir List<'hir, Type<'hir>>,
-                    ) -> &'hir List<'hir, Type<'hir>> {
+                        types: &'hir List<'hir, S<Type<'hir>>>,
+                    ) -> &'hir List<'hir, S<Type<'hir>>> {
                         let next = types.next.map(|next| rec(tbl, hir, next));
                         hir.list_types.alloc(List {
                             item: replace_unbound_typevars(tbl, hir, types.item),
                             next,
                         })
                     }
-                    Type::Tuple(rec(tbl, hir, types))
+                    Type::Tuple(rec(tbl, hir, types)).with_span(ty.span())
                 }
                 _ => ty,
             }
@@ -753,54 +785,55 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         let tvs_to_replace = polytype
             .typevars
             .iter()
-            .map(|tv| (*tv, self.new_typevar().1))
+            .map(|tv| (*tv, Type::Var(self.new_typevar())))
             .collect();
 
-        replace_unbound_typevars(&tvs_to_replace, self, polytype.typ)
+        replace_unbound_typevars(&tvs_to_replace, self, polytype.ty)
     }
 
     /// Convert an [`ast::Type<'_, 'input>`] annotation into an HIR [`Type<'hir>`].
     pub fn type_from_ast(
         &mut self,
-        typ: &ast::Type<'_, 'input>,
-        map: &HashMap<&str, Type<'hir>>,
-    ) -> Type<'hir> {
-        match typ {
+        ty: &ast::Type<'_, 'input>,
+        map: &HashMap<&str, S<Type<'hir>>>,
+    ) -> S<Type<'hir>> {
+        match ty {
             ast::Type::Named(named) => match named.name.literal {
-                "i32" => Type::I32,
-                "bool" => Type::Bool,
+                "i32" => Type::I32.with_span(named.span()),
+                "bool" => Type::Bool.with_span(named.span()),
                 other => map.get(other).copied().expect("type not found"),
             },
             ast::Type::Tuple(tuple) => {
                 // Build up the linked list of types from the inside out
                 fn rec<'hir, 'ast, 'input: 'ast>(
                     hir: &mut Hir<'hir, 'input>,
-                    map: &HashMap<&str, Type<'hir>>,
+                    map: &HashMap<&str, S<Type<'hir>>>,
                     mut types: impl Iterator<Item = &'ast ast::Type<'ast, 'input>>,
-                ) -> Option<&'hir List<'hir, Type<'hir>>> {
+                ) -> Option<&'hir List<'hir, S<Type<'hir>>>> {
                     let item = hir.type_from_ast(types.next()?, map);
                     let next = rec(hir, map, types);
                     Some(hir.list_types.alloc(List { item, next }))
                 }
 
                 if let Some(ty) = rec(self, map, tuple.iter_elements().copied()) {
-                    Type::Tuple(ty)
+                    Type::Tuple(ty).with_span(tuple.span())
                 } else {
-                    Type::Unit
+                    Type::Unit.with_span(tuple.span())
                 }
             }
-            ast::Type::Function(function) => {
-                let lhs = self.type_from_ast(function.lhs, map);
-                let rhs = self.type_from_ast(function.rhs, map);
-                let output = self.type_from_ast(function.ret, map);
+            ast::Type::Function(fun) => {
+                let lhs = self.type_from_ast(fun.lhs, map);
+                let rhs = self.type_from_ast(fun.rhs, map);
+                let output = self.type_from_ast(fun.ret, map);
 
                 Type::Function(self.type_functions.alloc(TypeFunction { lhs, rhs, output }))
+                    .with_span(fun.span())
             }
         }
     }
 
-    fn occurs(&self, var: Var, ty: Type<'_>) -> bool {
-        match ty {
+    fn occurs(&self, var: Var, ty: S<Type<'_>>) -> bool {
+        match *ty.value() {
             Type::Var(typevar) => {
                 if let Some((t, _)) = self[typevar] {
                     self.occurs(var, t)
@@ -817,8 +850,8 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         }
     }
 
-    fn check_equivalence(&self, var: Var, ty: Type<'_>) -> bool {
-        if let Type::Var(typevar) = ty {
+    fn check_equivalence(&self, var: Var, ty: S<Type<'_>>) -> bool {
+        if let S(Type::Var(typevar), _) = ty {
             if let Some((t, _)) = self[typevar] {
                 self.check_equivalence(var, t)
             } else {

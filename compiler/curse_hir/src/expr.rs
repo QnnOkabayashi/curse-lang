@@ -1,8 +1,11 @@
-use crate::{List, Type, TypeFunction};
+use crate::{
+    spanned::{WithSpan, S},
+    List, Type, TypeFunction,
+};
 use std::fmt;
 
 pub trait Ty<'hir> {
-    fn ty(&self) -> Type<'hir>;
+    fn ty(&self) -> S<Type<'hir>>;
 }
 
 /// A cheap `Copy` enum representing an expression.
@@ -16,19 +19,19 @@ pub enum Expr<'hir, 'input> {
     // and use u32 as the ids, we can make `Expr` be 16 bytes instead of 32.
     // But would also have to simplify tuple/closure/appl to not have types inlined
     Ident {
-        ty: Type<'hir>,
+        ty: S<Type<'hir>>,
         literal: &'input str,
     },
     Tuple {
-        ty: Type<'hir>,
-        exprs: &'hir List<'hir, Expr<'hir, 'input>>,
+        ty: S<Type<'hir>>,
+        exprs: &'hir List<'hir, S<Expr<'hir, 'input>>>,
     },
     Closure {
-        ty: Type<'hir>,
-        branches: &'hir List<'hir, ExprBranch<'hir, 'input>>,
+        ty: S<Type<'hir>>,
+        arms: &'hir List<'hir, ExprArm<'hir, 'input>>,
     },
     Appl {
-        ty: Type<'hir>,
+        ty: S<Type<'hir>>,
         appl: &'hir ExprAppl<'hir, 'input>,
     },
 }
@@ -36,22 +39,22 @@ pub enum Expr<'hir, 'input> {
 #[derive(Debug)]
 // #[displaydoc("{lhs} {function} {rhs}")]
 pub struct ExprAppl<'hir, 'input> {
-    pub lhs: Expr<'hir, 'input>,
-    pub function: Expr<'hir, 'input>,
-    pub rhs: Expr<'hir, 'input>,
+    pub lhs: S<Expr<'hir, 'input>>,
+    pub function: S<Expr<'hir, 'input>>,
+    pub rhs: S<Expr<'hir, 'input>>,
 }
 
-impl<'hir> Ty<'hir> for Expr<'hir, '_> {
-    fn ty(&self) -> Type<'hir> {
-        match self {
+impl<'hir> Ty<'hir> for S<Expr<'hir, '_>> {
+    fn ty(&self) -> S<Type<'hir>> {
+        match *self.value() {
             Expr::Builtin(builtin) => builtin.ty(),
-            Expr::I32(_) => Type::I32,
-            Expr::Bool(_) => Type::Bool,
-            Expr::Unit => Type::Unit,
-            Expr::Ident { ty, .. } => *ty,
-            Expr::Tuple { ty, .. } => *ty,
-            Expr::Closure { ty, .. } => *ty,
-            Expr::Appl { ty, .. } => *ty,
+            Expr::I32(_) => Type::I32.with_span(self.span()),
+            Expr::Bool(_) => Type::Bool.with_span(self.span()),
+            Expr::Unit => Type::Unit.with_span(self.span()),
+            Expr::Ident { ty, .. } => ty,
+            Expr::Tuple { ty, .. } => ty,
+            Expr::Closure { ty, .. } => ty,
+            Expr::Appl { ty, .. } => ty,
         }
     }
 }
@@ -110,22 +113,24 @@ impl Builtin {
 }
 
 impl<'hir> Ty<'hir> for Builtin {
-    fn ty(&self) -> Type<'hir> {
+    fn ty(&self) -> S<Type<'hir>> {
         use Builtin::*;
-        // These indices are enforced by by `Env::new`, which starts by placing
-        // the types for these operators at these indices.
         match self {
+            // TODO(quinn): how to we represent the source spans
+            // of builtin values like (+)?
             Add | Sub | Mul | Rem => Type::Function(&TypeFunction {
-                lhs: Type::I32,
-                rhs: Type::I32,
-                output: Type::I32,
-            }),
+                lhs: S(Type::I32, (0, 0)),
+                rhs: S(Type::I32, (0, 0)),
+                output: S(Type::I32, (0, 0)),
+            })
+            .with_span((0, 0)),
             Div => todo!("Type of div"),
             Eq | Lt | Gt | Le | Ge => Type::Function(&TypeFunction {
-                lhs: Type::I32,
-                rhs: Type::I32,
-                output: Type::Bool,
-            }),
+                lhs: S(Type::I32, (0, 0)),
+                rhs: S(Type::I32, (0, 0)),
+                output: S(Type::I32, (0, 0)),
+            })
+            .with_span((0, 0)),
             Print => todo!("Type of print"),
         }
     }
@@ -139,10 +144,10 @@ impl fmt::Display for Builtin {
 
 #[derive(Copy, Clone, Debug)]
 // #[displaydoc("|{lhs}, {rhs}| {body}")]
-pub struct ExprBranch<'hir, 'input> {
-    pub lhs: Pat<'hir, 'input>,
-    pub rhs: Pat<'hir, 'input>,
-    pub body: Expr<'hir, 'input>,
+pub struct ExprArm<'hir, 'input> {
+    pub lhs: S<Pat<'hir, 'input>>,
+    pub rhs: S<Pat<'hir, 'input>>,
+    pub body: S<Expr<'hir, 'input>>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -151,12 +156,12 @@ pub enum Pat<'hir, 'input> {
     I32(i32),
     Unit,
     Ident {
-        ty: Type<'hir>,
+        ty: S<Type<'hir>>,
         literal: &'input str,
     },
     Tuple {
-        ty: Type<'hir>,
-        pats: &'hir List<'hir, Self>,
+        ty: S<Type<'hir>>,
+        pats: &'hir List<'hir, S<Self>>,
     },
 }
 
@@ -172,14 +177,14 @@ pub enum Pat<'hir, 'input> {
 //     }
 // }
 
-impl<'hir> Ty<'hir> for Pat<'hir, '_> {
-    fn ty(&self) -> Type<'hir> {
-        match self {
-            Pat::Bool(_) => Type::Bool,
-            Pat::I32(_) => Type::I32,
-            Pat::Unit => Type::Unit,
-            Pat::Ident { ty, .. } => *ty,
-            Pat::Tuple { ty, .. } => *ty,
+impl<'hir> Ty<'hir> for S<Pat<'hir, '_>> {
+    fn ty(&self) -> S<Type<'hir>> {
+        match self.value() {
+            Pat::Bool(_) => Type::Bool.with_span(self.span()),
+            Pat::I32(_) => Type::I32.with_span(self.span()),
+            Pat::Unit => Type::Unit.with_span(self.span()),
+            Pat::Ident { ty, .. } => (*ty.value()).with_span(self.span()),
+            Pat::Tuple { ty, .. } => (*ty.value()).with_span(self.span()),
         }
     }
 }

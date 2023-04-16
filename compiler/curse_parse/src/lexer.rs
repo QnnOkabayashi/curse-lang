@@ -1,4 +1,4 @@
-use curse_ast::tok;
+use curse_ast::{tok, Span};
 use logos::Logos;
 use std::fmt;
 

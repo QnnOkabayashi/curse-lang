@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "compiler/curse",
     "compiler/curse_ast",
     "compiler/curse_arena",
     "compiler/curse_parse",

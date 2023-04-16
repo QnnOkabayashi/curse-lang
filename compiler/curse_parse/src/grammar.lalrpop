@@ -129,17 +129,17 @@ Closure: Option<ExprClosure<'ast, 'input>> = {
     }
 };
 
-Branch: Option<ExprBranch<'ast, 'input>> = {
+Branch: Option<ExprArm<'ast, 'input>> = {
     "|" "|" InternalExpr => match (<>) {
-        (open, close, Some(body)) => Some(ExprBranch::new(open, ExprParams::Zero, close, body)),
+        (open, close, Some(body)) => Some(ExprArm::new(open, ExprParams::Zero, close, body)),
         _ => None,
     },
     "|" Param "|" InternalExpr => match (<>) {
-        (open, Some(lhs), close, Some(body)) => Some(ExprBranch::new(open, ExprParams::One(lhs), close, body)),
+        (open, Some(lhs), close, Some(body)) => Some(ExprArm::new(open, ExprParams::One(lhs), close, body)),
         _ => None,
     },
     "|" Param "," Param "|" InternalExpr => match (<>) {
-        (open, Some(lhs), comma, Some(rhs), close, Some(body)) => Some(ExprBranch::new(open, ExprParams::Two(lhs, comma, rhs), close, body)),
+        (open, Some(lhs), comma, Some(rhs), close, Some(body)) => Some(ExprArm::new(open, ExprParams::Two(lhs, comma, rhs), close, body)),
         _ => None,
     },
 };

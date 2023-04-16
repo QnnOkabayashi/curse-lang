@@ -7,6 +7,30 @@ pub use expr::*;
 pub use pat::*;
 pub use ty::*;
 
+pub trait Span {
+    fn span(&self) -> (usize, usize);
+
+    fn span_between(&self, other: impl Span) -> (usize, usize) {
+        let (start1, len1) = self.span();
+        let (start2, len2) = other.span();
+        let start = std::cmp::min(start1, start2);
+        let end = std::cmp::max(start1 + len1, start2 + len2);
+        (start, end - start)
+    }
+}
+
+impl<T: Span> Span for &T {
+    fn span(&self) -> (usize, usize) {
+        (*self).span()
+    }
+}
+
+impl Span for (usize, usize) {
+    fn span(&self) -> (usize, usize) {
+        *self
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Program<'ast, 'input> {
     pub items: Vec<Item<'ast, 'input>>,

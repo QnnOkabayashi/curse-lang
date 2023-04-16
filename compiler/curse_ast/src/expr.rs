@@ -1,4 +1,4 @@
-use crate::{pat, tok, ty};
+use crate::{pat, tok, ty, Span};
 
 pub type ExprPat<'ast, 'input> = pat::Pat<'ast, ExprLit<'input>>;
 pub type ExprTuple<'ast, 'input> = pat::PatTuple<&'ast Expr<'ast, 'input>>;
@@ -11,6 +11,19 @@ pub enum Expr<'ast, 'input> {
     Tuple(ExprTuple<'ast, 'input>),
     Closure(ExprClosure<'ast, 'input>),
     Appl(ExprAppl<'ast, 'input>),
+}
+
+impl Span for Expr<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        match self {
+            Expr::Paren(paren) => paren.span(),
+            Expr::Symbol(symbol) => symbol.span(),
+            Expr::Lit(lit) => lit.span(),
+            Expr::Tuple(tuple) => tuple.span(),
+            Expr::Closure(closure) => closure.span(),
+            Expr::Appl(appl) => appl.span(),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -27,6 +40,12 @@ impl<'ast, 'input> ExprParen<'ast, 'input> {
             expr,
             rparen,
         }
+    }
+}
+
+impl Span for ExprParen<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        self.lparen.span_between(self.rparen)
     }
 }
 
@@ -47,6 +66,26 @@ pub enum ExprSymbol {
     GreaterEqual(tok::GreaterEqual),
 }
 
+impl Span for ExprSymbol {
+    fn span(&self) -> (usize, usize) {
+        match self {
+            ExprSymbol::Plus(plus) => plus.span(),
+            ExprSymbol::Minus(minus) => minus.span(),
+            ExprSymbol::Star(star) => star.span(),
+            ExprSymbol::Dot(dot) => dot.span(),
+            ExprSymbol::DotDot(dotdot) => dotdot.span(),
+            ExprSymbol::Semi(semi) => semi.span(),
+            ExprSymbol::Percent(percent) => percent.span(),
+            ExprSymbol::Slash(slash) => slash.span(),
+            ExprSymbol::Equal(equal) => equal.span(),
+            ExprSymbol::Less(less) => less.span(),
+            ExprSymbol::Greater(greater) => greater.span(),
+            ExprSymbol::LessEqual(less_equal) => less_equal.span(),
+            ExprSymbol::GreaterEqual(greater_equal) => greater_equal.span(),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum ExprLit<'input> {
     Integer(tok::Integer<'input>),
@@ -55,18 +94,39 @@ pub enum ExprLit<'input> {
     False(tok::False),
 }
 
+impl Span for ExprLit<'_> {
+    fn span(&self) -> (usize, usize) {
+        match self {
+            ExprLit::Integer(integer) => integer.span(),
+            ExprLit::Ident(ident) => ident.span(),
+            ExprLit::True(t) => t.span(),
+            ExprLit::False(f) => f.span(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ExprClosure<'ast, 'input> {
-    pub head: ExprBranch<'ast, 'input>,
-    pub tail: Vec<(tok::Else, ExprBranch<'ast, 'input>)>,
+    pub head: ExprArm<'ast, 'input>,
+    pub tail: Vec<(tok::Else, ExprArm<'ast, 'input>)>,
+}
+
+impl Span for ExprClosure<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        if let Some((_, last)) = self.tail.last() {
+            self.head.span_between(last)
+        } else {
+            self.head.span()
+        }
+    }
 }
 
 impl<'ast, 'input> ExprClosure<'ast, 'input> {
-    pub fn new(head: ExprBranch<'ast, 'input>) -> Self {
+    pub fn new(head: ExprArm<'ast, 'input>) -> Self {
         ExprClosure { head, tail: vec![] }
     }
 
-    pub fn with_branch(mut self, els: tok::Else, branch: ExprBranch<'ast, 'input>) -> Self {
+    pub fn with_branch(mut self, els: tok::Else, branch: ExprArm<'ast, 'input>) -> Self {
         self.tail.push((els, branch));
         self
     }
@@ -75,7 +135,7 @@ impl<'ast, 'input> ExprClosure<'ast, 'input> {
         1 + self.tail.len()
     }
 
-    pub fn iter_branches(&self) -> impl Iterator<Item = &ExprBranch<'ast, 'input>> {
+    pub fn iter_branches(&self) -> impl Iterator<Item = &ExprArm<'ast, 'input>> {
         Some(&self.head)
             .into_iter()
             .chain(self.tail.iter().map(|(_, branch)| branch))
@@ -83,26 +143,32 @@ impl<'ast, 'input> ExprClosure<'ast, 'input> {
 }
 
 #[derive(Clone, Debug)]
-pub struct ExprBranch<'ast, 'input> {
+pub struct ExprArm<'ast, 'input> {
     pub open: tok::Pipe,
     pub params: ExprParams<'ast, 'input>,
     pub close: tok::Pipe,
     pub body: &'ast Expr<'ast, 'input>,
 }
 
-impl<'ast, 'input> ExprBranch<'ast, 'input> {
+impl<'ast, 'input> ExprArm<'ast, 'input> {
     pub fn new(
         open: tok::Pipe,
         params: ExprParams<'ast, 'input>,
         close: tok::Pipe,
         body: &'ast Expr<'ast, 'input>,
     ) -> Self {
-        ExprBranch {
+        ExprArm {
             open,
             params,
             close,
             body,
         }
+    }
+}
+
+impl Span for ExprArm<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        self.open.span_between(self.body)
     }
 }
 
@@ -156,5 +222,11 @@ impl<'ast, 'input> ExprAppl<'ast, 'input> {
         rhs: &'ast Expr<'ast, 'input>,
     ) -> Self {
         ExprAppl { lhs, function, rhs }
+    }
+}
+
+impl Span for ExprAppl<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        self.lhs.span_between(self.rhs)
     }
 }

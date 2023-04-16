@@ -1,4 +1,5 @@
 use std::fmt;
+use crate::Span;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Ident<'input> {
@@ -6,8 +7,8 @@ pub struct Ident<'input> {
     pub literal: &'input str,
 }
 
-impl Ident<'_> {
-    pub fn span(&self) -> (usize, usize) {
+impl Span for Ident<'_> {
+    fn span(&self) -> (usize, usize) {
         (self.location, self.literal.len())
     }
 }
@@ -24,8 +25,8 @@ pub struct Integer<'input> {
     pub literal: &'input str,
 }
 
-impl Integer<'_> {
-    pub fn span(&self) -> (usize, usize) {
+impl Span for Integer<'_> {
+    fn span(&self) -> (usize, usize) {
         (self.location, self.literal.len())
     }
 }
@@ -45,8 +46,8 @@ macro_rules! declare_tokens {
                 pub location: usize,
             }
 
-            impl $name {
-                pub fn span(&self) -> (usize, usize) {
+            impl Span for $name {
+                fn span(&self) -> (usize, usize) {
                     (self.location, $tok.len())
                 }
             }

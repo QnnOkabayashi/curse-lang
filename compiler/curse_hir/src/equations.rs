@@ -1,4 +1,4 @@
-use crate::{Type, Var};
+use crate::{Type, Var, spanned::S};
 use displaydoc::Display;
 use petgraph::graph::{DiGraph, NodeIndex};
 
@@ -6,11 +6,11 @@ use petgraph::graph::{DiGraph, NodeIndex};
 #[derive(Copy, Clone, Debug)]
 pub enum Node<'hir> {
     // #[displaydoc("{0} ≡ {1}")]
-    Equiv(Type<'hir>, Type<'hir>),
+    Equiv(S<Type<'hir>>, S<Type<'hir>>),
     // #[displaydoc("{0} ≢ {1}")]
-    NotEquiv(Type<'hir>, Type<'hir>),
+    NotEquiv(S<Type<'hir>>, S<Type<'hir>>),
     // #[displaydoc("{var} := {definition}")]
-    Binding { var: Var, definition: Type<'hir> },
+    Binding { var: Var, definition: S<Type<'hir>> },
 }
 
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to

@@ -1,4 +1,4 @@
-use crate::{pat, tok};
+use crate::{pat, tok, Span};
 use displaydoc::Display;
 
 pub type TypeTuple<'ast, 'input> = pat::PatTuple<&'ast Type<'ast, 'input>>;
@@ -13,6 +13,16 @@ pub enum Type<'ast, 'input> {
     Function(TypeFunction<'ast, 'input>),
 }
 
+impl Span for Type<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        match self {
+            Type::Named(named) => named.span(),
+            Type::Tuple(tuple) => tuple.span(),
+            Type::Function(fun) => fun.span(),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("{name}")]
 pub struct TypeNamed<'input> {
@@ -22,6 +32,12 @@ pub struct TypeNamed<'input> {
 impl<'input> TypeNamed<'input> {
     pub fn new(name: tok::Ident<'input>) -> Self {
         TypeNamed { name }
+    }
+}
+
+impl Span for TypeNamed<'_> {
+    fn span(&self) -> (usize, usize) {
+        self.name.span()
     }
 }
 
@@ -49,3 +65,11 @@ impl<'ast, 'input> TypeFunction<'ast, 'input> {
         }
     }
 }
+
+impl Span for TypeFunction<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        self.lhs.span_between(self.ret)
+    }
+}
+
+
