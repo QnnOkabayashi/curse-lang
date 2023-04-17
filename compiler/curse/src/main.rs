@@ -2,7 +2,7 @@
 use curse_ast::Span;
 use curse_hir::{self as hir, dot};
 use curse_parse as parse;
-use hir::{Ty, WithSpan};
+use hir::Ty;
 use miette::{GraphicalReportHandler, NamedSource};
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::INVALID;
+    let input: &str = programs::CLOSURE_MISMATCH_ARM_TYPES;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {
@@ -35,7 +35,7 @@ fn main() {
     let mut hir = hir::Hir {
         type_functions: &Arena::new(),
         expr_appls: &Arena::new(),
-        list_expr_branches: &Arena::new(),
+        list_expr_arms: &Arena::new(),
         list_exprs: &Arena::new(),
         list_types: &Arena::new(),
         list_pats: &Arena::new(),
@@ -44,10 +44,9 @@ fn main() {
     };
 
     // temporary for now until we can have custom named types
-    let type_scope: HashMap<&str, hir::S<hir::Type<'_>>> = HashMap::new();
+    let type_scope: HashMap<&str, hir::Type<'_>> = HashMap::new();
 
-    let mut function_to_typescope: HashMap<&str, HashMap<&str, hir::S<hir::Type<'_>>>> =
-        HashMap::new();
+    let mut function_to_typescope: HashMap<&str, HashMap<&str, hir::Type<'_>>> = HashMap::new();
 
     let globals: HashMap<&str, hir::Polytype> = hir
         .default_globals()
@@ -66,7 +65,10 @@ fn main() {
                 typevars.push(var);
                 inner_type_scope.insert(
                     generic.literal,
-                    hir::Type::Var(var).with_span(generic.span()),
+                    hir::Type {
+                        kind: hir::TypeKind::Var(var),
+                        span: generic.span(),
+                    },
                 );
             }
 
@@ -78,11 +80,11 @@ fn main() {
         }))
         .collect();
 
-    let mut locals: Vec<(&str, hir::S<hir::Type<'_>>)> = Vec::with_capacity(16);
+    let mut locals: Vec<(&str, hir::Type<'_>)> = Vec::with_capacity(16);
     let mut errors: Vec<hir::LowerError<'_>> = Vec::with_capacity(0);
 
     let lowered_items: Result<
-        HashMap<&str, (hir::Polytype, hir::S<hir::Expr<'_, '_>>)>,
+        HashMap<&str, (hir::Polytype, hir::Expr<'_, '_>)>,
         hir::PushedErrors,
     > = program
         .items

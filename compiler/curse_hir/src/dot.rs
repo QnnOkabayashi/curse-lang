@@ -1,5 +1,5 @@
 //! Utilities for writing an AST in dot format for Graphviz.
-use crate::{expr::Ty, Expr, Hir, spanned::S};
+use crate::{expr::Ty, ExprKind, Hir, Expr};
 use std::fmt::Write as _;
 
 pub struct Builder<'env> {
@@ -15,64 +15,64 @@ impl<'env> Builder<'env> {
         Builder { env, count: 0, out }
     }
 
-    pub fn visit_expr(&mut self, expr: S<Expr<'env, '_>>, parent: Option<u32>, name: Option<&str>) {
+    pub fn visit_expr(&mut self, expr: Expr<'env, '_>, parent: Option<u32>, name: Option<&str>) {
         let id = self.fresh();
         self.out += "\n    ";
 
-        match expr.value() {
-            Expr::Builtin(builtin) => {
+        match expr.kind {
+            ExprKind::Builtin(builtin) => {
                 write!(
                     self.out,
                     "p{id}[label = \"{builtin}: {ty}\"]",
-                    ty = builtin.ty().value().pretty(self.env),
+                    ty = builtin.ty().kind.pretty(self.env),
                 )
                 .unwrap();
             }
-            Expr::I32(i) => {
+            ExprKind::I32(i) => {
                 write!(self.out, "p{id}[label = \"{i}: i32\"]").unwrap();
             }
-            Expr::Bool(b) => {
+            ExprKind::Bool(b) => {
                 write!(self.out, "p{id}[label = \"{b}: bool\"]").unwrap();
             }
-            Expr::Unit => {
+            ExprKind::Unit => {
                 write!(self.out, "p{id}[label = \"(): ()\"]").unwrap();
             }
-            Expr::Ident { ty, literal } => {
+            ExprKind::Ident { ty, literal } => {
                 write!(
                     self.out,
                     "p{id}[label = \"{literal}: {ty}\"]",
-                    ty = ty.value().pretty(self.env)
+                    ty = ty.kind.pretty(self.env)
                 )
                 .unwrap();
             }
-            Expr::Tuple { ty, exprs } => {
+            ExprKind::Tuple { ty, exprs } => {
                 write!(
                     self.out,
                     "p{id}[label = \"tuple: {ty}\"]",
-                    ty = ty.value().pretty(self.env)
+                    ty = ty.kind.pretty(self.env)
                 )
                 .unwrap();
                 for expr in exprs.iter() {
                     self.visit_expr(*expr, Some(id), None);
                 }
             }
-            Expr::Closure { ty, arms: branches } => {
+            ExprKind::Closure { ty, arms: branches } => {
                 let name = name.unwrap_or("<closure>");
                 write!(
                     self.out,
                     "p{id}[label = \"{name}: {ty}\"]",
-                    ty = ty.value().pretty(self.env)
+                    ty = ty.kind.pretty(self.env)
                 )
                 .unwrap();
                 for branch in branches.iter() {
                     self.visit_expr(branch.body, Some(id), None);
                 }
             }
-            Expr::Appl { ty, appl } => {
+            ExprKind::Appl { ty, appl } => {
                 write!(
                     self.out,
                     "p{id}[label = \"<appl>: {ty}\"]",
-                    ty = ty.value().pretty(self.env)
+                    ty = ty.kind.pretty(self.env)
                 )
                 .unwrap();
                 self.visit_expr(appl.lhs, Some(id), None);

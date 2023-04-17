@@ -78,3 +78,10 @@ let main: () () -> () = ||
     4 in |y|
     x + y
 "#;
+
+pub const CLOSURE_MISMATCH_ARM_TYPES: &str = r#"
+let fib: i32 () -> i32 =
+    |a| 4 else
+    |true| 5
+"#;
+

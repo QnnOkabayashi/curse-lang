@@ -1,4 +1,4 @@
-use crate::{Type, Var, spanned::S};
+use crate::{TypeKind, Var, Type};
 use curse_ast::{self as ast, Span};
 use miette::{Diagnostic, SourceSpan, NamedSource};
 use thiserror::Error;
@@ -15,16 +15,16 @@ pub struct SourceErrors<'hir> {
 
 #[derive(Clone, Debug, Diagnostic, Error)]
 pub enum LowerError<'hir> {
-    #[error("Cannot unify types: {ty1} and {ty2}")]
+    #[error("Cannot unify types: {ty1_kind} and {ty2_kind}")]
     #[diagnostic(help("Use types that can be unified"))]
     Unify {
         #[label("First type")]
         ty1_span: (usize, usize),
-        ty1: Type<'hir>,
+        ty1_kind: TypeKind<'hir>,
 
         #[label("Second type")]
         ty2_span: (usize, usize),
-        ty2: Type<'hir>,
+        ty2_kind: TypeKind<'hir>,
     },
 
     #[error("Infinite recursive type")]
@@ -36,7 +36,7 @@ pub enum LowerError<'hir> {
 
         #[label("Type that was attempted to be assigned to")]
         ty_span: (usize, usize),
-        ty: Type<'hir>,
+        ty_kind: TypeKind<'hir>,
     },
 
     #[error("Identifier not found: `{literal}`")]
@@ -75,12 +75,12 @@ impl From<&ast::tok::Ident<'_>> for LowerError<'_> {
 }
 
 impl<'hir> LowerError<'hir> {
-    pub fn unify(t1: S<Type<'hir>>, t2: S<Type<'hir>>) -> Self {
+    pub fn unify(t1: Type<'hir>, t2: Type<'hir>) -> Self {
         LowerError::Unify {
-            ty1_span: t1.span(),
-            ty1: *t1.value(),
-            ty2_span: t2.span(),
-            ty2: *t2.value(),
+            ty1_span: t1.span,
+            ty1_kind: t1.kind,
+            ty2_span: t2.span,
+            ty2_kind: t2.kind,
         }
     }
 }

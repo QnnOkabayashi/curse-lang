@@ -1,16 +1,19 @@
-use crate::{
-    spanned::{WithSpan, S},
-    List, Type, TypeFunction,
-};
+use crate::{List, Type, TypeFunction, TypeKind};
 use std::fmt;
 
 pub trait Ty<'hir> {
-    fn ty(&self) -> S<Type<'hir>>;
+    fn ty(&self) -> Type<'hir>;
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Expr<'hir, 'input> {
+    pub kind: ExprKind<'hir, 'input>,
+    pub span: (usize, usize),
 }
 
 /// A cheap `Copy` enum representing an expression.
 #[derive(Copy, Clone, Debug)]
-pub enum Expr<'hir, 'input> {
+pub enum ExprKind<'hir, 'input> {
     Builtin(Builtin),
     I32(i32),
     Bool(bool),
@@ -19,19 +22,19 @@ pub enum Expr<'hir, 'input> {
     // and use u32 as the ids, we can make `Expr` be 16 bytes instead of 32.
     // But would also have to simplify tuple/closure/appl to not have types inlined
     Ident {
-        ty: S<Type<'hir>>,
+        ty: Type<'hir>,
         literal: &'input str,
     },
     Tuple {
-        ty: S<Type<'hir>>,
-        exprs: &'hir List<'hir, S<Expr<'hir, 'input>>>,
+        ty: Type<'hir>,
+        exprs: &'hir List<'hir, Expr<'hir, 'input>>,
     },
     Closure {
-        ty: S<Type<'hir>>,
+        ty: Type<'hir>,
         arms: &'hir List<'hir, ExprArm<'hir, 'input>>,
     },
     Appl {
-        ty: S<Type<'hir>>,
+        ty: Type<'hir>,
         appl: &'hir ExprAppl<'hir, 'input>,
     },
 }
@@ -39,22 +42,31 @@ pub enum Expr<'hir, 'input> {
 #[derive(Debug)]
 // #[displaydoc("{lhs} {function} {rhs}")]
 pub struct ExprAppl<'hir, 'input> {
-    pub lhs: S<Expr<'hir, 'input>>,
-    pub function: S<Expr<'hir, 'input>>,
-    pub rhs: S<Expr<'hir, 'input>>,
+    pub lhs: Expr<'hir, 'input>,
+    pub function: Expr<'hir, 'input>,
+    pub rhs: Expr<'hir, 'input>,
 }
 
-impl<'hir> Ty<'hir> for S<Expr<'hir, '_>> {
-    fn ty(&self) -> S<Type<'hir>> {
-        match *self.value() {
-            Expr::Builtin(builtin) => builtin.ty(),
-            Expr::I32(_) => Type::I32.with_span(self.span()),
-            Expr::Bool(_) => Type::Bool.with_span(self.span()),
-            Expr::Unit => Type::Unit.with_span(self.span()),
-            Expr::Ident { ty, .. } => ty,
-            Expr::Tuple { ty, .. } => ty,
-            Expr::Closure { ty, .. } => ty,
-            Expr::Appl { ty, .. } => ty,
+impl<'hir> Ty<'hir> for Expr<'hir, '_> {
+    fn ty(&self) -> Type<'hir> {
+        match self.kind {
+            ExprKind::Builtin(builtin) => builtin.ty(),
+            ExprKind::I32(_) => Type {
+                kind: TypeKind::I32,
+                span: self.span,
+            },
+            ExprKind::Bool(_) => Type {
+                kind: TypeKind::Bool,
+                span: self.span,
+            },
+            ExprKind::Unit => Type {
+                kind: TypeKind::Unit,
+                span: self.span,
+            },
+            ExprKind::Ident { ty, .. } => ty,
+            ExprKind::Tuple { ty, .. } => ty,
+            ExprKind::Closure { ty, .. } => ty,
+            ExprKind::Appl { ty, .. } => ty,
         }
     }
 }
@@ -113,24 +125,46 @@ impl Builtin {
 }
 
 impl<'hir> Ty<'hir> for Builtin {
-    fn ty(&self) -> S<Type<'hir>> {
+    fn ty(&self) -> Type<'hir> {
         use Builtin::*;
         match self {
             // TODO(quinn): how to we represent the source spans
             // of builtin values like (+)?
-            Add | Sub | Mul | Rem => Type::Function(&TypeFunction {
-                lhs: S(Type::I32, (0, 0)),
-                rhs: S(Type::I32, (0, 0)),
-                output: S(Type::I32, (0, 0)),
-            })
-            .with_span((0, 0)),
+            Add | Sub | Mul | Rem => Type {
+                kind: TypeKind::Function(&TypeFunction {
+                    lhs: Type {
+                        kind: TypeKind::I32,
+                        span: (0, 0),
+                    },
+                    rhs: Type {
+                        kind: TypeKind::I32,
+                        span: (0, 0),
+                    },
+                    output: Type {
+                        kind: TypeKind::I32,
+                        span: (0, 0),
+                    },
+                }),
+                span: (0, 0),
+            },
             Div => todo!("Type of div"),
-            Eq | Lt | Gt | Le | Ge => Type::Function(&TypeFunction {
-                lhs: S(Type::I32, (0, 0)),
-                rhs: S(Type::I32, (0, 0)),
-                output: S(Type::I32, (0, 0)),
-            })
-            .with_span((0, 0)),
+            Eq | Lt | Gt | Le | Ge => Type {
+                kind: TypeKind::Function(&TypeFunction {
+                    lhs: Type {
+                        kind: TypeKind::I32,
+                        span: (0, 0),
+                    },
+                    rhs: Type {
+                        kind: TypeKind::I32,
+                        span: (0, 0),
+                    },
+                    output: Type {
+                        kind: TypeKind::I32,
+                        span: (0, 0),
+                    },
+                }),
+                span: (0, 0),
+            },
             Print => todo!("Type of print"),
         }
     }
@@ -145,23 +179,29 @@ impl fmt::Display for Builtin {
 #[derive(Copy, Clone, Debug)]
 // #[displaydoc("|{lhs}, {rhs}| {body}")]
 pub struct ExprArm<'hir, 'input> {
-    pub lhs: S<Pat<'hir, 'input>>,
-    pub rhs: S<Pat<'hir, 'input>>,
-    pub body: S<Expr<'hir, 'input>>,
+    pub lhs: Pat<'hir, 'input>,
+    pub rhs: Pat<'hir, 'input>,
+    pub body: Expr<'hir, 'input>,
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Pat<'hir, 'input> {
+pub struct Pat<'hir, 'input> {
+    pub kind: PatKind<'hir, 'input>,
+    pub span: (usize, usize),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum PatKind<'hir, 'input> {
     Bool(bool),
     I32(i32),
     Unit,
     Ident {
-        ty: S<Type<'hir>>,
+        ty: Type<'hir>,
         literal: &'input str,
     },
     Tuple {
-        ty: S<Type<'hir>>,
-        pats: &'hir List<'hir, S<Self>>,
+        ty: Type<'hir>,
+        pats: &'hir List<'hir, Pat<'hir, 'input>>,
     },
 }
 
@@ -177,14 +217,29 @@ pub enum Pat<'hir, 'input> {
 //     }
 // }
 
-impl<'hir> Ty<'hir> for S<Pat<'hir, '_>> {
-    fn ty(&self) -> S<Type<'hir>> {
-        match self.value() {
-            Pat::Bool(_) => Type::Bool.with_span(self.span()),
-            Pat::I32(_) => Type::I32.with_span(self.span()),
-            Pat::Unit => Type::Unit.with_span(self.span()),
-            Pat::Ident { ty, .. } => (*ty.value()).with_span(self.span()),
-            Pat::Tuple { ty, .. } => (*ty.value()).with_span(self.span()),
+impl<'hir> Ty<'hir> for Pat<'hir, '_> {
+    fn ty(&self) -> Type<'hir> {
+        match self.kind {
+            PatKind::Bool(_) => Type {
+                kind: TypeKind::Bool,
+                span: self.span,
+            },
+            PatKind::I32(_) => Type {
+                kind: TypeKind::I32,
+                span: self.span,
+            },
+            PatKind::Unit => Type {
+                kind: TypeKind::Unit,
+                span: self.span,
+            },
+            PatKind::Ident { ty, .. } => Type {
+                kind: ty.kind,
+                span: self.span,
+            },
+            PatKind::Tuple { ty, .. } => Type {
+                kind: ty.kind,
+                span: self.span,
+            },
         }
     }
 }
