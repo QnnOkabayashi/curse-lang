@@ -1,6 +1,24 @@
 # Curse
 
-This is a toy language roughly based on Rust, except every function is a binary operation called using infix notation.
+Curse is a toy programming language inspired by the question: _How can we bend syntax to create the most readable, yet syntactically consistent programming language?_
+
+For example, every function is a binary function called using infix notation.
+
+To motivate this, think back to arithmatic: we don't write `+ 1 2`, we write `1 + 2`.
+Despite what many LISP programmers argue, the ladder is far more natural for us to read.
+
+In fact, the notion of chaining functions (evaluate, then pass to this function) is extremely common.
+In Rust, we have method chaining, and some functional languages even go as far as adding a special pipe (`|>`) operator to do this exact functionality.
+
+
+Another big difference is that there is only one way to write branching code: piecewise functions.
+Piecewise functions are a combination of `match` expressions from functional languages, and functions.
+This allows us to combine function definitions and all forms of branching into a single language construct, making the language smaller and feel more internally consistent.
+
+The final difference is that there's no variable declaration inside of function bodies.
+If you want to assign to a variable, you simply compute it and pass it into a function whose parameter has the name you want.
+
+This is made more convenient using the builtin `in` function.
 
 ### Variables
 
@@ -74,14 +92,24 @@ fn main() {
 ) ()
 ```
 
-Having code in a block (`{ ... }`) is syntactic sugar for putting it in a closure that takes two units.
-
-Also, `true` is `Some(())` and `false` is `None` (assume we also have enums).
+Traditional `if-else` statements do not exist in Curse.
+In fact, the only way to do branching is with piecewise closures.
 ```rust
-true map { 5 } else { 4 }
-// is the same as
-true map (|| 5) else (|| 4)
+true then (|| 5) else (|| 4)
+
+a then (||
+    1
+) else (||
+    b then (||
+        2
+    ) else (||
+        3
+    )
+)
+
 ```
+Here, `then` is similar to Rust's `bool::then` method which returns `Option<T>`, and `else` is like `Option::unwrap_or_else` method.
+Right now, `else` conflicts with the builtin keyword for disambiguating closure arms, but I'll deal with that later.
 
 This is what `map` in the above example would do internally:
 ```rust
@@ -121,6 +149,7 @@ fn fib: i32 -> i32 =
 
 fn main := ||
     10 in fib
-
-
 ```
+
+
+
