@@ -170,7 +170,7 @@ impl<'list, T: fmt::Display> List<'list, T> {
     pub fn delim<'a>(&'a self, delim: &'a str) -> Delim<'a, T> {
         Delim {
             list: self,
-            sep: delim,
+            delim,
         }
     }
 }
@@ -183,7 +183,7 @@ impl<T: fmt::Debug> fmt::Debug for List<'_, T> {
 
 pub struct Delim<'a, T> {
     list: &'a List<'a, T>,
-    sep: &'a str,
+    delim: &'a str,
 }
 
 impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
@@ -191,7 +191,7 @@ impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
         self.list.item.fmt(f)?;
         if let Some(remaining) = self.list.next {
             for item in remaining.iter() {
-                write!(f, "{}{}", self.sep, item)?;
+                write!(f, "{}{}", self.delim, item)?;
             }
         }
         Ok(())
