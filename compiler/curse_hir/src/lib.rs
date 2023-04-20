@@ -35,6 +35,16 @@ pub struct Type<'hir> {
     pub span: (usize, usize),
 }
 
+impl<'hir> Type<'hir> {
+    pub fn resolve(&self, hir: &Hir<'hir, '_>) -> Self {
+        if let TypeKind::Var(var) = self.kind {
+            hir[var].expect("unbound typevar").0.resolve(hir)
+        } else {
+            *self
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum TypeKind<'hir> {
     I32,
