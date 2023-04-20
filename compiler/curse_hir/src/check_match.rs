@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::{Pat, PatKind, Ty, Type, TypeKind};
 use smallvec::{smallvec, SmallVec};
 
@@ -20,91 +18,127 @@ enum Constructor {
     Wildcard,
 }
 
-// Lifetimes are destroying me rn and I just want to see this work.
-// TODO(quinn): don't use Rc.
-#[derive(Clone, Debug)]
-struct DeconstructedPat<'hir> {
-    ctor: Constructor,
-    fields: Rc<Vec<DeconstructedPat<'hir>>>,
-    ty: Type<'hir>,
+use Constructor::*;
+
+#[derive(Copy, Clone, Debug)]
+enum Pattern<'hir> {
+    Pat(&'hir Pat<'hir, 'hir>),
+    /// Automatically match on everything
+    Wildcard(Type<'hir>),
 }
 
-impl<'hir> DeconstructedPat<'hir> {
-    fn from_pat(pat: &Pat<'hir, '_>) -> DeconstructedPat<'hir> {
-        match pat.kind {
-            PatKind::Bool(b) => DeconstructedPat {
-                ctor: Constructor::Bool(b),
-                fields: Rc::new(Vec::new()),
-                ty: pat.ty(),
+fn expand_ctors_for_type(kind: &TypeKind<'_>) -> SmallVec<[Constructor; 2]> {
+    match kind {
+        TypeKind::I32 => smallvec![Wildcard],
+        TypeKind::Bool => smallvec![Bool(true), Bool(false)],
+        TypeKind::Unit => smallvec![Single],
+        TypeKind::Var(_) => todo!(),
+        TypeKind::Tuple(_) => smallvec![Single],
+        TypeKind::Function(_) => smallvec![Wildcard],
+    }
+}
+
+/// Push wildcards to the stack for a given type so that it will always match
+fn push_wildcard_fields_for_type<'hir>(kind: &TypeKind<'hir>, stack: &mut Vec<Pattern<'hir>>) {
+    match kind {
+        TypeKind::I32 | TypeKind::Bool | TypeKind::Unit | TypeKind::Function(_) => {}
+        TypeKind::Var(_) => todo!(),
+        TypeKind::Tuple(tuple) => stack.extend(tuple.iter().copied().map(Pattern::Wildcard)),
+    }
+}
+
+impl<'hir> Pattern<'hir> {
+    fn expand_ctors(&self) -> SmallVec<[Constructor; 2]> {
+        match self.ctor() {
+            Wildcard => expand_ctors_for_type(&self.ty_kind()),
+            other => smallvec![other],
+        }
+    }
+
+    fn ty_kind(&self) -> TypeKind<'hir> {
+        match self {
+            Pattern::Pat(pat) => pat.ty().kind,
+            Pattern::Wildcard(ty) => ty.kind,
+        }
+    }
+
+    fn ctor(&self) -> Constructor {
+        match self {
+            Pattern::Pat(pat) => match pat.kind {
+                PatKind::Bool(b) => Bool(b),
+                PatKind::I32(i) => Int(i),
+                PatKind::Unit => Single,
+                PatKind::Tuple { .. } => Single,
+                PatKind::Ident { .. } => Wildcard,
             },
-            PatKind::I32(int) => DeconstructedPat {
-                ctor: Constructor::Int(int),
-                fields: Rc::new(Vec::new()),
-                ty: pat.ty(),
+            Pattern::Wildcard(_) => Wildcard,
+        }
+    }
+
+    /// Pushes the fields of a pattern onto the stack.
+    /// This function should only be called when it matches the q.
+    fn push_fields(&self, stack: &mut Vec<Pattern<'hir>>) {
+        match self {
+            Pattern::Pat(pat) => match pat.kind {
+                PatKind::Bool(_) | PatKind::I32(_) | PatKind::Unit => {}
+                PatKind::Tuple { pats, .. } => stack.extend(pats.iter().map(Pattern::Pat)),
+                PatKind::Ident { ty, .. } => push_wildcard_fields_for_type(&ty.kind, stack),
             },
-            PatKind::Unit => DeconstructedPat {
-                ctor: Constructor::Single,
-                fields: Rc::new(Vec::new()),
-                ty: pat.ty(),
-            },
-            PatKind::Ident { .. } => DeconstructedPat {
-                ctor: Constructor::Wildcard,
-                fields: Rc::new(Vec::new()),
-                ty: pat.ty(),
-            },
-            PatKind::Tuple { pats, .. } => DeconstructedPat {
-                ctor: Constructor::Single,
-                fields: Rc::new(pats.iter().map(Self::from_pat).collect()),
-                ty: pat.ty(),
-            },
+            Pattern::Wildcard(ty) => push_wildcard_fields_for_type(&ty.kind, stack),
         }
     }
 }
 
 #[derive(Debug)]
-struct PatternStack<'scope, 'hir> {
-    stack: &'scope mut Vec<DeconstructedPat<'hir>>,
+struct Specialization<'hir> {
+    stack: usize,
     original_len: usize,
-    /// The item we have to put back on at the end
-    specialization: Option<DeconstructedPat<'hir>>,
+    specialization: Option<Pattern<'hir>>,
 }
 
-impl Drop for PatternStack<'_, '_> {
-    fn drop(&mut self) {
-        self.clear_scope();
-        if let Some(specialization) = self.specialization.take() {
-            self.stack.push(specialization);
+impl<'hir> Specialization<'hir> {
+    fn new_from_id(id: usize) -> Self {
+        Specialization {
+            stack: id,
+            original_len: 1,
+            specialization: None,
         }
     }
-}
 
-impl<'hir> PatternStack<'_, 'hir> {
-    fn scope(&mut self) -> Option<PatternStack<'_, 'hir>> {
-        let popped = self.stack.pop()?;
-        let original_len = self.stack.len();
-        Some(PatternStack {
-            stack: self.stack,
-            original_len,
-            specialization: Some(popped),
-        })
+    fn specialize(
+        &self,
+        stacks: &mut [Vec<Pattern<'hir>>],
+    ) -> Option<(Specialization<'hir>, Pattern<'hir>)> {
+        let stack = &mut stacks[self.stack];
+        let popped = stack.pop()?;
+        let original_len = stack.len();
+        Some((
+            Specialization {
+                stack: self.stack,
+                original_len,
+                specialization: Some(popped),
+            },
+            popped,
+        ))
     }
 
     /// Remove any elements added in this scope by truncating to the original length.
-    fn clear_scope(&mut self) {
-        self.stack.truncate(self.original_len);
-    }
-
-    fn extend(&mut self, pats: impl Iterator<Item = DeconstructedPat<'hir>>) {
-        self.stack.extend(pats)
+    fn clear_scope(&mut self, stacks: &mut [Vec<Pattern<'hir>>]) {
+        stacks[self.stack].truncate(self.original_len);
     }
 
     /// Returns `Some` if values with the given ctor would match on this `PatternStack`.
-    fn specialize(&mut self, specialization: Constructor) -> Option<PatternStack<'_, 'hir>> {
-        use Constructor::*;
-        let mut patstack = self.scope().expect("should still be one there");
-        let pat = patstack.specialization.as_ref().unwrap().clone();
-        match (specialization, pat.ctor) {
-            (Single, Single) => patstack.extend(pat.fields.iter().cloned()),
+    fn specialize_if_matching(
+        &mut self,
+        specialization: Constructor,
+        stacks: &mut [Vec<Pattern<'hir>>],
+    ) -> Option<Specialization<'hir>> {
+        let (patstack, pat) = self
+            .specialize(stacks)
+            .expect("we only call specialize on PatternStacks with an element in them");
+        // when we scope, we should also return the think that we specialized on
+        match (specialization, pat.ctor()) {
+            (Single, Single) => pat.push_fields(&mut stacks[patstack.stack]),
             (Bool(true), Bool(true)) | (Bool(false), Bool(false)) => {}
             (Bool(true), Bool(false)) | (Bool(false), Bool(true)) => return None, // not a match
             (Int(a), Int(b)) => {
@@ -128,6 +162,24 @@ impl<'hir> PatternStack<'_, 'hir> {
                     return None;
                 }
             }
+            (_, Wildcard) => {
+                // the pattern above is a wildcard and the q isn't
+                // Example:
+                // match Some(4) {
+                //     _ => {}
+                //     Some(4) => {}
+                // }
+                // In this case, we want to extend the fields with wildcards as necessary
+                // so we get the following:
+                // match Some(4) {
+                //     Some(_) => {}
+                //     Some(4) => {}
+                // }
+                // Then we would do the _ and the 4, showing that the second branch isn't useful.
+                // Can't short circuit because there might be other elements in the patstack
+                // that aren't wildcarded.
+                pat.push_fields(&mut stacks[patstack.stack]);
+            }
             _ => panic!("different type patterns, this shouldn't be possible after typeck"),
         }
         Some(patstack)
@@ -135,10 +187,24 @@ impl<'hir> PatternStack<'_, 'hir> {
 }
 
 #[derive(Debug)]
-struct Matrix<'q, 'ctor_loop, 'scope, 'hir> {
-    // invariant: all pattern stacks should be the same length
-    remaining: Vec<PatternStack<'ctor_loop, 'hir>>,
-    q: &'q mut PatternStack<'scope, 'hir>,
+struct Matrix<'q, 'hir> {
+    /// Indices into the pattern stacks that we care about
+    specializations: Vec<Specialization<'hir>>,
+    q: Specialization<'hir>,
+    /// Vector of all pattern stacks
+    stacks: &'q mut Vec<Vec<Pattern<'hir>>>,
+}
+
+impl Drop for Matrix<'_, '_> {
+    fn drop(&mut self) {
+        for spec in self.specializations.iter() {
+            let stack = &mut self.stacks[spec.stack];
+            stack.truncate(spec.original_len);
+            if let Some(pat) = spec.specialization {
+                stack.push(pat);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -147,61 +213,48 @@ enum Usefulness {
     Not,
 }
 
-impl Matrix<'_, '_, '_, '_> {
+impl<'hir> Matrix<'_, 'hir> {
     fn sanity_check(&self) {
-        let len = self.q.stack.len();
-        for rem in self.remaining.iter() {
-            assert_eq!(rem.stack.len(), len);
+        let len = self.stacks[self.q.stack].len();
+        for rem in self.specializations.iter() {
+            assert_eq!(len, self.stacks[rem.stack].len());
         }
     }
 
     fn run(&mut self) -> Usefulness {
-        use Constructor::*;
-        // for each pattern in q's
-        let Some(q_prime_generalized) = self.q.scope() else {
+        self.sanity_check();
+        let Some((q_prime_generalized, pat)) = self.q.specialize(self.stacks) else {
             // Nothing left to specialize on, are we unique?
             // We're unique if there's nothing above us anymore.
-            return if self.remaining.is_empty() { Usefulness::Useful } else {
+            return if self.specializations.is_empty() { Usefulness::Useful } else {
                 println!("not useful because there are remaining arms above");
                 Usefulness::Not
             };
         };
 
-        // While we could use static slices right now, we'll eventually want to support
-        // enums which will require a variable number of constructors to try.
-        // So we'll use smallvec instead.
-        let pat = q_prime_generalized.specialization.as_ref().unwrap();
-        let ctors: SmallVec<[Constructor; 2]> = match pat.ctor {
-            Wildcard => match pat.ty.kind {
-                TypeKind::I32 => smallvec![Wildcard],
-                TypeKind::Bool => smallvec![Bool(true), Bool(false)],
-                TypeKind::Unit => smallvec![Single],
-                TypeKind::Var(_) => todo!("type resolution"),
-                TypeKind::Tuple(_) => smallvec![Single],
-                TypeKind::Function(_) => smallvec![Wildcard],
-            },
-            other => smallvec![other],
-        };
+        let ctors = pat.expand_ctors();
 
+        let stack = &mut self.stacks[q_prime_generalized.stack];
+        stack.truncate(q_prime_generalized.original_len);
+        stack.push(pat);
         drop(q_prime_generalized);
 
         for ctor in ctors {
-            let mut q_prime = self
+            let q_prime = self
                 .q
-                .specialize(ctor)
-                .expect("the ctor was created by q, so it should always match");
+                .specialize_if_matching(ctor, self.stacks)
+                .expect("ctors came from q, so this should work");
             let specializations = self
-                .remaining
+                .specializations
                 .iter_mut()
-                .filter_map(|patstack| patstack.specialize(ctor))
+                .filter_map(|spec| spec.specialize_if_matching(ctor, self.stacks))
                 .collect();
 
             let mut m = Matrix {
-                remaining: specializations,
-                q: &mut q_prime,
+                specializations,
+                q: q_prime,
+                stacks: self.stacks,
             };
-
-            m.sanity_check();
 
             if let Usefulness::Not = m.run() {
                 println!("not useful recursively when specialized with {ctor:?}");
@@ -219,58 +272,124 @@ impl Matrix<'_, '_, '_, '_> {
 fn test() {
     use crate::List;
 
-    macro_rules! bool_bool {
-        ($a:expr, $b:expr) => {
-            PatternStack {
-                stack: &mut vec![DeconstructedPat::from_pat(&Pat {
-                    kind: PatKind::Tuple {
-                        ty: Type {
-                            kind: TypeKind::Tuple(&List {
-                                item: Type {
-                                    kind: TypeKind::Bool,
-                                    span: (0, 0),
-                                },
-                                next: Some(&List {
-                                    item: Type {
-                                        kind: TypeKind::Bool,
-                                        span: (0, 0),
-                                    },
-                                    next: None,
-                                }),
-                            }),
-                            span: (0, 0),
-                        },
-                        pats: &List {
-                            item: Pat {
-                                kind: PatKind::Bool($a),
-                                span: (0, 0),
-                            },
-                            next: Some(&List {
-                                item: Pat {
-                                    kind: PatKind::Bool($b),
-                                    span: (0, 0),
-                                },
-                                next: None,
-                            }),
-                        },
-                    },
+    let ty_bool_bool = Type {
+        kind: TypeKind::Tuple(&List {
+            item: Type {
+                kind: TypeKind::Bool,
+                span: (0, 0),
+            },
+            next: Some(&List {
+                item: Type {
+                    kind: TypeKind::Bool,
                     span: (0, 0),
-                })],
-                original_len: 1,
-                specialization: None,
-            }
-        }
-    }
+                },
+                next: None,
+            }),
+        }),
+        span: (0, 0),
+    };
 
-    let p_1 = bool_bool!(true, true);
-    let p_2 = bool_bool!(true, false);
-    let p_3 = bool_bool!(false, true);
+    let p_1 = Pat {
+        kind: PatKind::Tuple {
+            ty: ty_bool_bool,
+            pats: &List {
+                item: Pat {
+                    kind: PatKind::Bool(true),
+                    span: (0, 0),
+                },
+                next: Some(&List {
+                    item: Pat {
+                        kind: PatKind::Bool(true),
+                        span: (0, 0),
+                    },
+                    next: None,
+                }),
+            },
+        },
+        span: (0, 0),
+    };
 
-    let mut q = bool_bool!(true, false);
+    let p_2 = Pat {
+        kind: PatKind::Tuple {
+            ty: ty_bool_bool,
+            pats: &List {
+                item: Pat {
+                    kind: PatKind::Bool(true),
+                    span: (0, 0),
+                },
+                next: Some(&List {
+                    item: Pat {
+                        kind: PatKind::Bool(false),
+                        span: (0, 0),
+                    },
+                    next: None,
+                }),
+            },
+        },
+        span: (0, 0),
+    };
+
+    let p_3 = Pat {
+        kind: PatKind::Tuple {
+            ty: ty_bool_bool,
+            pats: &List {
+                item: Pat {
+                    kind: PatKind::Bool(false),
+                    span: (0, 0),
+                },
+                next: Some(&List {
+                    item: Pat {
+                        kind: PatKind::Bool(true),
+                        span: (0, 0),
+                    },
+                    next: None,
+                }),
+            },
+        },
+        span: (0, 0),
+    };
+
+    let q = Pat {
+        kind: PatKind::Tuple {
+            ty: ty_bool_bool,
+            pats: &List {
+                item: Pat {
+                    kind: PatKind::Bool(false),
+                    span: (0, 0),
+                },
+                next: Some(&List {
+                    item: Pat {
+                        kind: PatKind::Bool(false),
+                        span: (0, 0),
+                    },
+                    next: None,
+                }),
+            },
+        },
+        span: (0, 0),
+    };
+
+    let mut stacks = vec![
+        vec![Pattern::Pat(&p_1)],
+        vec![Pattern::Pat(&p_2)],
+        vec![Pattern::Pat(&p_3)],
+        vec![Pattern::Pat(&q)],
+    ];
 
     let mut m = Matrix {
-        remaining: vec![p_1, p_2, p_3],
-        q: &mut q,
+        specializations: (0..stacks.len() - 1)
+            .map(|stack| Specialization {
+                stack,
+                original_len: 1,
+                specialization: None,
+            })
+            .collect(),
+        q: Specialization {
+            stack: stacks.len() - 1,
+            original_len: 1,
+            specialization: None,
+        },
+        stacks: &mut stacks,
     };
 
     let usefulness = m.run();
