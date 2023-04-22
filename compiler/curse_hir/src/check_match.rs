@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{Expr, ExprKind, Hir, Pat, PatKind, Ty, Type, TypeKind};
+use crate::{Expr, ExprArm, ExprKind, Hir, List, Pat, PatKind, Ty, Type, TypeKind};
 use smallvec::{smallvec, SmallVec};
 
 // Matching on ints seems kinda hard, so let's just not support it right now.
@@ -242,7 +242,7 @@ impl<'hir> Matrix<'_, 'hir> {
             // Nothing left to specialize on, are we unique?
             // We're unique if there's nothing above us anymore.
             return if self.specializations.is_empty() { Usefulness::Useful } else {
-                println!("not useful because there are remaining arms above");
+                // println!("not useful because there are remaining arms above");
                 Usefulness::Not
             };
         };
@@ -271,7 +271,7 @@ impl<'hir> Matrix<'_, 'hir> {
                 stacks: self.stacks,
             };
 
-            let usefulness = m.run(hir);
+            let is_useful = m.run(hir);
 
             m.sanity_check("right after running");
 
@@ -295,28 +295,37 @@ impl<'hir> Matrix<'_, 'hir> {
             }
             self.sanity_check("pushed things back");
 
-            if let Usefulness::Not = usefulness {
-                println!("not useful recursively when specialized with {ctor:?}");
-                return Usefulness::Not;
+            // Once we find a single useful one, then it's useful.
+            if let Usefulness::Useful = is_useful {
+                return Usefulness::Useful;
             }
         }
 
         self.sanity_check("end of run");
 
-        Usefulness::Useful
+        Usefulness::Not
     }
 }
 
 pub fn check_usefulness<'hir>(
-    pats: impl Iterator<Item = [&'hir Pat<'hir, 'hir>; 2]>,
+    arms: &'hir List<'hir, ExprArm<'hir, '_>>,
     hir: &Hir<'hir, '_>,
 ) -> Usefulness {
-    let mut stacks = pats
-        .map(|[lhs, rhs]| vec![Pattern::Pat(lhs), Pattern::Pat(rhs)])
+    let mut stacks = arms
+        .iter()
+        .map(|arm| vec![Pattern::Pat(&arm.lhs), Pattern::Pat(&arm.rhs)])
         .collect::<Vec<_>>();
 
     let len = stacks.len();
     assert!(len != 0);
+
+    // Dummy wildcard type for the end to check exhaustiveness
+    let lhs_type = arms.item.lhs.ty();
+    let rhs_type = arms.item.rhs.ty();
+    stacks.push(vec![
+        Pattern::Wildcard(lhs_type),
+        Pattern::Wildcard(rhs_type),
+    ]);
 
     let mut m = Matrix {
         specializations: Vec::with_capacity(stacks.len()),
@@ -338,7 +347,21 @@ pub fn check_usefulness<'hir>(
     }
 
     // run on the last one
-    m.run(hir)
+    if let Usefulness::Not = m.run(hir) {
+        return Usefulness::Not;
+    }
+
+    // we also want to try a fake wildcard to check that the match is exhaustive
+    let q = std::mem::replace(&mut m.q, Specialization::new_from_id(len));
+    m.specializations.push(q);
+
+    if let Usefulness::Not = m.run(hir) {
+        // the dummy `_` pattern was not useful, meaning the match is exhaustive
+        Usefulness::Useful
+    } else {
+        println!("the match isn't exhaustive");
+        Usefulness::Not
+    }
 }
 
 pub fn check_matches_in_expr<'hir>(expr: &Expr<'hir, '_>, hir: &Hir<'hir, '_>) -> Usefulness {
@@ -356,9 +379,7 @@ pub fn check_matches_in_expr<'hir>(expr: &Expr<'hir, '_>, hir: &Hir<'hir, '_>) -
             }
             Usefulness::Useful
         }
-        ExprKind::Closure { arms, .. } => {
-            check_usefulness(arms.iter().map(|arm| [&arm.lhs, &arm.rhs]), hir)
-        }
+        ExprKind::Closure { arms, .. } => check_usefulness(arms, hir),
         ExprKind::Appl { appl, .. } => {
             let lhs = check_matches_in_expr(&appl.lhs, hir);
             let rhs = check_matches_in_expr(&appl.rhs, hir);

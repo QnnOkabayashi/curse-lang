@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::FIB;
+    let input: &str = programs::NESTED_MATCHES;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {
@@ -139,8 +139,8 @@ fn main() {
 
     let mut matches_all_useful = true;
     for (_, expr) in lowered_items.values() {
-        use hir::check_match::{Usefulness, check_matches_in_expr};
-        if let Usefulness::Not =  check_matches_in_expr(expr, &hir) {
+        use hir::check_match::{check_matches_in_expr, Usefulness};
+        if let Usefulness::Not = check_matches_in_expr(expr, &hir) {
             println!("found not useful thing");
             matches_all_useful = false;
         }

@@ -14,6 +14,14 @@ let int_of_bool: bool () -> i32 =
     |true| 1
 "#;
 
+pub const NESTED_MATCHES: &str = r#"
+let crazy: bool (bool, i32) -> i32 =
+    |true, (true, _)| 0 else
+    |true, (_, _)| 0 else
+    |_, (false, _)| 0 else 
+    |_, (_, n)| 0
+"#;
+
 pub const TWICE: &str = r#"
 let inc: i32 () -> i32 = |n|
     n + 1
@@ -90,4 +98,3 @@ let fib: i32 () -> i32 =
     |a| 4 else
     |true| 5
 "#;
-
