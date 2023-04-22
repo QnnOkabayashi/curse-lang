@@ -131,11 +131,6 @@ impl<'hir> Specialization<'hir> {
         ))
     }
 
-    /// Remove any elements added in this scope by truncating to the original length.
-    fn clear_scope(&mut self, stacks: &mut [Vec<Pattern<'hir>>]) {
-        stacks[self.stack].truncate(self.original_len);
-    }
-
     /// Returns `Some` if values with the given ctor would match on this `PatternStack`.
     fn specialize_if_matching(
         &mut self,
@@ -160,13 +155,6 @@ impl<'hir> Specialization<'hir> {
                 // (I'm not checking if they cover the required 2^n cases above. Sorry)
                 // and functions, which can't be matched on by anything _but_ a wildcard.
                 matches!(pat, Wildcard)
-                // if let Wildcard = pat {
-                //     // If we're a wildcard, then we cover any values that the specialization
-                //     // might cover, so we're useful.
-                // } else {
-                //     // Otherwise, we aren't useful.
-                //     return None;
-                // }
             }
             (_, Wildcard) => {
                 // the pattern above is a wildcard and the q isn't
@@ -236,6 +224,12 @@ impl<'hir> Matrix<'_, 'hir> {
         }
     }
 
+    fn update_q(&mut self, q: Specialization<'hir>) {
+        let p_n = std::mem::replace(&mut self.q, q);
+        self.specializations.push(p_n);
+    }
+
+    // this function desperately needs to be rewritten.
     fn run(&mut self, hir: &Hir<'hir, '_>) -> Usefulness {
         self.sanity_check("start of run");
         let Some((q_prime_generalized, pat)) = self.q.specialize(self.stacks) else {
@@ -337,9 +331,7 @@ pub fn check_usefulness<'hir>(
         if let Usefulness::Not = m.run(hir) {
             return Usefulness::Not;
         }
-
-        let q = std::mem::replace(&mut m.q, Specialization::new_from_id(id));
-        m.specializations.push(q);
+        m.update_q(Specialization::new_from_id(id));
 
         for stack in m.stacks.iter_mut() {
             stack.truncate(2); // because there's 2 pats, lhs and rhs
@@ -352,8 +344,7 @@ pub fn check_usefulness<'hir>(
     }
 
     // we also want to try a fake wildcard to check that the match is exhaustive
-    let q = std::mem::replace(&mut m.q, Specialization::new_from_id(len));
-    m.specializations.push(q);
+    m.update_q(Specialization::new_from_id(len));
 
     if let Usefulness::Not = m.run(hir) {
         // the dummy `_` pattern was not useful, meaning the match is exhaustive
