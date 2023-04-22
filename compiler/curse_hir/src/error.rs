@@ -1,6 +1,6 @@
-use crate::{TypeKind, Var, Type};
+use crate::{Type, TypeKind, Var};
 use curse_ast::{self as ast, Span};
-use miette::{Diagnostic, SourceSpan, NamedSource};
+use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
 #[derive(Debug, Diagnostic, Error)]

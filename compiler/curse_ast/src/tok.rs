@@ -1,5 +1,5 @@
-use std::fmt;
 use crate::Span;
+use std::fmt;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Ident<'input> {

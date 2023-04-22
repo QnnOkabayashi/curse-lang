@@ -1,4 +1,4 @@
-use crate::{Var, Type};
+use crate::{Type, Var};
 use displaydoc::Display;
 use petgraph::graph::{DiGraph, NodeIndex};
 

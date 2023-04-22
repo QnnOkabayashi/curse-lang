@@ -71,5 +71,3 @@ impl Span for TypeFunction<'_, '_> {
         self.lhs.span_between(self.ret)
     }
 }
-
-

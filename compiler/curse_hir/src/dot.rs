@@ -1,5 +1,5 @@
 //! Utilities for writing an AST in dot format for Graphviz.
-use crate::{expr::Ty, ExprKind, Hir, Expr};
+use crate::{expr::Ty, Expr, ExprKind, Hir};
 use std::fmt::Write as _;
 
 pub struct Builder<'env> {

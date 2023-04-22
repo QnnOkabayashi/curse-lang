@@ -178,10 +178,7 @@ impl<'list, T> List<'list, T> {
 impl<'list, T: fmt::Display> List<'list, T> {
     /// Returns a [`Display`](fmt::Display)able type with a provided delimiter.
     pub fn delim<'a>(&'a self, delim: &'a str) -> Delim<'a, T> {
-        Delim {
-            list: self,
-            delim,
-        }
+        Delim { list: self, delim }
     }
 }
 
