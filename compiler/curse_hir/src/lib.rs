@@ -19,7 +19,7 @@ pub use expr::*;
 pub mod dot;
 mod error;
 pub use error::*;
-mod check_match;
+pub mod check_match;
 
 /// `Some` is bound, `None` is unbound.
 pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;

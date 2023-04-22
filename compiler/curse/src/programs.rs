@@ -8,6 +8,12 @@ let main : () () -> () = ||
     10 fib () print ()
 "#;
 
+pub const COND: &str = r#"
+let int_of_bool: bool () -> i32 =
+    |false| 0 else
+    |true| 1
+"#;
+
 pub const TWICE: &str = r#"
 let inc: i32 () -> i32 = |n|
     n + 1

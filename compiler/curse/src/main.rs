@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::CLOSURE_MISMATCH_ARM_TYPES;
+    let input: &str = programs::FIB;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {
@@ -115,15 +115,7 @@ fn main() {
     // Put the result into: https://edotor.net/
     // println!("{}", hir.equations);
 
-    if let Ok(lowered_items) = lowered_items {
-        assert!(errors.is_empty());
-        let mut builder = dot::Builder::new(&hir);
-        for (name, (_, expr)) in lowered_items.iter() {
-            builder.visit_expr(*expr, None, Some(name));
-        }
-        let out = builder.finish();
-        println!("{out}");
-    } else {
+    let Ok(lowered_items) = lowered_items else {
         assert!(!errors.is_empty());
         let errors = hir::SourceErrors {
             code: NamedSource::new("input", input.to_string()),
@@ -134,5 +126,29 @@ fn main() {
             .render_report(&mut buf, &errors)
             .unwrap();
         println!("{buf}");
+        return;
+    };
+
+    assert!(errors.is_empty());
+    // let mut builder = dot::Builder::new(&hir);
+    // for (name, (_, expr)) in lowered_items.iter() {
+    //     builder.visit_expr(*expr, None, Some(name));
+    // }
+    // let out = builder.finish();
+    // println!("{out}");
+
+    let mut matches_all_useful = true;
+    for (_, expr) in lowered_items.values() {
+        use hir::check_match::{Usefulness, check_matches_in_expr};
+        if let Usefulness::Not =  check_matches_in_expr(expr, &hir) {
+            println!("found not useful thing");
+            matches_all_useful = false;
+        }
+    }
+
+    if matches_all_useful {
+        println!("matches all useful");
+    } else {
+        println!("not all matches are useful");
     }
 }
