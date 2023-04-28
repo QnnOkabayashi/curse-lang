@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::NESTED_MATCHES;
+    let input: &str = programs::FIB;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {
@@ -137,18 +137,14 @@ fn main() {
     // let out = builder.finish();
     // println!("{out}");
 
-    let mut matches_all_useful = true;
+    let mut reports = vec![];
     for (_, expr) in lowered_items.values() {
-        use hir::check_match::{check_matches_in_expr, Usefulness};
-        if let Usefulness::Not = check_matches_in_expr(expr, &hir) {
-            println!("found not useful thing");
-            matches_all_useful = false;
-        }
+        hir::usefulness::check_matches_in_expr(expr, &hir, &mut reports);
     }
 
-    if matches_all_useful {
-        println!("matches all useful");
+    if reports.is_empty() {
+        println!("all matches are exhaustive and useful");
     } else {
-        println!("not all matches are useful");
+        println!("{reports:#?}");
     }
 }

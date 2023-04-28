@@ -8,6 +8,12 @@ let main : () () -> () = ||
     10 fib () print ()
 "#;
 
+pub const NOT_EXHAUSTIVE: &str = r#"
+let foo : i32 () -> i32 =
+    |1| 1 else
+    |2| 2
+"#;
+
 pub const COND: &str = r#"
 let int_of_bool: bool () -> i32 =
     |false| 0 else
