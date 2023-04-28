@@ -106,39 +106,66 @@ impl Span for ExprLit<'_> {
 }
 
 #[derive(Clone, Debug)]
-pub struct ExprClosure<'ast, 'input> {
-    pub head: ExprArm<'ast, 'input>,
-    pub tail: Vec<(tok::Else, ExprArm<'ast, 'input>)>,
+pub enum ExprClosure<'ast, 'input> {
+    NonPiecewise(ExprArm<'ast, 'input>),
+    Piecewise {
+        lbrace: tok::LBrace,
+        head: ExprArm<'ast, 'input>,
+        tail: Vec<(tok::Comma, ExprArm<'ast, 'input>)>,
+        trailing_comma: Option<tok::Comma>,
+        rbrace: tok::RBrace,
+    },
 }
 
 impl Span for ExprClosure<'_, '_> {
     fn span(&self) -> (usize, usize) {
-        if let Some((_, last)) = self.tail.last() {
-            self.head.span_between(last)
-        } else {
-            self.head.span()
+        match self {
+            ExprClosure::NonPiecewise(arm) => arm.span(),
+            ExprClosure::Piecewise { lbrace, rbrace, .. } => lbrace.span_between(rbrace),
         }
     }
 }
 
 impl<'ast, 'input> ExprClosure<'ast, 'input> {
-    pub fn new(head: ExprArm<'ast, 'input>) -> Self {
-        ExprClosure { head, tail: vec![] }
+    pub fn new_non_piecewise(arm: ExprArm<'ast, 'input>) -> Self {
+        ExprClosure::NonPiecewise(arm)
     }
 
-    pub fn with_branch(mut self, els: tok::Else, branch: ExprArm<'ast, 'input>) -> Self {
-        self.tail.push((els, branch));
-        self
+    pub fn new_piecewise(
+        lbrace: tok::LBrace,
+        head: ExprArm<'ast, 'input>,
+        tail: Vec<(tok::Comma, ExprArm<'ast, 'input>)>,
+        trailing_comma: Option<tok::Comma>,
+        rbrace: tok::RBrace,
+    ) -> Self {
+        ExprClosure::Piecewise {
+            lbrace,
+            head,
+            tail,
+            trailing_comma,
+            rbrace,
+        }
     }
 
     pub fn num_branches(&self) -> usize {
-        1 + self.tail.len()
+        match self {
+            ExprClosure::NonPiecewise(_) => 1,
+            ExprClosure::Piecewise { tail, .. } => 1 + tail.len(),
+        }
     }
 
-    pub fn iter_branches(&self) -> impl Iterator<Item = &ExprArm<'ast, 'input>> {
-        Some(&self.head)
-            .into_iter()
-            .chain(self.tail.iter().map(|(_, branch)| branch))
+    pub fn head(&self) -> &ExprArm<'ast, 'input> {
+        match self {
+            ExprClosure::NonPiecewise(head) => head,
+            ExprClosure::Piecewise { head, .. } => head,
+        }
+    }
+
+    pub fn tail(&self) -> Option<impl Iterator<Item = &ExprArm<'ast, 'input>>> {
+        match self {
+            ExprClosure::NonPiecewise(_) => None,
+            ExprClosure::Piecewise { tail, .. } => Some(tail.iter().map(|(_comma, arm)| arm)),
+        }
     }
 }
 

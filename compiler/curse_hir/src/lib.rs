@@ -426,8 +426,8 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             ast::Expr::Closure(closure) => {
                 let mut inner = self.enter_scope();
 
-                let [lhs, rhs] = inner.type_of_many_params(&closure.head)?;
-                let body = inner.lower(closure.head.body)?;
+                let [lhs, rhs] = inner.type_of_many_params(closure.head())?;
+                let body = inner.lower(closure.head().body)?;
 
                 drop(inner);
 
@@ -463,7 +463,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
                 let head = ExprArm { lhs, rhs, body };
 
-                let next = rec(self, &head, closure.tail.iter().map(|(_, arm)| arm))?;
+                let next = if let Some(tail) = closure.tail() {
+                    rec(self, &head, tail)?
+                } else {
+                    None
+                };
 
                 let arms = self.hir.list_expr_arms.alloc(List { item: head, next });
 
@@ -475,7 +479,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                                 rhs: head.rhs.ty(),
                                 output: head.body.ty(),
                             })),
-                            span: closure.head.span(),
+                            span: closure.head().span(),
                         },
                         arms,
                     },

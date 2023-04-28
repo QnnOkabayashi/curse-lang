@@ -122,23 +122,39 @@ Lit: ExprLit<'input> = {
 };
 
 Closure: Option<ExprClosure<'ast, 'input>> = {
-    Branch => <>.map(ExprClosure::new),
-    Closure "else" Branch => match (<>) {
-        (Some(closure), els, Some(branch)) => Some(closure.with_branch(els, branch)),
+    Arm => <>.map(ExprClosure::new_non_piecewise),
+    "{" Arm ClosureTail? ","? "}" => match (<>) {
+        (lbrace, Some(head), Some(tail), trailing_comma, rbrace) => {
+            Some(ExprClosure::new_piecewise(lbrace, head, tail.unwrap_or_default(), trailing_comma, rbrace))
+        }
         _ => None
     }
 };
 
-Branch: Option<ExprArm<'ast, 'input>> = {
-    "|" "|" InternalExpr => match (<>) {
+ClosureTail: Option<Vec<(tok::Comma, ExprArm<'ast, 'input>)>> = {
+    "," Arm => match (<>) {
+        (comma, Some(arm)) => Some(vec![(comma, arm)]),
+        _ => None,
+    },
+    ClosureTail "," Arm => match (<>) {
+        (Some(mut tail), comma, Some(arm)) => {
+            tail.push((comma, arm));
+            Some(tail)
+        }
+        _ => None
+    }
+}
+
+Arm: Option<ExprArm<'ast, 'input>> = {
+    "|" "|" EndExpr => match (<>) {
         (open, close, Some(body)) => Some(ExprArm::new(open, ExprParams::Zero, close, body)),
         _ => None,
     },
-    "|" Param "|" InternalExpr => match (<>) {
+    "|" Param "|" EndExpr => match (<>) {
         (open, Some(lhs), close, Some(body)) => Some(ExprArm::new(open, ExprParams::One(lhs), close, body)),
         _ => None,
     },
-    "|" Param "," Param "|" InternalExpr => match (<>) {
+    "|" Param "," Param "|" EndExpr => match (<>) {
         (open, Some(lhs), comma, Some(rhs), close, Some(body)) => Some(ExprArm::new(open, ExprParams::Two(lhs, comma, rhs), close, body)),
         _ => None,
     },
@@ -170,11 +186,6 @@ Term: Option<&'ast Expr<'ast, 'input>> = {
     }
 };
 
-InternalTerm = {
-    Term,
-    Branch => <>.map(|branch| ast.expr(Expr::Closure(ExprClosure::new(branch)))),
-};
-
 EndTerm = {
     Term,
     Closure => <>.map(|closure| ast.expr(Expr::Closure(closure))),
@@ -183,11 +194,6 @@ EndTerm = {
 Expr = {
     Term,
     Appl<Term> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
-};
-
-InternalExpr = {
-    InternalTerm,
-    Appl<InternalTerm> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
 };
 
 pub EndExpr = {

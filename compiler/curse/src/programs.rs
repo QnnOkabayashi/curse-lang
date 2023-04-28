@@ -1,31 +1,45 @@
 pub const FIB: &str = r#"
-let fib : i32 () -> i32 =
-    |0| 0 else
-    |1| 1 else
+let fib: i32 () -> i32 = {
+    |0| 0,
+    |1| 1,
     |n| n - 1 fib () + (n - 2 fib ())
+}
 
-let main : () () -> () = ||
+let main: () () -> () = ||
     10 fib () print ()
 "#;
 
+pub const NESTED_CLOSURES: &str = r#"
+let foo: i32 () -> i32 = {
+    |0| 5 + 5 in {
+        |10| 1,
+        |_| 2,
+    },
+    |_| 3,
+}
+"#;
+
 pub const NOT_EXHAUSTIVE: &str = r#"
-let foo : i32 () -> i32 =
-    |1| 1 else
+let foo: i32 () -> i32 = {
+    |1| 1,
     |2| 2
+}
 "#;
 
 pub const COND: &str = r#"
-let int_of_bool: bool () -> i32 =
-    |false| 0 else
+let int_of_bool: bool () -> i32 = {
+    |false| 0,
     |true| 1
+}
 "#;
 
 pub const NESTED_MATCHES: &str = r#"
-let crazy: bool (bool, i32) -> i32 =
-    |true, (true, _)| 0 else
-    |true, (_, _)| 0 else
-    |_, (false, _)| 0 else 
+let crazy: bool (bool, i32) -> i32 = {
+    |true, (true, _)| 0,
+    |true, (_, _)| 0,
+    |_, (false, _)| 0,
     |_, (_, n)| 0
+}
 "#;
 
 pub const TWICE: &str = r#"
