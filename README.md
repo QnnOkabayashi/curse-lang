@@ -1,6 +1,10 @@
 # Curse
 
-Curse is a toy programming language inspired by the question: _How can we bend syntax to create the most readable, yet syntactically consistent programming language?_
+Curse is a statically-typed toy programming language inspired by the question: _How can we bend syntax to create the most readable, yet syntactically consistent programming language?_
+
+Currently, it's founded on two core ideas.
+
+## 1. Function chaining should be natural
 
 For example, every function is a binary function called using infix notation.
 
@@ -10,15 +14,22 @@ Despite what many LISP programmers argue, the ladder is far more natural for us 
 In fact, the notion of chaining functions (evaluate, then pass to this function) is extremely common.
 In Rust, we have method chaining, and some functional languages even go as far as adding a special pipe (`|>`) operator to do this exact functionality.
 
+## 2. A single branching primitive
 
 Another big difference is that there is only one way to write branching code: piecewise functions.
 Piecewise functions are a combination of `match` expressions from functional languages, and functions.
 This allows us to combine function definitions and all forms of branching into a single language construct, making the language smaller and feel more internally consistent.
 
+Piecewise closures are statically checked, meaning that the compiler is able to determine when a piecewise closure is exhaustive and when all branches are useful.
+
 The final difference is that there's no variable declaration inside of function bodies.
 If you want to assign to a variable, you simply compute it and pass it into a function whose parameter has the name you want.
 
 This is made more convenient using the builtin `in` function.
+
+___
+
+Let's take a little tour of the language.
 
 ### Variables
 
@@ -71,85 +82,43 @@ You may notice that we use `in` a lot.
 This is just a function that takes a value and a function, and applies the value to the function and passes a `()` in as the second argument.
 It is defined as follows:
 ```rust
-fn in(x f) {
-    x f ()
-}
+let in a b: a (a () -> b) -> b |x, f| x f ()
 ```
 
 Example `main` function:
 ```rust
-// If both inputs are `()`, they can be omitted in type
-// If output is (), the `-> ()` can also be omitted.
-fn main() {
+let main: () () -> () = ||
     "Hello" in print
-}
 ```
 
-```rust
-(|x f| x f ()) (|in| 
-    4 + 5 in |x|
-    x + x in print
-) ()
-```
 
 Traditional `if-else` statements do not exist in Curse.
 In fact, the only way to do branching is with piecewise closures.
+
+As an example, let's examine the `fib` function:
 ```rust
-true then (|| 5) else (|| 4)
-
-a then (||
-    1
-) else (||
-    b then (||
-        2
-    ) else (||
-        3
-    )
-)
-
-```
-Here, `then` is similar to Rust's `bool::then` method which returns `Option<T>`, and `else` is like `Option::unwrap_or_else` method.
-Right now, `else` conflicts with the builtin keyword for disambiguating closure arms, but I'll deal with that later.
-
-This is what `map` in the above example would do internally:
-```rust
-cond in
-    |Some(())| 5;
-    |None| 4
+let fib: i32 () -> i32 = {
+    |0| 0,
+    |1| 1,
+    |n| (n - 1 in fib) + (n - 2 in fib)
+}
 ```
 
-```rust
-params in 
-    |Params::Zero| (left, right) in (
-        |(Value::Tuple(t1), Value::Tuple(t2))| if t1.is_empty() && t2.is_empty() => Ok(()) else
-        |_| Err(EvalError::TypeMismatch)
-    ) else
-    |Params::One(pat)| right in (
-        |Value::Tuple(t)| if t.is_empty() => add_param_to_env(left, &pat, env) else
-        |_| Err(EvalError::TypeMismatch)
-    ) else
-    |Params::Two(pat1, pat2)| (
-        add_param_to_env(left, &pat1, env) and_then
-        add_param_to_env(right, &pat2, env)
-    )
-```
+Do make a closure piecewise, it's necessary to wrap the branches in curly braces.
+This means if you ever see the start of a closure and it's not wrapped in braces, you can be sure that it doesn't branch.
+This means it's also easy to visually tell which closure arms below to which closure, even in the case of nested piecewise closures:
 
 ```rust
-// else should bind to the closest function
-|1| (|2| 5 else |n| n) else
-|x| |n| n + 2
+{
+    |1| {
+        |2| 5,
+        |n| n
+    },
+    |x| |n| n + 2
+}
 ```
 
-Here's some ideas for top level functions
-```rust
-fn fib: i32 -> i32 =
-    |0| 0 else
-    |1| 1 else
-    |n| n - 1 in fib + (n - 2 in fib)
-
-fn main := ||
-    10 in fib
-```
-
-
+Using this construct, we can also encode `if-else` expressions by matching on `true` and `false`.
+In fact, once we have variant types, we intend to create a `then` function, which has the signature `bool (() () -> a) -> Option a`, as well as an `else` function with the signature `(Option a) (() () -> a) -> a`.
+In a sense, `then` will be like `bool::then` in Rust, and `else` will be like `Option::unwrap_or_else`.
 
