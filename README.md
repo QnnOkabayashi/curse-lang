@@ -82,15 +82,17 @@ You may notice that we use `in` a lot.
 This is just a function that takes a value and a function, and applies the value to the function and passes a `()` in as the second argument.
 It is defined as follows:
 ```rust
-let in a b: a (a () -> b) -> b |x, f| x f ()
+let in a b: a (a () -> b) -> b = |x, f| x f ()
 ```
+
+Here, `a` and `b` are generic type parameters, so `in` has the type `a (a () -> b) -> b`, meaning it can take any value and any function that takes that value and a `()`, and pass the value to the function.
+This is incredibly useful because it means we can pass in closures as the second argument.
 
 Example `main` function:
 ```rust
 let main: () () -> () = ||
     "Hello" in print
 ```
-
 
 Traditional `if-else` statements do not exist in Curse.
 In fact, the only way to do branching is with piecewise closures.
