@@ -6,7 +6,7 @@ use petgraph::graph::NodeIndex;
 use smallvec::{smallvec, SmallVec};
 use std::{
     collections::HashMap,
-    fmt,
+    fmt, iter,
     ops::{Index, IndexMut},
 };
 use thiserror::Error;
@@ -36,6 +36,13 @@ pub struct Type<'hir> {
 }
 
 impl<'hir> Type<'hir> {
+    fn dummy() -> Self {
+        Type {
+            kind: TypeKind::unit(),
+            span: (0, 0),
+        }
+    }
+
     pub fn resolve(&self, hir: &Hir<'hir, '_>) -> Self {
         if let TypeKind::Var(var) = self.kind {
             hir[var].expect("unbound typevar").0.resolve(hir)
@@ -45,17 +52,20 @@ impl<'hir> Type<'hir> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum TypeKind<'hir> {
     I32,
     Bool,
-    Unit,
     Var(Var),
-    Tuple(&'hir List<'hir, Type<'hir>>),
+    Tuple(&'hir [Type<'hir>]),
     Function(&'hir TypeFunction<'hir>),
 }
 
 impl<'hir> TypeKind<'hir> {
+    pub fn unit() -> Self {
+        TypeKind::Tuple(&[])
+    }
+
     /// Returns a [`Display`](fmt::Display)able type that prints a [`Type`],
     /// except with all type variables fully expanded as much as possible.
     pub fn pretty(self, hir: &'hir Hir<'hir, 'hir>) -> TypePrinter<'hir> {
@@ -75,26 +85,21 @@ impl<'hir> TypeKind<'hir> {
 #[error("Unbound typevar")]
 pub struct UnboundTypevar;
 
-impl fmt::Debug for TypeKind<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::I32 => write!(f, "I32"),
-            Self::Bool => write!(f, "Bool"),
-            Self::Unit => write!(f, "Unit"),
-            Self::Tuple(tuple) => f.debug_tuple("Tuple").field(tuple).finish(),
-            Self::Var(var) => fmt::Debug::fmt(var, f),
-            Self::Function(fun) => fmt::Debug::fmt(fun, f),
-        }
-    }
-}
-
 impl fmt::Display for TypeKind<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::Bool => write!(f, "bool"),
-            TypeKind::Unit => write!(f, "()"),
-            TypeKind::Tuple(tuple) => write!(f, "({})", tuple.delim(", ")),
+            TypeKind::Tuple(types) => {
+                f.write_str("(")?;
+                if let Some((head, tail)) = types.split_first() {
+                    write!(f, "{head}")?;
+                    for ty in tail {
+                        write!(f, ", {ty}")?;
+                    }
+                }
+                f.write_str(")")
+            }
             TypeKind::Var(var) => write!(f, "{var}"),
             TypeKind::Function(fun) => write!(f, "{fun}"),
         }
@@ -111,7 +116,6 @@ impl fmt::Display for TypePrinter<'_> {
         match self.ty {
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::Bool => write!(f, "bool"),
-            TypeKind::Unit => write!(f, "()"),
             TypeKind::Tuple(tuple) => {
                 write!(f, "(")?;
                 let mut iter = tuple.iter();
@@ -149,60 +153,6 @@ pub struct TypeFunction<'hir> {
     lhs: Type<'hir>,
     rhs: Type<'hir>,
     output: Type<'hir>,
-}
-
-#[derive(Copy, Clone, PartialEq)]
-pub struct List<'list, T> {
-    item: T,
-    next: Option<&'list Self>,
-}
-
-impl<'list, T> List<'list, T> {
-    /// Returns the number of elements in the list.
-    // Never empty
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        self.iter().count()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
-        let mut curr = Some(self);
-        std::iter::from_fn(move || {
-            let next = curr?;
-            curr = next.next;
-            Some(&next.item)
-        })
-    }
-}
-
-impl<'list, T: fmt::Display> List<'list, T> {
-    /// Returns a [`Display`](fmt::Display)able type with a provided delimiter.
-    pub fn delim<'a>(&'a self, delim: &'a str) -> Delim<'a, T> {
-        Delim { list: self, delim }
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for List<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
-}
-
-pub struct Delim<'a, T> {
-    list: &'a List<'a, T>,
-    delim: &'a str,
-}
-
-impl<T: fmt::Display> fmt::Display for Delim<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.list.item.fmt(f)?;
-        if let Some(remaining) = self.list.next {
-            for item in remaining.iter() {
-                write!(f, "{}{}", self.delim, item)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -356,7 +306,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         Ok(Expr {
                             kind: ExprKind::Ident {
                                 literal: ident.literal,
-                                ty,
+                                ty: ty.kind,
                             },
                             span: ident.span(),
                         })
@@ -365,122 +315,82 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         Err(PushedErrors)
                     }
                 }
-                ast::ExprLit::True(t) => Ok(Expr {
+                ast::ExprLit::True(tru) => Ok(Expr {
                     kind: ExprKind::Bool(true),
-                    span: t.span(),
+                    span: tru.span(),
                 }),
-                ast::ExprLit::False(f) => Ok(Expr {
+                ast::ExprLit::False(fals) => Ok(Expr {
                     kind: ExprKind::Bool(false),
-                    span: f.span(),
+                    span: fals.span(),
                 }),
             },
             ast::Expr::Tuple(tuple) => {
-                fn rec<'ast, 'hir, 'input: 'ast>(
-                    scope: &mut Scope<'_, 'hir, 'input>,
-                    mut exprs: impl Iterator<Item = &'ast ast::Expr<'ast, 'input>>,
-                ) -> Result<
-                    Option<(
-                        &'hir List<'hir, Expr<'hir, 'input>>,
-                        &'hir List<'hir, Type<'hir>>,
-                    )>,
-                    PushedErrors,
-                > {
-                    let Some(ast_expr) = exprs.next() else {
-                        return Ok(None);
-                    };
+                // Need to prealloc in the arena with defaults (essentially free to
+                // construct/destruct) so the inner RefCell doesn't get accessed simultaneously.
+                let types = self
+                    .hir
+                    .list_types
+                    .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
+                let exprs = self
+                    .hir
+                    .list_exprs
+                    .alloc_extend(iter::repeat_with(Expr::dummy).take(tuple.len()));
 
-                    let hir_expr = scope.lower(ast_expr)?;
-
-                    let (next_expr, next_type) = rec(scope, exprs)?.unzip();
-
-                    Ok(Some((
-                        scope.hir.list_exprs.alloc(List {
-                            item: hir_expr,
-                            next: next_expr,
-                        }),
-                        scope.hir.list_types.alloc(List {
-                            item: hir_expr.ty(),
-                            next: next_type,
-                        }),
-                    )))
+                for (i, ast_expr) in tuple.iter_elements().enumerate() {
+                    let hir_expr = self.lower(ast_expr)?;
+                    types[i] = hir_expr.ty();
+                    exprs[i] = hir_expr;
                 }
 
-                if let Some((exprs, ty)) = rec(self, tuple.iter_elements().copied())? {
-                    Ok(Expr {
-                        kind: ExprKind::Tuple {
-                            ty: Type {
-                                kind: TypeKind::Tuple(ty),
-                                span: tuple.span(),
-                            },
-                            exprs,
-                        },
-                        span: tuple.span(),
-                    })
-                } else {
-                    Ok(Expr {
-                        kind: ExprKind::Unit,
-                        span: tuple.span(),
-                    })
-                }
+                Ok(Expr {
+                    kind: ExprKind::Tuple {
+                        ty: TypeKind::Tuple(types),
+                        exprs,
+                    },
+                    span: tuple.span(),
+                })
             }
             ast::Expr::Closure(closure) => {
                 let mut inner = self.enter_scope();
-
                 let [lhs, rhs] = inner.type_of_many_params(closure.head())?;
                 let body = inner.lower(closure.head().body)?;
-
                 drop(inner);
 
-                fn rec<'ast, 'hir, 'input: 'ast>(
-                    scope: &mut Scope<'_, 'hir, 'input>,
-                    head: &ExprArm<'hir, 'input>,
-                    mut branches: impl Iterator<Item = &'ast ast::ExprArm<'ast, 'input>>,
-                ) -> Result<Option<&'hir List<'hir, ExprArm<'hir, 'input>>>, PushedErrors>
-                {
-                    let Some(branch) = branches.next() else {
-                        return Ok(None);
-                    };
+                let arm1 = self.hir.list_expr_arms.alloc(ExprArm { lhs, rhs, body });
+                let arms = if let Some(tail) = closure.tail() {
+                    let arms = self
+                        .hir
+                        .list_expr_arms
+                        .alloc_extend(iter::repeat_with(ExprArm::dummy).take(tail.len()));
 
-                    let mut inner = scope.enter_scope();
-                    let [lhs, rhs] = inner.type_of_many_params(branch)?;
-                    let body = inner.lower(branch.body)?;
-                    drop(inner);
+                    for (i, (_comma, arm)) in tail.iter().enumerate() {
+                        let mut inner = self.enter_scope();
+                        let [lhs, rhs] = inner.type_of_many_params(arm)?;
+                        let body = inner.lower(arm.body)?;
+                        drop(inner);
 
-                    scope.unify(head.lhs.ty(), lhs.ty());
-                    scope.unify(head.rhs.ty(), rhs.ty());
-                    scope.unify(head.body.ty(), body.ty());
+                        self.unify(arm1.lhs.ty(), lhs.ty());
+                        self.unify(arm1.rhs.ty(), rhs.ty());
+                        self.unify(arm1.body.ty(), body.ty());
 
-                    if scope.had_errors() {
-                        Err(PushedErrors)
-                    } else {
-                        let next = rec(scope, head, branches)?;
-                        Ok(Some(scope.hir.list_expr_arms.alloc(List {
-                            item: ExprArm { lhs, rhs, body },
-                            next,
-                        })))
+                        if self.had_errors() {
+                            return Err(PushedErrors);
+                        }
+                        arms[i] = ExprArm { lhs, rhs, body };
                     }
-                }
-
-                let head = ExprArm { lhs, rhs, body };
-
-                let next = if let Some(tail) = closure.tail() {
-                    rec(self, &head, tail)?
+                    arms
                 } else {
-                    None
+                    &mut []
                 };
-
-                let arms = self.hir.list_expr_arms.alloc(List { item: head, next });
 
                 Ok(Expr {
                     kind: ExprKind::Closure {
-                        ty: Type {
-                            kind: TypeKind::Function(self.hir.type_functions.alloc(TypeFunction {
-                                lhs: head.lhs.ty(),
-                                rhs: head.rhs.ty(),
-                                output: head.body.ty(),
-                            })),
-                            span: closure.head().span(),
-                        },
+                        ty: TypeKind::Function(self.hir.type_functions.alloc(TypeFunction {
+                            lhs: arm1.lhs.ty(),
+                            rhs: arm1.rhs.ty(),
+                            output: arm1.body.ty(),
+                        })),
+                        arm1,
                         arms,
                     },
                     span: closure.span(),
@@ -515,16 +425,16 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 );
 
                 if self.had_errors() {
-                    Err(PushedErrors)
-                } else {
-                    Ok(Expr {
-                        kind: ExprKind::Appl {
-                            ty,
-                            appl: self.hir.expr_appls.alloc(ExprAppl { lhs, function, rhs }),
-                        },
-                        span: appl.span(),
-                    })
+                    return Err(PushedErrors);
                 }
+
+                Ok(Expr {
+                    kind: ExprKind::Appl {
+                        ty: ty.kind,
+                        appl: self.hir.expr_appls.alloc(ExprAppl { lhs, function, rhs }),
+                    },
+                    span: appl.span(),
+                })
             }
         }
     }
@@ -547,11 +457,14 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     }
                 },
                 ast::ExprLit::Ident(ident) => {
-                    let ty = Type {
-                        kind: TypeKind::Var(self.hir.new_typevar()),
-                        span: ident.span(),
-                    };
-                    self.add_local(ident.literal, ty);
+                    let ty = TypeKind::Var(self.hir.new_typevar());
+                    self.add_local(
+                        ident.literal,
+                        Type {
+                            kind: ty,
+                            span: ident.span(),
+                        },
+                    );
                     Ok(Pat {
                         kind: PatKind::Ident {
                             literal: ident.literal,
@@ -560,66 +473,38 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         span: ident.span(),
                     })
                 }
-                ast::ExprLit::True(_) => Ok(Pat {
+                ast::ExprLit::True(tru) => Ok(Pat {
                     kind: PatKind::Bool(true),
-                    span: lit.span(),
+                    span: tru.span(),
                 }),
-                ast::ExprLit::False(_) => Ok(Pat {
+                ast::ExprLit::False(fals) => Ok(Pat {
                     kind: PatKind::Bool(false),
-                    span: lit.span(),
+                    span: fals.span(),
                 }),
             },
             ast::Pat::Tuple(tuple) => {
-                // TODO(quinn): this is mostly copy pasted from `Env::lower`,
-                // can we try to generalize them? Patterns are basically just
-                // expressions without closures or function application...
-                fn rec<'ast, 'hir, 'input: 'ast>(
-                    scope: &mut Scope<'_, 'hir, 'input>,
-                    mut pats: impl Iterator<Item = &'ast ast::ExprPat<'ast, 'input>>,
-                ) -> Result<
-                    Option<(
-                        &'hir List<'hir, Pat<'hir, 'input>>,
-                        &'hir List<'hir, Type<'hir>>,
-                    )>,
-                    PushedErrors,
-                > {
-                    let Some(pat) = pats.next() else {
-                        return Ok(None);
-                    };
+                let pats = self
+                    .hir
+                    .list_pats
+                    .alloc_extend(iter::repeat_with(Pat::dummy).take(tuple.len()));
+                let types = self
+                    .hir
+                    .list_types
+                    .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
 
-                    let pat = scope.lower_pat(pat)?;
-
-                    let (next_pat, next_type) = rec(scope, pats)?.unzip();
-
-                    Ok(Some((
-                        &*scope.hir.list_pats.alloc(List {
-                            item: pat,
-                            next: next_pat,
-                        }),
-                        scope.hir.list_types.alloc(List {
-                            item: pat.ty(),
-                            next: next_type,
-                        }),
-                    )))
+                for (i, ast_pat) in tuple.iter_elements().enumerate() {
+                    let hir_pat = self.lower_pat(ast_pat)?;
+                    types[i] = hir_pat.ty();
+                    pats[i] = hir_pat;
                 }
 
-                if let Some((exprs, ty)) = rec(self, tuple.iter_elements().copied())? {
-                    Ok(Pat {
-                        kind: PatKind::Tuple {
-                            ty: Type {
-                                kind: TypeKind::Tuple(ty),
-                                span: tuple.span(),
-                            },
-                            pats: exprs,
-                        },
-                        span: tuple.span(),
-                    })
-                } else {
-                    Ok(Pat {
-                        kind: PatKind::Unit,
-                        span: tuple.span(),
-                    })
-                }
+                Ok(Pat {
+                    kind: PatKind::Tuple {
+                        ty: TypeKind::Tuple(types),
+                        pats,
+                    },
+                    span: tuple.span(),
+                })
             } // When we add struct destructuring, we can unify the type of the field
               // with the returned type of the pattern in that field.
               // e.g. If we have a `struct Number(i32)` and have the pattern
@@ -652,7 +537,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     ) -> Result<[Pat<'hir, 'input>; 2], PushedErrors> {
         match &arm.params {
             ast::ExprParams::Zero => Ok([Pat {
-                kind: PatKind::Unit,
+                kind: PatKind::unit(),
                 span: arm.close.span(),
             }; 2]),
             ast::ExprParams::One(lhs) => {
@@ -660,7 +545,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 Ok([
                     lhs_type?,
                     Pat {
-                        kind: PatKind::Unit,
+                        kind: PatKind::unit(),
                         span: arm.close.span(),
                     },
                 ])
@@ -693,16 +578,6 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 },
                 Type {
                     kind: TypeKind::Bool,
-                    ..
-                },
-            ) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
-            (
-                Type {
-                    kind: TypeKind::Unit,
-                    ..
-                },
-                Type {
-                    kind: TypeKind::Unit,
                     ..
                 },
             ) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
@@ -834,10 +709,10 @@ impl Drop for Scope<'_, '_, '_> {
 pub struct Hir<'hir, 'input> {
     pub type_functions: &'hir Arena<TypeFunction<'hir>>,
     pub expr_appls: &'hir Arena<ExprAppl<'hir, 'input>>,
-    pub list_expr_arms: &'hir Arena<List<'hir, ExprArm<'hir, 'input>>>,
-    pub list_exprs: &'hir Arena<List<'hir, Expr<'hir, 'input>>>,
-    pub list_types: &'hir Arena<List<'hir, Type<'hir>>>,
-    pub list_pats: &'hir Arena<List<'hir, Pat<'hir, 'input>>>,
+    pub list_expr_arms: &'hir Arena<ExprArm<'hir, 'input>>,
+    pub list_exprs: &'hir Arena<Expr<'hir, 'input>>,
+    pub list_types: &'hir Arena<Type<'hir>>,
+    pub list_pats: &'hir Arena<Pat<'hir, 'input>>,
     pub typevars: Vec<Typevar<'hir>>,
     pub equations: Equations<'hir>,
 }
@@ -881,7 +756,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                                 kind: TypeKind::Function(self.type_functions.alloc(TypeFunction {
                                     lhs: x_type,
                                     rhs: Type {
-                                        kind: TypeKind::Unit,
+                                        kind: TypeKind::unit(),
                                         span: dummy,
                                     },
                                     output: y_type,
@@ -907,11 +782,11 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                         kind: TypeKind::Function(self.type_functions.alloc(TypeFunction {
                             lhs: x_type,
                             rhs: Type {
-                                kind: TypeKind::Unit,
+                                kind: TypeKind::unit(),
                                 span: dummy,
                             },
                             output: Type {
-                                kind: TypeKind::Unit,
+                                kind: TypeKind::unit(),
                                 span: dummy,
                             },
                         })),
@@ -948,19 +823,15 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                     ..ty
                 },
                 TypeKind::Tuple(types) => {
-                    fn rec<'hir>(
-                        tbl: &HashMap<Var, TypeKind<'hir>>,
-                        hir: &mut Hir<'hir, '_>,
-                        types: &'hir List<'hir, Type<'hir>>,
-                    ) -> &'hir List<'hir, Type<'hir>> {
-                        let next = types.next.map(|next| rec(tbl, hir, next));
-                        hir.list_types.alloc(List {
-                            item: replace_unbound_typevars(tbl, hir, types.item),
-                            next,
-                        })
+                    let replaced_types = hir
+                        .list_types
+                        .alloc_extend(iter::repeat_with(Type::dummy).take(types.len()));
+                    for (i, ty) in types.iter().enumerate() {
+                        replaced_types[i] = replace_unbound_typevars(tbl, hir, *ty);
                     }
+
                     Type {
-                        kind: TypeKind::Tuple(rec(tbl, hir, types)),
+                        kind: TypeKind::Tuple(replaced_types),
                         ..ty
                     }
                 }
@@ -996,27 +867,17 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                 other => map.get(other).copied().expect("type not found"),
             },
             ast::Type::Tuple(tuple) => {
-                // Build up the linked list of types from the inside out
-                fn rec<'hir, 'ast, 'input: 'ast>(
-                    hir: &mut Hir<'hir, 'input>,
-                    map: &HashMap<&str, Type<'hir>>,
-                    mut types: impl Iterator<Item = &'ast ast::Type<'ast, 'input>>,
-                ) -> Option<&'hir List<'hir, Type<'hir>>> {
-                    let item = hir.type_from_ast(types.next()?, map);
-                    let next = rec(hir, map, types);
-                    Some(hir.list_types.alloc(List { item, next }))
+                let types = self
+                    .list_types
+                    .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
+
+                for (i, ty) in tuple.iter_elements().enumerate() {
+                    types[i] = self.type_from_ast(ty, map);
                 }
 
-                if let Some(ty) = rec(self, map, tuple.iter_elements().copied()) {
-                    Type {
-                        kind: TypeKind::Tuple(ty),
-                        span: tuple.span(),
-                    }
-                } else {
-                    Type {
-                        kind: TypeKind::Unit,
-                        span: tuple.span(),
-                    }
+                Type {
+                    kind: TypeKind::Tuple(types),
+                    span: tuple.span(),
                 }
             }
             ast::Type::Function(fun) => {

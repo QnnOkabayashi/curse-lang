@@ -34,14 +34,11 @@ impl<'env> Builder<'env> {
             ExprKind::Bool(b) => {
                 write!(self.out, "p{id}[label = \"{b}: bool\"]").unwrap();
             }
-            ExprKind::Unit => {
-                write!(self.out, "p{id}[label = \"(): ()\"]").unwrap();
-            }
             ExprKind::Ident { ty, literal } => {
                 write!(
                     self.out,
                     "p{id}[label = \"{literal}: {ty}\"]",
-                    ty = ty.kind.pretty(self.env)
+                    ty = ty.pretty(self.env)
                 )
                 .unwrap();
             }
@@ -49,30 +46,31 @@ impl<'env> Builder<'env> {
                 write!(
                     self.out,
                     "p{id}[label = \"tuple: {ty}\"]",
-                    ty = ty.kind.pretty(self.env)
+                    ty = ty.pretty(self.env)
                 )
                 .unwrap();
                 for expr in exprs.iter() {
                     self.visit_expr(*expr, Some(id), None);
                 }
             }
-            ExprKind::Closure { ty, arms: branches } => {
+            ExprKind::Closure { ty, arm1, arms } => {
                 let name = name.unwrap_or("<closure>");
                 write!(
                     self.out,
                     "p{id}[label = \"{name}: {ty}\"]",
-                    ty = ty.kind.pretty(self.env)
+                    ty = ty.pretty(self.env)
                 )
                 .unwrap();
-                for branch in branches.iter() {
-                    self.visit_expr(branch.body, Some(id), None);
+                self.visit_expr(arm1.body, Some(id), None);
+                for arm in arms.iter() {
+                    self.visit_expr(arm.body, Some(id), None);
                 }
             }
             ExprKind::Appl { ty, appl } => {
                 write!(
                     self.out,
                     "p{id}[label = \"<appl>: {ty}\"]",
-                    ty = ty.kind.pretty(self.env)
+                    ty = ty.pretty(self.env)
                 )
                 .unwrap();
                 self.visit_expr(appl.lhs, Some(id), None);

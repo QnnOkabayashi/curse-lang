@@ -3,7 +3,7 @@
 //!
 //! Algorithm:
 //! https://doc.rust-lang.org/nightly/nightly-rustc/rustc_mir_build/thir/pattern/usefulness/index.html
-use crate::{Expr, ExprArm, ExprKind, Hir, List, Pat, PatKind, Ty, Type, TypeKind};
+use crate::{Expr, ExprArm, ExprKind, Hir, Pat, PatKind, Ty, Type, TypeKind};
 use std::fmt;
 
 mod error;
@@ -86,7 +86,7 @@ fn push_wildcard_fields_for_type<'hir, 'input>(
     hir: &Hir<'hir, 'input>,
 ) {
     match kind {
-        TypeKind::I32 | TypeKind::Bool | TypeKind::Unit | TypeKind::Function(_) => {}
+        TypeKind::I32 | TypeKind::Bool | TypeKind::Function(_) => {}
         TypeKind::Var(var) => {
             push_wildcard_fields_for_type(&hir[*var].expect("unbound type var").0.kind, stack, hir)
         }
@@ -121,7 +121,6 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                     is_ctor_useful(Bool(false))
                 }
             }
-            TypeKind::Unit => is_ctor_useful(Single),
             TypeKind::Var(var) => Self::visit_ctors_for_type(
                 &hir[*var].expect("unbound var").0.kind,
                 hir,
@@ -144,7 +143,6 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
             Pattern::Pat(pat) => match pat.kind {
                 PatKind::Bool(b) => Bool(b),
                 PatKind::I32(i) => Int(i),
-                PatKind::Unit => Single,
                 PatKind::Tuple { .. } => Single,
                 PatKind::Ident { .. } => Wildcard,
             },
@@ -157,9 +155,9 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
     fn push_fields(&self, stack: &mut Vec<Pattern<'hir, 'input>>, hir: &Hir<'hir, 'input>) {
         match self {
             Pattern::Pat(pat) => match pat.kind {
-                PatKind::Bool(_) | PatKind::I32(_) | PatKind::Unit => {}
+                PatKind::Bool(_) | PatKind::I32(_) => {}
                 PatKind::Tuple { pats, .. } => stack.extend(pats.iter().map(Pattern::Pat)),
-                PatKind::Ident { ty, .. } => push_wildcard_fields_for_type(&ty.kind, stack, hir),
+                PatKind::Ident { ref ty, .. } => push_wildcard_fields_for_type(ty, stack, hir),
             },
             Pattern::Wildcard(ty) => push_wildcard_fields_for_type(&ty.kind, stack, hir),
         }
@@ -343,7 +341,8 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
 }
 
 pub fn check_usefulness<'hir, 'input>(
-    arms: &'hir List<'hir, ExprArm<'hir, 'input>>,
+    arm1: &'hir ExprArm<'hir, 'input>,
+    arms: &'hir [ExprArm<'hir, 'input>],
     hir: &Hir<'hir, 'input>,
 ) -> Result<(), Report<'hir, 'input>> {
     let mut stacks = arms
@@ -352,11 +351,9 @@ pub fn check_usefulness<'hir, 'input>(
         .collect::<Vec<_>>();
 
     // Dummy wildcard type for the end to check exhaustiveness
-    let lhs_type = arms.item.lhs.ty();
-    let rhs_type = arms.item.rhs.ty();
     stacks.push(vec![
-        Pattern::Wildcard(lhs_type),
-        Pattern::Wildcard(rhs_type),
+        Pattern::Wildcard(arm1.lhs.ty()),
+        Pattern::Wildcard(arm1.rhs.ty()),
     ]);
 
     let mut m = Matrix {
@@ -406,18 +403,14 @@ pub fn check_matches_in_expr<'hir, 'input>(
     reports: &mut Vec<Report<'hir, 'input>>,
 ) {
     match expr.kind {
-        ExprKind::Builtin(_)
-        | ExprKind::I32(_)
-        | ExprKind::Bool(_)
-        | ExprKind::Unit
-        | ExprKind::Ident { .. } => {}
+        ExprKind::Builtin(_) | ExprKind::I32(_) | ExprKind::Bool(_) | ExprKind::Ident { .. } => {}
         ExprKind::Tuple { exprs, .. } => {
             for e in exprs.iter() {
                 check_matches_in_expr(e, hir, reports);
             }
         }
-        ExprKind::Closure { arms, .. } => {
-            if let Err(report) = check_usefulness(arms, hir) {
+        ExprKind::Closure { arm1, arms, .. } => {
+            if let Err(report) = check_usefulness(arm1, arms, hir) {
                 reports.push(report);
             }
         }

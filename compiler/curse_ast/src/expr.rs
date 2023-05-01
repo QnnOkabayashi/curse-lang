@@ -99,8 +99,8 @@ impl Span for ExprLit<'_> {
         match self {
             ExprLit::Integer(integer) => integer.span(),
             ExprLit::Ident(ident) => ident.span(),
-            ExprLit::True(t) => t.span(),
-            ExprLit::False(f) => f.span(),
+            ExprLit::True(tru) => tru.span(),
+            ExprLit::False(fals) => fals.span(),
         }
     }
 }
@@ -147,7 +147,7 @@ impl<'ast, 'input> ExprClosure<'ast, 'input> {
         }
     }
 
-    pub fn num_branches(&self) -> usize {
+    pub fn num_arms(&self) -> usize {
         match self {
             ExprClosure::NonPiecewise(_) => 1,
             ExprClosure::Piecewise { tail, .. } => 1 + tail.len(),
@@ -161,10 +161,10 @@ impl<'ast, 'input> ExprClosure<'ast, 'input> {
         }
     }
 
-    pub fn tail(&self) -> Option<impl Iterator<Item = &ExprArm<'ast, 'input>>> {
+    pub fn tail(&self) -> Option<&[(tok::Comma, ExprArm<'ast, 'input>)]> {
         match self {
             ExprClosure::NonPiecewise(_) => None,
-            ExprClosure::Piecewise { tail, .. } => Some(tail.iter().map(|(_comma, arm)| arm)),
+            ExprClosure::Piecewise { tail, .. } => Some(tail),
         }
     }
 }

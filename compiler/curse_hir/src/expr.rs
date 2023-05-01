@@ -1,4 +1,4 @@
-use crate::{List, Type, TypeFunction, TypeKind};
+use crate::{Type, TypeFunction, TypeKind};
 use std::fmt;
 
 pub trait Ty<'hir> {
@@ -11,32 +11,47 @@ pub struct Expr<'hir, 'input> {
     pub span: (usize, usize),
 }
 
+impl<'hir, 'input> Expr<'hir, 'input> {
+    pub fn dummy() -> Self {
+        Expr {
+            kind: ExprKind::unit(),
+            span: (0, 0),
+        }
+    }
+}
+
 /// A cheap `Copy` enum representing an expression.
 #[derive(Copy, Clone, Debug)]
 pub enum ExprKind<'hir, 'input> {
     Builtin(Builtin),
     I32(i32),
     Bool(bool),
-    Unit,
-    // TODO(quinn): Micro optimization opportunity here! If we do string interning
-    // and use u32 as the ids, we can make `Expr` be 16 bytes instead of 32.
-    // But would also have to simplify tuple/closure/appl to not have types inlined
     Ident {
-        ty: Type<'hir>,
+        ty: TypeKind<'hir>,
         literal: &'input str,
     },
     Tuple {
-        ty: Type<'hir>,
-        exprs: &'hir List<'hir, Expr<'hir, 'input>>,
+        ty: TypeKind<'hir>,
+        exprs: &'hir [Expr<'hir, 'input>],
     },
     Closure {
-        ty: Type<'hir>,
-        arms: &'hir List<'hir, ExprArm<'hir, 'input>>,
+        ty: TypeKind<'hir>,
+        arm1: &'hir ExprArm<'hir, 'input>,
+        arms: &'hir [ExprArm<'hir, 'input>],
     },
     Appl {
-        ty: Type<'hir>,
+        ty: TypeKind<'hir>,
         appl: &'hir ExprAppl<'hir, 'input>,
     },
+}
+
+impl<'hir, 'input> ExprKind<'hir, 'input> {
+    fn unit() -> Self {
+        ExprKind::Tuple {
+            ty: TypeKind::Tuple(&[]),
+            exprs: &[],
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -59,14 +74,22 @@ impl<'hir> Ty<'hir> for Expr<'hir, '_> {
                 kind: TypeKind::Bool,
                 span: self.span,
             },
-            ExprKind::Unit => Type {
-                kind: TypeKind::Unit,
+            ExprKind::Ident { ty, .. } => Type {
+                kind: ty,
                 span: self.span,
             },
-            ExprKind::Ident { ty, .. } => ty,
-            ExprKind::Tuple { ty, .. } => ty,
-            ExprKind::Closure { ty, .. } => ty,
-            ExprKind::Appl { ty, .. } => ty,
+            ExprKind::Tuple { ty, .. } => Type {
+                kind: ty,
+                span: self.span,
+            },
+            ExprKind::Closure { ty, .. } => Type {
+                kind: ty,
+                span: self.span,
+            },
+            ExprKind::Appl { ty, .. } => Type {
+                kind: ty,
+                span: self.span,
+            },
         }
     }
 }
@@ -184,38 +207,53 @@ pub struct ExprArm<'hir, 'input> {
     pub body: Expr<'hir, 'input>,
 }
 
+impl<'hir, 'input> ExprArm<'hir, 'input> {
+    pub fn dummy() -> Self {
+        ExprArm {
+            lhs: Pat::dummy(),
+            rhs: Pat::dummy(),
+            body: Expr::dummy(),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Pat<'hir, 'input> {
     pub kind: PatKind<'hir, 'input>,
     pub span: (usize, usize),
 }
 
+impl<'hir, 'input> Pat<'hir, 'input> {
+    pub fn dummy() -> Self {
+        Pat {
+            kind: PatKind::unit(),
+            span: (0, 0),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum PatKind<'hir, 'input> {
     Bool(bool),
     I32(i32),
-    Unit,
     Ident {
-        ty: Type<'hir>,
+        ty: TypeKind<'hir>,
         literal: &'input str,
     },
     Tuple {
-        ty: Type<'hir>,
-        pats: &'hir List<'hir, Pat<'hir, 'input>>,
+        ty: TypeKind<'hir>,
+        pats: &'hir [Pat<'hir, 'input>],
     },
 }
 
-// impl fmt::Display for Pat<'_, '_> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Pat::Bool(b) => b.fmt(f),
-//             Pat::I32(i) => i.fmt(f),
-//             Pat::Unit => f.write_str("()"),
-//             Pat::Ident { literal, .. } => f.write_str(literal),
-//             Pat::Tuple { exprs, .. } => write!(f, "({})", exprs.delim(", ")),
-//         }
-//     }
-// }
+impl<'hir, 'input> PatKind<'hir, 'input> {
+    pub fn unit() -> Self {
+        PatKind::Tuple {
+            ty: TypeKind::unit(),
+            pats: &[],
+        }
+    }
+}
 
 impl<'hir> Ty<'hir> for Pat<'hir, '_> {
     fn ty(&self) -> Type<'hir> {
@@ -228,16 +266,12 @@ impl<'hir> Ty<'hir> for Pat<'hir, '_> {
                 kind: TypeKind::I32,
                 span: self.span,
             },
-            PatKind::Unit => Type {
-                kind: TypeKind::Unit,
-                span: self.span,
-            },
             PatKind::Ident { ty, .. } => Type {
-                kind: ty.kind,
+                kind: ty,
                 span: self.span,
             },
             PatKind::Tuple { ty, .. } => Type {
-                kind: ty.kind,
+                kind: ty,
                 span: self.span,
             },
         }
