@@ -21,9 +21,6 @@ mod error;
 pub use error::*;
 pub mod usefulness;
 
-// / `Some` is bound, `None` is unbound.
-// pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
-
 pub enum Typevar<'hir> {
     /// An unbound type variable
     Unbound,
