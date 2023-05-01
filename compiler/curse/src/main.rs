@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::NESTED_CLOSURES;
+    let input: &str = programs::NESTED_MATCHES;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {
@@ -117,7 +117,7 @@ fn main() {
 
     let Ok(lowered_items) = lowered_items else {
         assert!(!errors.is_empty());
-        let errors = hir::SourceErrors {
+        let errors = hir::LowerErrors {
             code: NamedSource::new("input", input.to_string()),
             errors,
         };
@@ -137,14 +137,23 @@ fn main() {
     // let out = builder.finish();
     // println!("{out}");
 
-    let mut reports = vec![];
+    let mut usefulness_errors = vec![];
     for (_, expr) in lowered_items.values() {
-        hir::usefulness::check_matches_in_expr(expr, &hir, &mut reports);
+        hir::usefulness::check_matches_in_expr(expr, &hir, &mut usefulness_errors);
     }
 
-    if reports.is_empty() {
+    if usefulness_errors.is_empty() {
         println!("all matches are exhaustive and useful");
     } else {
-        println!("{reports:#?}");
+        let errors = hir::usefulness::UsefulnessErrors {
+            code: NamedSource::new("input", input.to_string()),
+            errors: usefulness_errors,
+        };
+        let mut buf = String::with_capacity(1024);
+        GraphicalReportHandler::new()
+            .render_report(&mut buf, &errors)
+            .unwrap();
+        println!("{buf}");
+        return;
     }
 }

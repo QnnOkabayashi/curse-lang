@@ -4,9 +4,11 @@
 //! Algorithm:
 //! https://doc.rust-lang.org/nightly/nightly-rustc/rustc_mir_build/thir/pattern/usefulness/index.html
 use crate::{Expr, ExprArm, ExprKind, Hir, Pat, PatKind, Ty, Type, TypeKind};
+use smallvec::SmallVec;
 use std::fmt;
 
 mod error;
+pub use error::{RedundentArmError, UsefulnessError, UsefulnessErrors};
 
 #[derive(Copy, Clone, Debug)]
 enum Constructor {
@@ -22,7 +24,6 @@ enum Constructor {
     Wildcard,
 }
 
-use smallvec::SmallVec;
 use Constructor::*;
 
 #[derive(Copy, Clone, Debug)]
@@ -53,24 +54,6 @@ pub enum Usefulness {
     Useful,
     // Which arms make it useless
     Not(SmallVec<[usize; 1]>),
-}
-
-/// A useless arm and its coverers, i.e. the arms above it that render
-/// it useless.
-#[derive(Debug)]
-struct UselessArm<'hir, 'input> {
-    coverers: SmallVec<[&'hir ExprArm<'hir, 'input>; 1]>,
-    useless_arm: &'hir ExprArm<'hir, 'input>,
-}
-
-/// Report the usefulness of one particular piecewise function
-///
-/// Invariants: either useless_arms is nonempty or is_exhaustive is true.
-#[derive(Debug)]
-pub struct Report<'hir, 'input> {
-    useless_arms: Vec<UselessArm<'hir, 'input>>,
-    // TODO(quinn): generate a list of examples of what still needs to be matched on
-    is_exhaustive: bool,
 }
 
 impl Usefulness {
@@ -301,10 +284,6 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
             };
         };
 
-        // let stack = &mut self.stacks[q_prime_generalized.stack];
-        // stack.truncate(q_prime_generalized.original_len);
-        // stack.push(pat);
-        // drop(q_prime_generalized);
         q_prime_generalized.cleanup(self.patstacks);
 
         // This could be a regular iterator if we made it so all types
@@ -352,7 +331,7 @@ pub fn check_usefulness<'hir, 'input>(
     arm1: &'hir ExprArm<'hir, 'input>,
     arms: &'hir [ExprArm<'hir, 'input>],
     hir: &Hir<'hir, 'input>,
-) -> Result<(), Report<'hir, 'input>> {
+) -> Result<(), UsefulnessError<'hir, 'input>> {
     let mut stacks = arms
         .iter()
         .map(|arm| vec![Pattern::Pat(&arm.lhs), Pattern::Pat(&arm.rhs)])
@@ -370,11 +349,11 @@ pub fn check_usefulness<'hir, 'input>(
         patstacks: stacks.as_mut_slice(),
     };
 
-    let mut useless_arms = vec![];
+    let mut redundent_arms = vec![];
 
     for (arm, id) in arms.iter().zip(1..) {
         if let Usefulness::Not(indices_of_coverers) = m.run(hir) {
-            useless_arms.push(UselessArm {
+            redundent_arms.push(RedundentArmError {
                 coverers: indices_of_coverers
                     .iter()
                     .map(|&idx| {
@@ -382,7 +361,7 @@ pub fn check_usefulness<'hir, 'input>(
                         arms.iter().nth(idx).expect("invalid idx")
                     })
                     .collect(),
-                useless_arm: arm,
+                redundent_arm: arm,
             });
         }
 
@@ -395,12 +374,12 @@ pub fn check_usefulness<'hir, 'input>(
 
     let dummy_wildcard_is_useful = m.run(hir).is_useful();
 
-    if useless_arms.is_empty() && !dummy_wildcard_is_useful {
+    if redundent_arms.is_empty() && !dummy_wildcard_is_useful {
         Ok(())
     } else {
-        Err(Report {
-            useless_arms,
-            is_exhaustive: !dummy_wildcard_is_useful,
+        Err(UsefulnessError {
+            redundent_arms,
+            non_exhaustive: dummy_wildcard_is_useful.then_some(arms.last().unwrap_or(arm1)),
         })
     }
 }
@@ -408,24 +387,24 @@ pub fn check_usefulness<'hir, 'input>(
 pub fn check_matches_in_expr<'hir, 'input>(
     expr: &Expr<'hir, 'input>,
     hir: &Hir<'hir, 'input>,
-    reports: &mut Vec<Report<'hir, 'input>>,
+    errors: &mut Vec<UsefulnessError<'hir, 'input>>,
 ) {
     match expr.kind {
         ExprKind::Builtin(_) | ExprKind::I32(_) | ExprKind::Bool(_) | ExprKind::Ident { .. } => {}
         ExprKind::Tuple { exprs, .. } => {
             for e in exprs.iter() {
-                check_matches_in_expr(e, hir, reports);
+                check_matches_in_expr(e, hir, errors);
             }
         }
         ExprKind::Closure { arm1, arms, .. } => {
             if let Err(report) = check_usefulness(arm1, arms, hir) {
-                reports.push(report);
+                errors.push(report);
             }
         }
         ExprKind::Appl { appl, .. } => {
-            check_matches_in_expr(&appl.lhs, hir, reports);
-            check_matches_in_expr(&appl.rhs, hir, reports);
-            check_matches_in_expr(&appl.function, hir, reports);
+            check_matches_in_expr(&appl.lhs, hir, errors);
+            check_matches_in_expr(&appl.rhs, hir, errors);
+            check_matches_in_expr(&appl.function, hir, errors);
         }
     }
 }

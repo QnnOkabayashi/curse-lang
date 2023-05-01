@@ -41,7 +41,7 @@ macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
         $(
             $(#[$attr])*
-            #[derive(Copy, Clone, Debug)]
+            #[derive(Copy, Clone, Debug, Default)]
             pub struct $name {
                 pub location: usize,
             }

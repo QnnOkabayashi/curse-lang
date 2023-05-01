@@ -1,4 +1,5 @@
 use crate::{Type, TypeFunction, TypeKind, Var};
+use curse_ast::{tok, Span};
 use std::fmt;
 
 pub trait Ty<'hir> {
@@ -241,18 +242,28 @@ impl fmt::Display for Builtin {
 #[derive(Copy, Clone, Debug)]
 // #[displaydoc("|{lhs}, {rhs}| {body}")]
 pub struct ExprArm<'hir, 'input> {
+    pub open: tok::Pipe,
     pub lhs: Pat<'hir, 'input>,
     pub rhs: Pat<'hir, 'input>,
+    pub close: tok::Pipe,
     pub body: Expr<'hir, 'input>,
 }
 
 impl<'hir, 'input> ExprArm<'hir, 'input> {
     pub fn dummy() -> Self {
         ExprArm {
+            open: tok::Pipe::default(),
             lhs: Pat::dummy(),
             rhs: Pat::dummy(),
+            close: tok::Pipe::default(),
             body: Expr::dummy(),
         }
+    }
+}
+
+impl Span for ExprArm<'_, '_> {
+    fn span(&self) -> (usize, usize) {
+        self.open.span_between(self.close)
     }
 }
 

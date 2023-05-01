@@ -4,8 +4,8 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
 #[derive(Debug, Diagnostic, Error)]
-#[error("A lowering error occurred.")]
-pub struct SourceErrors<'hir> {
+#[error("Errors in lowering")]
+pub struct LowerErrors<'hir> {
     #[source_code]
     pub code: NamedSource,
 

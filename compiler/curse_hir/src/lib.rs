@@ -17,6 +17,7 @@ pub use equations::{Edge, Equations, Node};
 mod expr;
 pub use expr::*;
 pub mod dot;
+// todo: move typeck to another module
 mod error;
 pub use error::*;
 pub mod usefulness;
@@ -364,7 +365,14 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 let body = inner.lower(closure.head().body)?;
                 drop(inner);
 
-                let arm1 = self.hir.list_expr_arms.alloc(ExprArm { lhs, rhs, body });
+                let arm1 = self.hir.list_expr_arms.alloc(ExprArm {
+                    open: closure.head().open,
+                    lhs,
+                    rhs,
+                    close: closure.head().close,
+                    body,
+                });
+
                 let arms = if let Some(tail) = closure.tail() {
                     let arms = self
                         .hir
@@ -384,7 +392,14 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         if self.had_errors() {
                             return Err(PushedErrors);
                         }
-                        arms[i] = ExprArm { lhs, rhs, body };
+
+                        arms[i] = ExprArm {
+                            open: arm.open,
+                            lhs,
+                            rhs,
+                            close: arm.close,
+                            body,
+                        };
                     }
                     arms
                 } else {
