@@ -87,9 +87,11 @@ fn push_wildcard_fields_for_type<'hir, 'input>(
 ) {
     match kind {
         TypeKind::I32 | TypeKind::Bool | TypeKind::Function(_) => {}
-        TypeKind::Var(var) => {
-            push_wildcard_fields_for_type(&hir[*var].expect("unbound type var").0.kind, stack, hir)
-        }
+        TypeKind::Var(var) => push_wildcard_fields_for_type(
+            &hir[*var].binding().expect("unbound type var").kind,
+            stack,
+            hir,
+        ),
         TypeKind::Tuple(types) => stack.extend(types.iter().copied().map(Pattern::Wildcard)),
     }
 }
@@ -122,7 +124,7 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                 }
             }
             TypeKind::Var(var) => Self::visit_ctors_for_type(
-                &hir[*var].expect("unbound var").0.kind,
+                &hir[*var].binding().expect("unbound var").kind,
                 hir,
                 is_ctor_useful,
             ),
@@ -145,6 +147,7 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                 PatKind::I32(i) => Int(i),
                 PatKind::Tuple { .. } => Single,
                 PatKind::Ident { .. } => Wildcard,
+                PatKind::Omitted(_) => Wildcard,
             },
             Pattern::Wildcard(_) => Wildcard,
         }
@@ -154,10 +157,15 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
     /// This function should only be called when it matches the q.
     fn push_fields(&self, stack: &mut Vec<Pattern<'hir, 'input>>, hir: &Hir<'hir, 'input>) {
         match self {
-            Pattern::Pat(pat) => match pat.kind {
+            Pattern::Pat(pat) => match &pat.kind {
                 PatKind::Bool(_) | PatKind::I32(_) => {}
                 PatKind::Tuple { pats, .. } => stack.extend(pats.iter().map(Pattern::Pat)),
-                PatKind::Ident { ref ty, .. } => push_wildcard_fields_for_type(ty, stack, hir),
+                PatKind::Ident { ty, .. } => push_wildcard_fields_for_type(ty, stack, hir),
+                PatKind::Omitted(var) => {
+                    let kind = &hir[*var].binding().expect("unbound typevar").kind;
+
+                    push_wildcard_fields_for_type(kind, stack, hir)
+                }
             },
             Pattern::Wildcard(ty) => push_wildcard_fields_for_type(&ty.kind, stack, hir),
         }

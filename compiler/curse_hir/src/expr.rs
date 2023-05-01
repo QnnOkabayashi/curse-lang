@@ -1,4 +1,4 @@
-use crate::{Type, TypeFunction, TypeKind};
+use crate::{Type, TypeFunction, TypeKind, Var};
 use std::fmt;
 
 pub trait Ty<'hir> {
@@ -244,6 +244,11 @@ pub enum PatKind<'hir, 'input> {
         ty: TypeKind<'hir>,
         pats: &'hir [Pat<'hir, 'input>],
     },
+    /// An omitted pattern.
+    ///
+    /// For example, the rhs pattern in `|x| ...` would be `Omitted`
+    /// because it is omitted.
+    Omitted(Var),
 }
 
 impl<'hir, 'input> PatKind<'hir, 'input> {
@@ -272,6 +277,10 @@ impl<'hir> Ty<'hir> for Pat<'hir, '_> {
             },
             PatKind::Tuple { ty, .. } => Type {
                 kind: ty,
+                span: self.span,
+            },
+            PatKind::Omitted(var) => Type {
+                kind: TypeKind::Var(var),
                 span: self.span,
             },
         }

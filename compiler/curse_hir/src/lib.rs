@@ -21,12 +21,35 @@ mod error;
 pub use error::*;
 pub mod usefulness;
 
-/// `Some` is bound, `None` is unbound.
-pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
+// / `Some` is bound, `None` is unbound.
+// pub type Typevar<'hir> = Option<(Type<'hir>, NodeIndex)>;
+
+pub enum Typevar<'hir> {
+    /// An unbound type variable
+    Unbound,
+    // A bound type variable.
+    Bound {
+        ty: Type<'hir>,
+        source: NodeIndex,
+    },
+}
+
+impl<'hir> Typevar<'hir> {
+    fn binding(&self) -> Option<&Type<'hir>> {
+        match self {
+            Typevar::Bound { ty, .. } => Some(ty),
+            Typevar::Unbound => None,
+        }
+    }
+}
 
 #[derive(Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[displaydoc("T{0}")]
 pub struct Var(usize);
+
+#[derive(Debug, Error)]
+#[error("Unbound typevar")]
+pub struct UnboundTypevar;
 
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("{kind}")]
@@ -40,14 +63,6 @@ impl<'hir> Type<'hir> {
         Type {
             kind: TypeKind::unit(),
             span: (0, 0),
-        }
-    }
-
-    pub fn resolve(&self, hir: &Hir<'hir, '_>) -> Self {
-        if let TypeKind::Var(var) = self.kind {
-            hir[var].expect("unbound typevar").0.resolve(hir)
-        } else {
-            *self
         }
     }
 }
@@ -73,17 +88,13 @@ impl<'hir> TypeKind<'hir> {
     }
 
     pub fn resolve(&self, hir: &Hir<'hir, '_>) -> Result<Self, UnboundTypevar> {
-        if let TypeKind::Var(var) = self {
-            hir[*var].ok_or(UnboundTypevar)?.0.kind.resolve(hir)
-        } else {
-            Ok(*self)
-        }
+        let TypeKind::Var(var) = self else {
+            return Ok(*self);
+        };
+
+        hir[*var].binding().ok_or(UnboundTypevar)?.kind.resolve(hir)
     }
 }
-
-#[derive(Debug, Error)]
-#[error("Unbound typevar")]
-pub struct UnboundTypevar;
 
 impl fmt::Display for TypeKind<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -128,7 +139,7 @@ impl fmt::Display for TypePrinter<'_> {
                 write!(f, ")")
             }
             TypeKind::Var(var) => {
-                if let Some((ty, _)) = &self.hir[var] {
+                if let Some(ty) = self.hir[var].binding() {
                     write!(f, "{}", ty.kind.pretty(self.hir))
                 } else {
                     write!(f, "{var}")
@@ -352,7 +363,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             }
             ast::Expr::Closure(closure) => {
                 let mut inner = self.enter_scope();
-                let [lhs, rhs] = inner.type_of_many_params(closure.head())?;
+                let [lhs, rhs] = inner.pats_of_many_params(closure.head())?;
                 let body = inner.lower(closure.head().body)?;
                 drop(inner);
 
@@ -365,7 +376,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
 
                     for (i, (_comma, arm)) in tail.iter().enumerate() {
                         let mut inner = self.enter_scope();
-                        let [lhs, rhs] = inner.type_of_many_params(arm)?;
+                        let [lhs, rhs] = inner.pats_of_many_params(arm)?;
                         let body = inner.lower(arm.body)?;
                         drop(inner);
 
@@ -531,7 +542,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     }
 
     /// Returns the [`Type<'hir>`]s of various [`ast::ExprParams`].
-    fn type_of_many_params(
+    fn pats_of_many_params(
         &mut self,
         arm: &ast::ExprArm<'_, 'input>,
     ) -> Result<[Pat<'hir, 'input>; 2], PushedErrors> {
@@ -626,8 +637,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     span: var_span,
                 },
             ) => {
-                if let Some((b, _binding_source)) = self.hir[var] {
-                    let proof = self.unify(a, b);
+                // Typevar::Bound also tracks where the typevar was bounded,
+                // which we can use if we want to. For now, using
+                // `.binding()` is easier because it allows us to also
+                // get the default if it's unbounded but has a default.
+                if let Some(b) = self.hir[var].binding() {
+                    let proof = self.unify(a, *b);
 
                     let conclusion = if self.had_errors() {
                         self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
@@ -642,7 +657,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     conclusion
                 } else if self.hir.check_equivalence(var, a) {
                     self.hir.equations.add_rule(Node::Equiv(t1, t2))
-                } else if self.hir.occurs(var, a) {
+                } else if self.hir.occurs(var, &a) {
                     self.errors.push(LowerError::CyclicType {
                         var_span,
                         var,
@@ -657,7 +672,10 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         .equations
                         .add_rule(Node::Binding { var, definition: a });
 
-                    self.hir[var] = Some((a, conclusion));
+                    self.hir[var] = Typevar::Bound {
+                        ty: a,
+                        source: conclusion,
+                    };
                     conclusion
                 }
             }
@@ -720,7 +738,7 @@ pub struct Hir<'hir, 'input> {
 impl<'hir, 'input> Hir<'hir, 'input> {
     pub fn new_typevar(&mut self) -> Var {
         let var = Var(self.typevars.len());
-        self.typevars.push(None);
+        self.typevars.push(Typevar::Unbound);
         var
     }
 
@@ -897,19 +915,19 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         }
     }
 
-    fn occurs(&self, var: Var, ty: Type<'_>) -> bool {
+    fn occurs(&self, var: Var, ty: &Type<'_>) -> bool {
         match ty.kind {
             TypeKind::Var(typevar) => {
-                if let Some((t, _)) = self[typevar] {
+                if let Some(t) = self[typevar].binding() {
                     self.occurs(var, t)
                 } else {
                     var == typevar
                 }
             }
             TypeKind::Function(fun) => {
-                self.occurs(var, fun.lhs)
-                    || self.occurs(var, fun.rhs)
-                    || self.occurs(var, fun.output)
+                self.occurs(var, &fun.lhs)
+                    || self.occurs(var, &fun.rhs)
+                    || self.occurs(var, &fun.output)
             }
             _ => false,
         }
@@ -921,8 +939,8 @@ impl<'hir, 'input> Hir<'hir, 'input> {
             ..
         } = ty
         {
-            if let Some((t, _)) = self[typevar] {
-                self.check_equivalence(var, t)
+            if let Some(t) = self[typevar].binding() {
+                self.check_equivalence(var, *t)
             } else {
                 var == typevar
             }

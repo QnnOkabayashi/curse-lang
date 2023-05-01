@@ -2,7 +2,7 @@ pub const FIB: &str = r#"
 let fib: i32 () -> i32 = {
     |0| 0,
     |1| 1,
-    |n| n - 1 fib () + (n - 2 fib ())
+    |n| (n - 1 fib ()) + (n - 2 fib ())
 }
 
 let main: () () -> () = ||
@@ -12,7 +12,7 @@ let main: () () -> () = ||
 pub const NESTED_CLOSURES: &str = r#"
 let foo: i32 () -> i32 = {
     |0| 5 + 5 in {
-        |10| 1,
+        |10| 1 in |x| x + x,
         |_| 2,
     },
     |_| 3,
@@ -20,7 +20,7 @@ let foo: i32 () -> i32 = {
 "#;
 
 pub const NOT_EXHAUSTIVE: &str = r#"
-let foo: i32 () -> i32 = {
+let not_exhaustive: i32 () -> i32 = {
     |1| 1,
     |2| 2
 }
