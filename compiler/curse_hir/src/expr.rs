@@ -65,7 +65,10 @@ pub struct ExprAppl<'hir, 'input> {
 impl<'hir> Ty<'hir> for Expr<'hir, '_> {
     fn ty(&self) -> Type<'hir> {
         match self.kind {
-            ExprKind::Builtin(builtin) => builtin.ty(),
+            ExprKind::Builtin(builtin) => Type {
+                kind: builtin.ty_kind(),
+                span: self.span,
+            },
             ExprKind::I32(_) => Type {
                 kind: TypeKind::I32,
                 span: self.span,
@@ -143,6 +146,42 @@ impl Builtin {
             Le => "<=",
             Ge => ">=",
             Print => "print",
+        }
+    }
+
+    fn ty_kind(&self) -> TypeKind<'static> {
+        use Builtin::*;
+        match self {
+            Add | Sub | Mul | Rem => TypeKind::Function(&TypeFunction {
+                lhs: Type {
+                    kind: TypeKind::I32,
+                    span: (0, 0),
+                },
+                rhs: Type {
+                    kind: TypeKind::I32,
+                    span: (0, 0),
+                },
+                output: Type {
+                    kind: TypeKind::I32,
+                    span: (0, 0),
+                },
+            }),
+            Div => todo!("Type of div"),
+            Eq | Lt | Gt | Le | Ge => TypeKind::Function(&TypeFunction {
+                lhs: Type {
+                    kind: TypeKind::I32,
+                    span: (0, 0),
+                },
+                rhs: Type {
+                    kind: TypeKind::I32,
+                    span: (0, 0),
+                },
+                output: Type {
+                    kind: TypeKind::I32,
+                    span: (0, 0),
+                },
+            }),
+            Print => todo!("Type of print"),
         }
     }
 }

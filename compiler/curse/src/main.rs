@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use curse_ast::Span;
-use curse_hir::{self as hir, dot};
+use curse_hir as hir;
 use curse_parse as parse;
 use hir::Ty;
 use miette::{GraphicalReportHandler, NamedSource};
@@ -18,7 +18,7 @@ fn main() {
         Ok(prog) => prog,
         Err(errors) => {
             let error = parse::SourceErrors {
-                code: NamedSource::new("<test>", input.to_string()),
+                code: NamedSource::new("input", input.to_string()),
                 errors,
             };
 
