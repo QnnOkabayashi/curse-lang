@@ -124,24 +124,27 @@ Lit: ExprLit<'input> = {
 Closure: Option<ExprClosure<'ast, 'input>> = {
     Arm => <>.map(ExprClosure::new_non_piecewise),
     "{" Arm ClosureTail? ","? "}" => match (<>) {
-        (lbrace, Some(head), Some(tail), trailing_comma, rbrace) => {
-            Some(ExprClosure::new_piecewise(lbrace, head, tail.unwrap_or_default(), trailing_comma, rbrace))
+        (lbrace, Some(head), Some(Ok(tail)), trailing_comma, rbrace) => {
+            Some(ExprClosure::new_piecewise(lbrace, head, tail, trailing_comma, rbrace))
+        }
+        (lbrace, Some(head), None, trailing_comma, rbrace) => {
+            Some(ExprClosure::new_piecewise(lbrace, head, vec![], trailing_comma, rbrace))
         }
         _ => None
     }
 };
 
-ClosureTail: Option<Vec<(tok::Comma, ExprArm<'ast, 'input>)>> = {
+ClosureTail: Result<Vec<(tok::Comma, ExprArm<'ast, 'input>)>, ()> = {
     "," Arm => match (<>) {
-        (comma, Some(arm)) => Some(vec![(comma, arm)]),
-        _ => None,
+        (comma, Some(arm)) => Ok(vec![(comma, arm)]),
+        _ => Err(()),
     },
     ClosureTail "," Arm => match (<>) {
-        (Some(mut tail), comma, Some(arm)) => {
+        (Ok(mut tail), comma, Some(arm)) => {
             tail.push((comma, arm));
-            Some(tail)
+            Ok(tail)
         }
-        _ => None
+        _ => Err(()),
     }
 }
 

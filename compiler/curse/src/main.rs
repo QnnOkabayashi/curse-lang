@@ -130,12 +130,12 @@ fn main() {
     };
 
     assert!(errors.is_empty());
-    // let mut builder = dot::Builder::new(&hir);
-    // for (name, (_, expr)) in lowered_items.iter() {
-    //     builder.visit_expr(*expr, None, Some(name));
-    // }
-    // let out = builder.finish();
-    // println!("{out}");
+    let mut builder = hir::dot::Builder::new(&hir);
+    for (name, (_, expr)) in lowered_items.iter() {
+        builder.visit_expr(*expr, None, Some(name));
+    }
+    let out = builder.finish();
+    println!("{out}");
 
     let mut usefulness_errors = vec![];
     for (_, expr) in lowered_items.values() {
