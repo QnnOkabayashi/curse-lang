@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::NESTED_MATCHES;
+    let input: &str = programs::COND;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {

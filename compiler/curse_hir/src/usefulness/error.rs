@@ -1,5 +1,7 @@
 //! Usefulness errors
 
+use std::iter;
+
 use crate::ExprArm;
 use curse_ast::Span;
 use miette::{Diagnostic, LabeledSpan, NamedSource};
@@ -30,7 +32,7 @@ pub struct UsefulnessError<'hir, 'input> {
 /// A useless arm and its coverers, i.e. the arms above it that render
 /// it useless.
 #[derive(Debug, Error)]
-#[error("Redundent arm")]
+#[error("Redundent arm in piecewise function")]
 pub struct RedundentArmError<'hir, 'input> {
     /// Invariants: at least one coverer
     pub coverers: SmallVec<[&'hir ExprArm<'hir, 'input>; 1]>,
@@ -39,35 +41,30 @@ pub struct RedundentArmError<'hir, 'input> {
 
 impl<'hir, 'input> Diagnostic for UsefulnessError<'hir, 'input> {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        if self.non_exhaustive.is_none() {
-            Some(Box::new("Try resolving any redundent arm conflicts."))
+        let help = if self.non_exhaustive.is_none() {
+            "Try resolving any redundent arm conflicts."
         } else if self.redundent_arms.is_empty() {
-            Some(Box::new("Try making the piecewise exhaustive."))
+            "Try making the piecewise exhaustive."
         } else {
-            Some(Box::new(
-                "Try making the piecewise exhaustive and resolving any redundent arm conflicts.",
-            ))
-        }
+            "Try making the piecewise exhaustive and resolving any redundent arm conflicts."
+        };
+
+        Some(Box::new(help))
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let non_exhaustive = self.non_exhaustive?;
 
-        Some(Box::new(
-            [LabeledSpan::new_with_span(
-                Some("This last branch doesn't exhaust all possible patterns".to_string()),
-                non_exhaustive.span(),
-            )]
-            .into_iter(),
-        ))
+        Some(Box::new(iter::once(LabeledSpan::new_with_span(
+            Some("This last branch doesn't exhaust all possible patterns".to_string()),
+            non_exhaustive.span(),
+        ))))
     }
 
     fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        Some(Box::new(self.redundent_arms.iter().map(|x| x as _)))
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        None
+        Some(Box::new(
+            self.redundent_arms.iter().map(|x| x as &dyn Diagnostic),
+        ))
     }
 }
 

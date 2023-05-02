@@ -29,8 +29,10 @@ let not_exhaustive: i32 () -> i32 = {
 
 pub const COND: &str = r#"
 let int_of_bool: bool () -> i32 = {
-    |false| 0,
-    |true| 1
+    |true| 0,
+    // |false| 0,
+    // |false| 0,
+    |_| 1 |_| 1
 }
 "#;
 

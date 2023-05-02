@@ -53,7 +53,7 @@ impl<'env> Builder<'env> {
                     self.visit_expr(*expr, Some(id), None);
                 }
             }
-            ExprKind::Closure { ty, arm1, arms } => {
+            ExprKind::Closure { ty, arms } => {
                 let name = name.unwrap_or("<closure>");
                 write!(
                     self.out,
@@ -61,7 +61,6 @@ impl<'env> Builder<'env> {
                     ty = ty.pretty(self.env)
                 )
                 .unwrap();
-                self.visit_expr(arm1.body, Some(id), None);
                 for arm in arms.iter() {
                     self.visit_expr(arm.body, Some(id), None);
                 }

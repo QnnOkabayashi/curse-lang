@@ -37,7 +37,6 @@ pub enum ExprKind<'hir, 'input> {
     },
     Closure {
         ty: TypeKind<'hir>,
-        arm1: &'hir ExprArm<'hir, 'input>,
         arms: &'hir [ExprArm<'hir, 'input>],
     },
     Appl {

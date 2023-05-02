@@ -185,17 +185,19 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
     /// Returns `Some` if values with the given ctor would match on this `PatternStack`.
     fn specialize_if_matching(
         &mut self,
-        specialization: Constructor,
+        ctor: Constructor,
         stacks: &mut [Vec<Pattern<'hir, 'input>>],
         hir: &Hir<'hir, 'input>,
     ) -> Option<Specialization<'hir, 'input>> {
-        let (patstack, pat) = self
+        // I am a wildcard, ctor in Bool(true).
+        // pat is a wildcard
+        let (patstack, self_pat) = self
             .specialize(stacks)
             .expect("we only call specialize on PatternStacks with an element in them");
         // when we scope, we should also return the think that we specialized on
-        let did_expand: bool = match (specialization, pat.ctor()) {
+        let did_expand: bool = match (ctor, self_pat.ctor()) {
             (Single, Single) => {
-                pat.push_fields(&mut stacks[patstack.stack_id], hir);
+                self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
                 true
             }
             (Bool(a), Bool(b)) => a == b,
@@ -223,7 +225,7 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
                 // Then we would do the _ and the 4, showing that the second branch isn't useful.
                 // Can't short circuit because there might be other elements in the patstack
                 // that aren't wildcarded.
-                pat.push_fields(&mut stacks[patstack.stack_id], hir);
+                self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
                 true
             }
             _ => panic!("different type patterns, this shouldn't be possible after typeck"),
@@ -233,7 +235,7 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
         } else {
             // We popped a thing off the stack, but didn't end up expanding it
             // because it didn't match, so don't forget to put it back :)
-            stacks[patstack.stack_id].push(pat);
+            stacks[patstack.stack_id].push(self_pat);
             None
         }
     }
@@ -279,25 +281,25 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
             // Nothing left to specialize on, are we unique?
             // We're unique if there's nothing above us anymore.
             return if self.specializations.is_empty() { Usefulness::Useful } else {
-                // println!("not useful because there are remaining arms above");
                 Usefulness::Not(self.specializations.iter().map(|spec| spec.stack_id).collect())
             };
         };
 
         q_prime_generalized.cleanup(self.patstacks);
 
-        // This could be a regular iterator if we made it so all types
-        // are resolved before this stage.
         pat.visit_ctors(hir, |ctor| {
             let q_prime = self
                 .q
                 .specialize_if_matching(ctor, self.patstacks, hir)
                 .expect("ctors came from q, so this should work");
+
             let specializations = self
                 .specializations
                 .iter_mut()
                 .filter_map(|spec| spec.specialize_if_matching(ctor, self.patstacks, hir))
                 .collect();
+
+            // We need to be useful w.r.t _all_ arms above
 
             let mut m = Matrix {
                 specializations,
@@ -328,10 +330,10 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
 }
 
 pub fn check_usefulness<'hir, 'input>(
-    arm1: &'hir ExprArm<'hir, 'input>,
     arms: &'hir [ExprArm<'hir, 'input>],
     hir: &Hir<'hir, 'input>,
 ) -> Result<(), UsefulnessError<'hir, 'input>> {
+    debug_assert!(arms.len() >= 1, "closures must have at least 1 arm");
     let mut stacks = arms
         .iter()
         .map(|arm| vec![Pattern::Pat(&arm.lhs), Pattern::Pat(&arm.rhs)])
@@ -339,8 +341,8 @@ pub fn check_usefulness<'hir, 'input>(
 
     // Dummy wildcard type for the end to check exhaustiveness
     stacks.push(vec![
-        Pattern::Wildcard(arm1.lhs.ty()),
-        Pattern::Wildcard(arm1.rhs.ty()),
+        Pattern::Wildcard(arms[0].lhs.ty()),
+        Pattern::Wildcard(arms[0].rhs.ty()),
     ]);
 
     let mut m = Matrix {
@@ -349,18 +351,13 @@ pub fn check_usefulness<'hir, 'input>(
         patstacks: stacks.as_mut_slice(),
     };
 
-    let mut redundent_arms = vec![];
+    // We expect no redundent arms in the hot path
+    let mut redundent_arms = Vec::with_capacity(0);
 
     for (arm, id) in arms.iter().zip(1..) {
         if let Usefulness::Not(indices_of_coverers) = m.run(hir) {
             redundent_arms.push(RedundentArmError {
-                coverers: indices_of_coverers
-                    .iter()
-                    .map(|&idx| {
-                        // TODO(quinn): make this not use `nth`
-                        arms.iter().nth(idx).expect("invalid idx")
-                    })
-                    .collect(),
+                coverers: indices_of_coverers.iter().map(|&idx| &arms[idx]).collect(),
                 redundent_arm: arm,
             });
         }
@@ -379,7 +376,7 @@ pub fn check_usefulness<'hir, 'input>(
     } else {
         Err(UsefulnessError {
             redundent_arms,
-            non_exhaustive: dummy_wildcard_is_useful.then_some(arms.last().unwrap_or(arm1)),
+            non_exhaustive: dummy_wildcard_is_useful.then_some(arms.last().unwrap()),
         })
     }
 }
@@ -396,8 +393,8 @@ pub fn check_matches_in_expr<'hir, 'input>(
                 check_matches_in_expr(e, hir, errors);
             }
         }
-        ExprKind::Closure { arm1, arms, .. } => {
-            if let Err(report) = check_usefulness(arm1, arms, hir) {
+        ExprKind::Closure { arms, .. } => {
+            if let Err(report) = check_usefulness(arms, hir) {
                 errors.push(report);
             }
         }

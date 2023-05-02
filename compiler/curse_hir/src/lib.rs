@@ -365,21 +365,21 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 let body = inner.lower(closure.head().body)?;
                 drop(inner);
 
-                let arm1 = self.hir.list_expr_arms.alloc(ExprArm {
+                let arm1 = ExprArm {
                     open: closure.head().open,
                     lhs,
                     rhs,
                     close: closure.head().close,
                     body,
-                });
+                };
 
                 let arms = if let Some(tail) = closure.tail() {
                     let arms = self
                         .hir
                         .list_expr_arms
-                        .alloc_extend(iter::repeat_with(ExprArm::dummy).take(tail.len()));
+                        .alloc_extend(iter::repeat_with(ExprArm::dummy).take(1 + tail.len()));
 
-                    for (i, (_comma, arm)) in tail.iter().enumerate() {
+                    for ((_comma, arm), i) in tail.iter().zip(1..) {
                         let mut inner = self.enter_scope();
                         let [lhs, rhs] = inner.pats_of_many_params(arm)?;
                         let body = inner.lower(arm.body)?;
@@ -401,9 +401,10 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                             body,
                         };
                     }
+                    arms[0] = arm1;
                     arms
                 } else {
-                    &mut []
+                    std::slice::from_ref(self.hir.list_expr_arms.alloc(arm1))
                 };
 
                 Ok(Expr {
@@ -413,7 +414,6 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                             rhs: arm1.rhs.ty(),
                             output: arm1.body.ty(),
                         })),
-                        arm1,
                         arms,
                     },
                     span: closure.span(),
