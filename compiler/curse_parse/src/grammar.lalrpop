@@ -202,4 +202,13 @@ Expr = {
 pub EndExpr = {
     EndTerm,
     Appl<EndTerm> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
+    Expr Closure => match (<>) {
+        (Some(_expr), Some(closure)) => {
+            errors.push(Error::ClosureApplMissingRhs {
+                location: closure.span().0,
+            });
+            None
+        }
+        _ => None,
+    },
 };
