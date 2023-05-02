@@ -16,7 +16,7 @@ pub struct SourceErrors {
 #[derive(Debug, Diagnostic, Error)]
 pub enum Error {
     #[error("Closure application missing right-hand side.")]
-    #[diagnostic(help("If you're trying to pass a value to a function, use the `in` function or wrap the closure in `()` and add the right-hand side argument."))]
+    #[diagnostic(help("If you're trying to pass a value to a function, use the `in` function, or wrap the closure in `()` and add the right-hand side argument."))]
     ClosureApplMissingRhs {
         /// The first token of the closure
         #[label("Cannot call this closure without a right-hand side")]

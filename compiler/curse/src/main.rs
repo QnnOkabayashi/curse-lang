@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::COND;
+    let input: &str = programs::SUPERCHARGE;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {
@@ -130,17 +130,15 @@ fn main() {
     };
 
     assert!(errors.is_empty());
-    let mut builder = hir::dot::Builder::new(&hir);
-    for (name, (_, expr)) in lowered_items.iter() {
-        builder.visit_expr(*expr, None, Some(name));
-    }
-    let out = builder.finish();
-    println!("{out}");
+    // let mut builder = hir::dot::Builder::new(&hir);
+    // for (name, (_, expr)) in lowered_items.iter() {
+    //     builder.visit_expr(*expr, None, Some(name));
+    // }
+    // let out = builder.finish();
+    // println!("{out}");
 
-    let mut usefulness_errors = vec![];
-    for (_, expr) in lowered_items.values() {
-        hir::usefulness::check_matches_in_expr(expr, &hir, &mut usefulness_errors);
-    }
+    let usefulness_errors =
+        hir::usefulness::check(lowered_items.values().map(|(_, expr)| expr), &hir);
 
     if usefulness_errors.is_empty() {
         println!("all matches are exhaustive and useful");

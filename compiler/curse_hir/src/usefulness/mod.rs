@@ -329,7 +329,7 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
     }
 }
 
-pub fn check_usefulness<'hir, 'input>(
+fn check_usefulness<'hir, 'input>(
     arms: &'hir [ExprArm<'hir, 'input>],
     hir: &Hir<'hir, 'input>,
 ) -> Result<(), UsefulnessError<'hir, 'input>> {
@@ -381,7 +381,7 @@ pub fn check_usefulness<'hir, 'input>(
     }
 }
 
-pub fn check_matches_in_expr<'hir, 'input>(
+fn check_matches_in_expr<'hir, 'input>(
     expr: &Expr<'hir, 'input>,
     hir: &Hir<'hir, 'input>,
     errors: &mut Vec<UsefulnessError<'hir, 'input>>,
@@ -405,3 +405,17 @@ pub fn check_matches_in_expr<'hir, 'input>(
         }
     }
 }
+
+pub fn check<'a, 'hir: 'a, 'input: 'a>(
+    exprs: impl Iterator<Item = &'a Expr<'hir, 'input>>,
+    hir: &Hir<'hir, 'input>,
+) -> Vec<UsefulnessError<'hir, 'input>> {
+    let mut errors = Vec::with_capacity(0);
+    for expr in exprs {
+        check_matches_in_expr(expr, hir, &mut errors);
+    }
+    errors
+}
+
+
+

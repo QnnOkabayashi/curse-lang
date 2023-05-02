@@ -15,7 +15,6 @@ let foo: i32 () -> i32 = {
         |10| 1 in |x| x + x,
         |_| 2,
     },
-    // It sees ((=) > (3))
     |_| 3,
 }
 "#;
@@ -29,8 +28,8 @@ let not_exhaustive: i32 () -> i32 = {
 
 pub const COND: &str = r#"
 let int_of_bool: bool () -> i32 = {
-    |true| 0,
-    |_| 1 |_| 1
+    |true| 1,
+    |false| 0
 }
 "#;
 
