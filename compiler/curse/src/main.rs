@@ -11,7 +11,7 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::CHOICE_TYPES;
+    let input: &str = programs::FIB;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {

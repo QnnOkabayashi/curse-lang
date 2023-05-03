@@ -7,6 +7,9 @@ extern {
     type Location = usize;
     type Error = LexError;
 
+    // Any changes here must also be reflected in:
+    // - curse_parse/src/lexer.rs
+    // - curse_ast/src/tok.rs
     enum Token<'input> {
         // In the grammar, if we specify the string on the lhs,
         // it means that we're waiting for the lexer to
@@ -26,7 +29,7 @@ extern {
         "%" => Token::Percent(<tok::Percent>),
         "/" => Token::Slash(<tok::Slash>),
         "|" => Token::Pipe(<tok::Pipe>),
-        "let" => Token::Let(<tok::Let>),
+        "fn" => Token::Fn(<tok::Fn>),
         "else" => Token::Else(<tok::Else>),
         "struct" => Token::Struct(<tok::Struct>),
         "choice" => Token::Choice(<tok::Choice>),
@@ -65,9 +68,9 @@ pub Program: Option<Program<'ast, 'input>> = {
 };
 
 FnDef: Option<FnDef<'ast, 'input>> =
-    "let" Ident (Ident)* ":" Type "=" EndExpr => match (<>) {
-    (let_, ident, generics, colon, Some(typ), equal, Some(expr)) => {
-        Some(FnDef::new(let_, ident, generics, colon, typ, equal, expr))
+    "fn" Ident (Ident)* ":" Type "=" EndExpr => match (<>) {
+    (fn_, ident, generics, colon, Some(typ), equal, Some(expr)) => {
+        Some(FnDef::new(fn_, ident, generics, colon, typ, equal, expr))
     }
     _ => None,
 };

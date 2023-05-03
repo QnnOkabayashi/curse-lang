@@ -80,6 +80,9 @@ macro_rules! declare_tokens {
     }
 }
 
+// Any changes here must also be reflected in:
+// - curse_parse/src/lexer.rs
+// - curse_parse/src/grammar.lalrpop
 declare_tokens! {
     ":" => Colon,
     "," => Comma,
@@ -94,7 +97,7 @@ declare_tokens! {
     "%" => Percent,
     "/" => Slash,
     "|" => Pipe,
-    "let" => Let,
+    "fn" => Fn,
     "else" => Else,
     "struct" => Struct,
     "choice" => Choice,
