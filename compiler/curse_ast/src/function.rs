@@ -8,7 +8,7 @@ pub struct FnDef<'ast, 'input> {
     pub generics: Vec<tok::Ident<'input>>,
     pub colon: tok::Colon,
     pub typ: &'ast Type<'ast, 'input>,
-    pub equal: tok::Equal,
+    pub eq: tok::Eq,
     pub expr: &'ast Expr<'ast, 'input>,
 }
 
@@ -19,7 +19,7 @@ impl<'ast, 'input> FnDef<'ast, 'input> {
         generics: Vec<tok::Ident<'input>>,
         colon: tok::Colon,
         typ: &'ast Type<'ast, 'input>,
-        equal: tok::Equal,
+        eq: tok::Eq,
         expr: &'ast Expr<'ast, 'input>,
     ) -> Self {
         FnDef {
@@ -28,7 +28,7 @@ impl<'ast, 'input> FnDef<'ast, 'input> {
             generics,
             colon,
             typ,
-            equal,
+            eq,
             expr,
         }
     }

@@ -38,11 +38,11 @@ extern {
         "->" => Token::Arrow(<tok::Arrow>),
         "'" => Token::Apostrophe(<tok::Apostrophe>),
 
-        "=" => Token::Equal(<tok::Equal>),
-        "<" => Token::Less(<tok::Less>),
-        ">" => Token::Greater(<tok::Greater>),
-        "<=" => Token::LessEqual(<tok::LessEqual>),
-        ">=" => Token::GreaterEqual(<tok::GreaterEqual>),
+        "=" => Token::Eq(<tok::Eq>),
+        "<" => Token::Lt(<tok::Lt>),
+        ">" => Token::Gt(<tok::Gt>),
+        "<=" => Token::Le(<tok::Le>),
+        ">=" => Token::Ge(<tok::Ge>),
 
         "true" => Token::True(<tok::True>),
         "false" => Token::False(<tok::False>),
@@ -169,11 +169,11 @@ Symbol: ExprSymbol = {
     ";" => ExprSymbol::Semi(<>),
     "%" => ExprSymbol::Percent(<>),
     "/" => ExprSymbol::Slash(<>),
-    "=" => ExprSymbol::Equal(<>),
-    "<" => ExprSymbol::Less(<>),
-    ">" => ExprSymbol::Greater(<>),
-    "<=" => ExprSymbol::LessEqual(<>),
-    ">=" => ExprSymbol::GreaterEqual(<>),
+    "=" => ExprSymbol::Eq(<>),
+    "<" => ExprSymbol::Lt(<>),
+    ">" => ExprSymbol::Gt(<>),
+    "<=" => ExprSymbol::Le(<>),
+    ">=" => ExprSymbol::Ge(<>),
 };
 
 Lit: ExprLit<'input> = {

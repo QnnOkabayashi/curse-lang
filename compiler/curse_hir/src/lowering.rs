@@ -43,7 +43,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         self.locals
             .iter()
             .rev()
-            .find_map(|(ident, ty)| (*ident == var).then_some(*ty))
+            .find_map(|(ident, ty)| (*ident == var).then(|| *ty))
             .or_else(|| {
                 self.globals
                     .get(var)
@@ -106,23 +106,23 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 ast::ExprSymbol::Dot(_dot) => todo!("lower `.`"),
                 ast::ExprSymbol::DotDot(_dotdot) => todo!("lower `..`"),
                 ast::ExprSymbol::Semi(_semi) => todo!("lower `;`"),
-                ast::ExprSymbol::Equal(equal) => Ok(Expr {
+                ast::ExprSymbol::Eq(equal) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Eq),
                     span: equal.span(),
                 }),
-                ast::ExprSymbol::Less(less) => Ok(Expr {
+                ast::ExprSymbol::Lt(less) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Lt),
                     span: less.span(),
                 }),
-                ast::ExprSymbol::Greater(greater) => Ok(Expr {
+                ast::ExprSymbol::Gt(greater) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Gt),
                     span: greater.span(),
                 }),
-                ast::ExprSymbol::LessEqual(less_equal) => Ok(Expr {
+                ast::ExprSymbol::Le(less_equal) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Le),
                     span: less_equal.span(),
                 }),
-                ast::ExprSymbol::GreaterEqual(greater_equal) => Ok(Expr {
+                ast::ExprSymbol::Ge(greater_equal) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Ge),
                     span: greater_equal.span(),
                 }),

@@ -123,11 +123,11 @@ declare_tokens! {
     "->" => Arrow,
     "'" => Apostrophe,
 
-    "=" => Equal,
-    "<" => Less,
-    ">" => Greater,
-    "<=" => LessEqual,
-    ">=" => GreaterEqual,
+    "=" => Eq,
+    "<" => Lt,
+    ">" => Gt,
+    "<=" => Le,
+    ">=" => Ge,
 
     "true" => True,
     "false" => False,

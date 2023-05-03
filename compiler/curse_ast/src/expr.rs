@@ -59,11 +59,11 @@ pub enum ExprSymbol {
     Semi(tok::Semi),
     Percent(tok::Percent),
     Slash(tok::Slash),
-    Equal(tok::Equal),
-    Less(tok::Less),
-    Greater(tok::Greater),
-    LessEqual(tok::LessEqual),
-    GreaterEqual(tok::GreaterEqual),
+    Eq(tok::Eq),
+    Lt(tok::Lt),
+    Gt(tok::Gt),
+    Le(tok::Le),
+    Ge(tok::Ge),
 }
 
 impl Span for ExprSymbol {
@@ -77,11 +77,11 @@ impl Span for ExprSymbol {
             ExprSymbol::Semi(semi) => semi.span(),
             ExprSymbol::Percent(percent) => percent.span(),
             ExprSymbol::Slash(slash) => slash.span(),
-            ExprSymbol::Equal(equal) => equal.span(),
-            ExprSymbol::Less(less) => less.span(),
-            ExprSymbol::Greater(greater) => greater.span(),
-            ExprSymbol::LessEqual(less_equal) => less_equal.span(),
-            ExprSymbol::GreaterEqual(greater_equal) => greater_equal.span(),
+            ExprSymbol::Eq(equal) => equal.span(),
+            ExprSymbol::Lt(less) => less.span(),
+            ExprSymbol::Gt(greater) => greater.span(),
+            ExprSymbol::Le(less_equal) => less_equal.span(),
+            ExprSymbol::Ge(greater_equal) => greater_equal.span(),
         }
     }
 }
