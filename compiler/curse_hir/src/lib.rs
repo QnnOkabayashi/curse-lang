@@ -338,11 +338,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 // construct/destruct) so the inner RefCell doesn't get accessed simultaneously.
                 let types = self
                     .hir
-                    .list_types
+                    .types
                     .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
                 let exprs = self
                     .hir
-                    .list_exprs
+                    .exprs
                     .alloc_extend(iter::repeat_with(Expr::dummy).take(tuple.len()));
 
                 for (i, ast_expr) in tuple.iter_elements().enumerate() {
@@ -376,7 +376,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 let arms = if let Some(tail) = closure.tail() {
                     let arms = self
                         .hir
-                        .list_expr_arms
+                        .arms
                         .alloc_extend(iter::repeat_with(ExprArm::dummy).take(1 + tail.len()));
 
                     for ((_comma, arm), i) in tail.iter().zip(1..) {
@@ -404,12 +404,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     arms[0] = arm1;
                     arms
                 } else {
-                    std::slice::from_ref(self.hir.list_expr_arms.alloc(arm1))
+                    std::slice::from_ref(self.hir.arms.alloc(arm1))
                 };
 
                 Ok(Expr {
                     kind: ExprKind::Closure {
-                        ty: TypeKind::Function(self.hir.type_functions.alloc(TypeFunction {
+                        ty: TypeKind::Function(self.hir.type_fns.alloc(TypeFunction {
                             lhs: arm1.lhs.ty(),
                             rhs: arm1.rhs.ty(),
                             output: arm1.body.ty(),
@@ -433,7 +433,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     span: appl.span(),
                 };
 
-                let expected_function = self.hir.type_functions.alloc(TypeFunction {
+                let expected_function = self.hir.type_fns.alloc(TypeFunction {
                     lhs: lhs.ty(),
                     rhs: rhs.ty(),
                     output: ty,
@@ -454,7 +454,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 Ok(Expr {
                     kind: ExprKind::Appl {
                         ty: ty.kind,
-                        appl: self.hir.expr_appls.alloc(ExprAppl { lhs, function, rhs }),
+                        appl: self.hir.appls.alloc(ExprAppl { lhs, function, rhs }),
                     },
                     span: appl.span(),
                 })
@@ -508,11 +508,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             ast::Pat::Tuple(tuple) => {
                 let pats = self
                     .hir
-                    .list_pats
+                    .pats
                     .alloc_extend(iter::repeat_with(Pat::dummy).take(tuple.len()));
                 let types = self
                     .hir
-                    .list_types
+                    .types
                     .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
 
                 for (i, ast_pat) in tuple.iter_elements().enumerate() {
@@ -737,12 +737,12 @@ impl Drop for Scope<'_, '_, '_> {
 }
 
 pub struct Hir<'hir, 'input> {
-    pub type_functions: &'hir Arena<TypeFunction<'hir>>,
-    pub expr_appls: &'hir Arena<ExprAppl<'hir, 'input>>,
-    pub list_expr_arms: &'hir Arena<ExprArm<'hir, 'input>>,
-    pub list_exprs: &'hir Arena<Expr<'hir, 'input>>,
-    pub list_types: &'hir Arena<Type<'hir>>,
-    pub list_pats: &'hir Arena<Pat<'hir, 'input>>,
+    pub type_fns: &'hir Arena<TypeFunction<'hir>>,
+    pub appls: &'hir Arena<ExprAppl<'hir, 'input>>,
+    pub arms: &'hir Arena<ExprArm<'hir, 'input>>,
+    pub exprs: &'hir Arena<Expr<'hir, 'input>>,
+    pub types: &'hir Arena<Type<'hir>>,
+    pub pats: &'hir Arena<Pat<'hir, 'input>>,
     pub typevars: Vec<Typevar<'hir>>,
     pub equations: Equations<'hir>,
 }
@@ -780,10 +780,10 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                 Polytype {
                     typevars: smallvec![x, y],
                     ty: Type {
-                        kind: TypeKind::Function(self.type_functions.alloc(TypeFunction {
+                        kind: TypeKind::Function(self.type_fns.alloc(TypeFunction {
                             lhs: x_type,
                             rhs: Type {
-                                kind: TypeKind::Function(self.type_functions.alloc(TypeFunction {
+                                kind: TypeKind::Function(self.type_fns.alloc(TypeFunction {
                                     lhs: x_type,
                                     rhs: Type {
                                         kind: TypeKind::unit(),
@@ -809,7 +809,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                 Polytype {
                     typevars: smallvec![x],
                     ty: Type {
-                        kind: TypeKind::Function(self.type_functions.alloc(TypeFunction {
+                        kind: TypeKind::Function(self.type_fns.alloc(TypeFunction {
                             lhs: x_type,
                             rhs: Type {
                                 kind: TypeKind::unit(),
@@ -845,7 +845,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                     ..ty
                 },
                 TypeKind::Function(fun) => Type {
-                    kind: TypeKind::Function(hir.type_functions.alloc(TypeFunction {
+                    kind: TypeKind::Function(hir.type_fns.alloc(TypeFunction {
                         lhs: replace_unbound_typevars(tbl, hir, fun.lhs),
                         rhs: replace_unbound_typevars(tbl, hir, fun.rhs),
                         output: replace_unbound_typevars(tbl, hir, fun.output),
@@ -854,7 +854,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                 },
                 TypeKind::Tuple(types) => {
                     let replaced_types = hir
-                        .list_types
+                        .types
                         .alloc_extend(iter::repeat_with(Type::dummy).take(types.len()));
                     for (i, ty) in types.iter().enumerate() {
                         replaced_types[i] = replace_unbound_typevars(tbl, hir, *ty);
@@ -898,7 +898,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
             },
             ast::Type::Tuple(tuple) => {
                 let types = self
-                    .list_types
+                    .types
                     .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
 
                 for (i, ty) in tuple.iter_elements().enumerate() {
@@ -916,7 +916,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                 let output = self.type_from_ast(fun.ret, map);
 
                 Type {
-                    kind: TypeKind::Function(self.type_functions.alloc(TypeFunction {
+                    kind: TypeKind::Function(self.type_fns.alloc(TypeFunction {
                         lhs,
                         rhs,
                         output,

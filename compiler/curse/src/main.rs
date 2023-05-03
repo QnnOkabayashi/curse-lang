@@ -11,11 +11,11 @@ use typed_arena::Arena;
 mod programs;
 
 fn main() {
-    let input: &str = programs::SUPERCHARGE;
+    let input: &str = programs::CHOICE_TYPES;
 
     let ast = parse::Ast::new();
     let program = match parse::parse_program(&ast, input) {
-        Ok(prog) => prog,
+        Ok(program) => program,
         Err(errors) => {
             let error = parse::SourceErrors {
                 code: NamedSource::new("input", input.to_string()),
@@ -32,25 +32,27 @@ fn main() {
         }
     };
 
+    // println!("{:#?}", program.choice_defs);
+
     let mut hir = hir::Hir {
-        type_functions: &Arena::new(),
-        expr_appls: &Arena::new(),
-        list_expr_arms: &Arena::new(),
-        list_exprs: &Arena::new(),
-        list_types: &Arena::new(),
-        list_pats: &Arena::new(),
+        type_fns: &Arena::new(),
+        appls: &Arena::new(),
+        arms: &Arena::new(),
+        exprs: &Arena::new(),
+        types: &Arena::new(),
+        pats: &Arena::new(),
         typevars: Vec::new(),
         equations: hir::Equations::new(),
     };
 
-    // temporary for now until we can have custom named types
+    // Once we have custom types, we'll need to add them here
     let type_scope: HashMap<&str, hir::Type<'_>> = HashMap::new();
 
     let mut function_to_typescope: HashMap<&str, HashMap<&str, hir::Type<'_>>> = HashMap::new();
 
     let globals: HashMap<&str, hir::Polytype> = hir
         .default_globals()
-        .chain(program.items.iter().map(|item| {
+        .chain(program.fn_defs.iter().map(|item| {
             // Since items (i.e. functions for now) can be generic over types,
             // we need to extend the set of currently in-scope types with the
             // generics that this item introduces. To avoid bringing the types
@@ -87,7 +89,7 @@ fn main() {
         HashMap<&str, (hir::Polytype, hir::Expr<'_, '_>)>,
         hir::PushedErrors,
     > = program
-        .items
+        .fn_defs
         .iter()
         .map(|item| {
             let item_name = item.name.literal;
@@ -112,9 +114,7 @@ fn main() {
         })
         .collect();
 
-    // Put the result into: https://edotor.net/
-    // println!("{}", hir.equations);
-
+    // Lowering and type errors
     let Ok(lowered_items) = lowered_items else {
         assert!(!errors.is_empty());
         let errors = hir::LowerErrors {

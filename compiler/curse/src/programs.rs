@@ -1,3 +1,18 @@
+// choice variants either have 0 or 1 values
+// variants are labeled with a single quote
+// at the beginning
+pub const CHOICE_TYPES: &str = r#"
+choice Option T {
+    'some T,
+    'none,
+}
+
+// fn print_if_some: Option T, () -> () = {
+//     |'some v| v in print,
+//     |'none| (),
+// }
+"#;
+
 pub const FIB: &str = r#"
 let fib: i32 () -> i32 = {
     |0| 0,
@@ -110,7 +125,7 @@ pub const MATH: &str = r#"
 let main: () () -> () = ||
     5 in |x|
     4 in |y|
-    x + y
+    x + y print ()
 "#;
 
 pub const CLOSURE_MISMATCH_ARM_TYPES: &str = r#"

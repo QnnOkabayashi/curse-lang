@@ -114,10 +114,11 @@ declare_tokens! {
     "let" => Let,
     "else" => Else,
     "struct" => Struct,
-    "enum" => Enum,
+    "choice" => Choice,
     "{" => LBrace,
     "}" => RBrace,
     "->" => Arrow,
+    "'" => Apostrophe,
 
     "=" => Equal,
     "<" => Less,

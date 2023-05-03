@@ -416,6 +416,3 @@ pub fn check<'a, 'hir: 'a, 'input: 'a>(
     }
     errors
 }
-
-
-

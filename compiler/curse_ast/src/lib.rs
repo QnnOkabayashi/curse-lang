@@ -1,9 +1,13 @@
+mod choice;
 mod expr;
+mod function;
 mod pat;
 pub mod tok;
 mod ty;
 
+pub use choice::*;
 pub use expr::*;
+pub use function::*;
 pub use pat::*;
 pub use ty::*;
 
@@ -33,49 +37,25 @@ impl Span for (usize, usize) {
 
 #[derive(Clone, Debug)]
 pub struct Program<'ast, 'input> {
-    pub items: Vec<Item<'ast, 'input>>,
+    pub fn_defs: Vec<FnDef<'ast, 'input>>,
+    pub choice_defs: Vec<ChoiceDef<'ast, 'input>>,
 }
 
 impl<'ast, 'input> Program<'ast, 'input> {
-    pub fn new(item: Item<'ast, 'input>) -> Self {
-        Program { items: vec![item] }
+    pub fn new() -> Self {
+        Program {
+            fn_defs: vec![],
+            choice_defs: vec![],
+        }
     }
 
-    pub fn with_item(mut self, item: Item<'ast, 'input>) -> Self {
-        self.items.push(item);
+    pub fn with_fn_def(mut self, fn_def: FnDef<'ast, 'input>) -> Self {
+        self.fn_defs.push(fn_def);
         self
     }
-}
 
-#[derive(Clone, Debug)]
-pub struct Item<'ast, 'input> {
-    pub let_: tok::Let,
-    pub name: tok::Ident<'input>,
-    pub generics: Vec<tok::Ident<'input>>,
-    pub colon: tok::Colon,
-    pub typ: &'ast Type<'ast, 'input>,
-    pub equal: tok::Equal,
-    pub expr: &'ast Expr<'ast, 'input>,
-}
-
-impl<'ast, 'input> Item<'ast, 'input> {
-    pub fn new(
-        let_: tok::Let,
-        name: tok::Ident<'input>,
-        generics: Vec<tok::Ident<'input>>,
-        colon: tok::Colon,
-        typ: &'ast Type<'ast, 'input>,
-        equal: tok::Equal,
-        expr: &'ast Expr<'ast, 'input>,
-    ) -> Self {
-        Item {
-            let_,
-            name,
-            generics,
-            colon,
-            typ,
-            equal,
-            expr,
-        }
+    pub fn with_choice_def(mut self, choice_def: ChoiceDef<'ast, 'input>) -> Self {
+        self.choice_defs.push(choice_def);
+        self
     }
 }

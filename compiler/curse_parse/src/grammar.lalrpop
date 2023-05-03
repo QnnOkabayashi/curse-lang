@@ -29,16 +29,18 @@ extern {
         "let" => Token::Let(<tok::Let>),
         "else" => Token::Else(<tok::Else>),
         "struct" => Token::Struct(<tok::Struct>),
-        "enum" => Token::Enum(<tok::Enum>),
+        "choice" => Token::Choice(<tok::Choice>),
         "{" => Token::LBrace(<tok::LBrace>),
         "}" => Token::RBrace(<tok::RBrace>),
         "->" => Token::Arrow(<tok::Arrow>),
+        "'" => Token::Apostrophe(<tok::Apostrophe>),
 
         "=" => Token::Equal(<tok::Equal>),
         "<" => Token::Less(<tok::Less>),
         ">" => Token::Greater(<tok::Greater>),
         "<=" => Token::LessEqual(<tok::LessEqual>),
         ">=" => Token::GreaterEqual(<tok::GreaterEqual>),
+
         "true" => Token::True(<tok::True>),
         "false" => Token::False(<tok::False>),
     }
@@ -49,19 +51,76 @@ Ident: tok::Ident<'input> = "ident literal";
 Integer: tok::Integer<'input> = "integer literal";
 
 pub Program: Option<Program<'ast, 'input>> = {
-    Item => <>.map(Program::new),
-    Program Item => match (<>) {
-        (Some(program), Some(item)) => Some(program.with_item(item)),
+    FnDef => <>.map(|def| Program::new().with_fn_def(def)),
+    Program FnDef => match (<>) {
+        (Some(program), Some(def)) => Some(program.with_fn_def(def)),
+        _ => None,
+    },
+
+    ChoiceDef => <>.map(|def| Program::new().with_choice_def(def)),
+    Program ChoiceDef => match (<>) {
+        (Some(program), Some(def)) => Some(program.with_choice_def(def)),
         _ => None,
     },
 };
 
-Item: Option<Item<'ast, 'input>> = "let" Ident (Ident)* ":" Type "=" EndExpr => match (<>) {
+FnDef: Option<FnDef<'ast, 'input>> =
+    "let" Ident (Ident)* ":" Type "=" EndExpr => match (<>) {
     (let_, ident, generics, colon, Some(typ), equal, Some(expr)) => {
-        Some(Item::new(let_, ident, generics, colon, typ, equal, expr))
+        Some(FnDef::new(let_, ident, generics, colon, typ, equal, expr))
     }
     _ => None,
 };
+    
+ChoiceDef: Option<ChoiceDef<'ast, 'input>> =
+    "choice" Ident (Ident)* "{" PunctTrailing<ChoiceVariant, ",">? "}" => match (<>) {
+    (choice, ident, generics, lbrace, variants, rbrace) => {
+        let variants: Option<ChoiceVariants<'ast, 'input>> = match variants {
+            Some((Some(first), rest, trailing)) => rest
+                .into_iter()
+                .map(|(comma, maybe_variant)| maybe_variant.map(|variant| (comma, variant)))
+                .collect::<Option<Vec<_>>>()
+                .map(|rest| ChoiceVariants::Variants { first, rest, trailing }),
+            None => Some(ChoiceVariants::Empty),
+            _ => None,
+        };
+
+        variants.map(|variants| {
+            ChoiceDef::new(choice, ident, generics, lbrace, variants, rbrace)
+        })
+    }
+};
+
+// A `Sep` punctuated sequence of `T`'s containing at least one `T` without trailing `Sep`'s
+// For an optional trailing separator, use `PunctTrailing` instead.
+Punct<T, Sep>: (T, Vec<(Sep, T)>) = {
+    T => (<>, vec![]),
+    Punct<T, Sep> Sep T => match (<>) {
+        ((first, mut rest), sep, next) => {
+            rest.push((sep, next));
+            (first, rest)
+        }
+    },
+};
+
+PunctTrailing<T, Sep>: (T, Vec<(Sep, T)>, Option<Sep>) = {
+    Punct<T, Sep> Sep? => match (<>) {
+        ((first, rest), trailing) => (first, rest, trailing),
+    }
+};
+    
+ChoiceVariant: Option<ChoiceVariant<'ast, 'input>> = {
+    "'" Ident Type? => match (<>) {
+        (apostrophe, tag, Some(Some(ty))) => {
+            Some(ChoiceVariant::new(apostrophe, tag, Some(ty)))
+        },
+        (apostrophe, name, None) => {
+            Some(ChoiceVariant::new(apostrophe, name, None))
+        },
+        // Parsed a type but it was None, meaning error
+        _ => None,
+    }
+}
 
 StartType: Option<&'ast Type<'ast, 'input>> = {
     Ident => Some(ast.typ(Type::Named(TypeNamed::new(<>)))),
@@ -211,4 +270,4 @@ pub EndExpr = {
         }
         _ => None,
     },
-};
+}

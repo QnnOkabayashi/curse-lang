@@ -1,7 +1,7 @@
 use crate::Span;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct Ident<'input> {
     pub location: usize,
     pub literal: &'input str,
@@ -15,11 +15,17 @@ impl Span for Ident<'_> {
 
 impl fmt::Display for Ident<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.literal)
+        fmt::Display::fmt(self.literal, f)
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+impl fmt::Debug for Ident<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.literal, f)
+    }
+}
+
+#[derive(Copy, Clone)]
 pub struct Integer<'input> {
     pub location: usize,
     pub literal: &'input str,
@@ -33,7 +39,13 @@ impl Span for Integer<'_> {
 
 impl fmt::Display for Integer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.literal)
+        fmt::Display::fmt(self.literal, f)
+    }
+}
+
+impl fmt::Debug for Integer<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.literal, f)
     }
 }
 
@@ -41,7 +53,7 @@ macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
         $(
             $(#[$attr])*
-            #[derive(Copy, Clone, Debug, Default)]
+            #[derive(Copy, Clone, Default)]
             pub struct $name {
                 pub location: usize,
             }
@@ -55,6 +67,12 @@ macro_rules! declare_tokens {
             impl fmt::Display for $name {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                     f.write_str($tok)
+                }
+            }
+
+            impl fmt::Debug for $name {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    write!(f, "`{}`", $tok)
                 }
             }
         )*
@@ -79,10 +97,11 @@ declare_tokens! {
     "let" => Let,
     "else" => Else,
     "struct" => Struct,
-    "enum" => Enum,
+    "choice" => Choice,
     "{" => LBrace,
     "}" => RBrace,
     "->" => Arrow,
+    "'" => Apostrophe,
 
     "=" => Equal,
     "<" => Less,
