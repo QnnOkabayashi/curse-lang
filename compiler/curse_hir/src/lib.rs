@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use ast::Span;
 use curse_ast as ast;
 use smallvec::{smallvec, SmallVec};
