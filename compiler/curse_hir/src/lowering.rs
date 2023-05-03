@@ -9,21 +9,21 @@ use std::{collections::HashMap, iter};
 
 pub struct Scope<'outer, 'hir, 'input> {
     pub hir: &'outer mut Hir<'hir, 'input>,
-    type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-    errors: &'outer mut Vec<LowerError<'hir>>,
+    type_map: &'outer HashMap<&'outer str, Type<'hir, 'input>>,
+    errors: &'outer mut Vec<LowerError<'hir, 'input>>,
     original_errors_len: usize,
-    globals: &'hir HashMap<&'hir str, Polytype<'hir>>,
-    locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
+    globals: &'hir HashMap<&'hir str, Polytype<'hir, 'input>>,
+    locals: &'outer mut Vec<(&'hir str, Type<'hir, 'input>)>,
     original_locals_len: usize,
 }
 
 impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     pub fn new(
         hir: &'outer mut Hir<'hir, 'input>,
-        type_map: &'outer HashMap<&'outer str, Type<'hir>>,
-        errors: &'outer mut Vec<LowerError<'hir>>,
-        globals: &'hir HashMap<&'hir str, Polytype>,
-        locals: &'outer mut Vec<(&'hir str, Type<'hir>)>,
+        type_map: &'outer HashMap<&'outer str, Type<'hir, 'input>>,
+        errors: &'outer mut Vec<LowerError<'hir, 'input>>,
+        globals: &'hir HashMap<&'hir str, Polytype<'hir, 'input>>,
+        locals: &'outer mut Vec<(&'hir str, Type<'hir, 'input>)>,
     ) -> Self {
         let original_errors_len = errors.len();
         let original_locals_len = locals.len();
@@ -39,7 +39,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     }
 
     /// Search through local variables first, then search through global variables.
-    pub fn type_of(&mut self, var: &str) -> Option<Type<'hir>> {
+    pub fn type_of(&mut self, var: &str) -> Option<Type<'hir, 'input>> {
         self.locals
             .iter()
             .rev()
@@ -51,7 +51,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             })
     }
 
-    pub fn add_local(&mut self, var: &'hir str, ty: Type<'hir>) {
+    pub fn add_local(&mut self, var: &'hir str, ty: Type<'hir, 'input>) {
         self.locals.push((var, ty));
     }
 
@@ -290,7 +290,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         }
     }
 
-    /// Returns the [`Type<'hir>`] of an [`ast::ExprPat`].
+    /// Returns the [`Type<'hir, 'input>`] of an [`ast::ExprPat`].
     fn lower_pat(
         &mut self,
         pat: &ast::ExprPat<'_, 'input>,
@@ -364,7 +364,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         }
     }
 
-    /// Returns the [`Type<'hir>`] of a single [`ast::ExprParam`].
+    /// Returns the [`Type<'hir, 'input>`] of a single [`ast::ExprParam`].
     fn lower_param(
         &mut self,
         param: &ast::ExprParam<'_, 'input>,
@@ -381,7 +381,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         Ok(pat)
     }
 
-    /// Returns the [`Type<'hir>`]s of various [`ast::ExprParams`].
+    /// Returns the [`Type<'hir, 'input>`]s of various [`ast::ExprParams`].
     fn pats_of_many_params(
         &mut self,
         arm: &ast::ExprArm<'_, 'input>,
@@ -410,7 +410,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     }
 
     /// Unify two types.
-    pub fn unify(&mut self, t1: Type<'hir>, t2: Type<'hir>) -> NodeIndex {
+    pub fn unify(&mut self, t1: Type<'hir, 'input>, t2: Type<'hir, 'input>) -> NodeIndex {
         match (t1, t2) {
             (
                 Type {

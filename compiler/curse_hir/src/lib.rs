@@ -28,13 +28,13 @@ mod lowering;
 pub use lowering::*;
 
 #[derive(Clone, Debug)]
-pub struct Polytype<'hir> {
+pub struct Polytype<'hir, 'input> {
     pub typevars: SmallVec<[Var; 4]>,
-    pub ty: Type<'hir>,
+    pub ty: Type<'hir, 'input>,
 }
 
-impl<'hir> Polytype<'hir> {
-    pub fn new(ty: Type<'hir>) -> Self {
+impl<'hir, 'input> Polytype<'hir, 'input> {
+    pub fn new(ty: Type<'hir, 'input>) -> Self {
         Polytype {
             typevars: SmallVec::new(),
             ty,
@@ -43,14 +43,14 @@ impl<'hir> Polytype<'hir> {
 }
 
 pub struct Hir<'hir, 'input> {
-    pub type_fns: &'hir Arena<TypeFunction<'hir>>,
+    pub type_fns: &'hir Arena<TypeFunction<'hir, 'input>>,
     pub appls: &'hir Arena<ExprAppl<'hir, 'input>>,
     pub arms: &'hir Arena<ExprArm<'hir, 'input>>,
     pub exprs: &'hir Arena<Expr<'hir, 'input>>,
-    pub types: &'hir Arena<Type<'hir>>,
+    pub types: &'hir Arena<Type<'hir, 'input>>,
     pub pats: &'hir Arena<Pat<'hir, 'input>>,
-    pub typevars: Vec<Typevar<'hir>>,
-    pub equations: Equations<'hir>,
+    pub typevars: Vec<Typevar<'hir, 'input>>,
+    pub equations: Equations<'hir, 'input>,
 }
 
 impl<'hir, 'input> Hir<'hir, 'input> {
@@ -68,7 +68,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
     /// and
     ///
     /// `print`: `x () -> ()`
-    pub fn default_globals(&mut self) -> impl Iterator<Item = (&'static str, Polytype<'hir>)> {
+    pub fn default_globals(&mut self) -> impl Iterator<Item = (&'static str, Polytype<'hir, 'input>)> {
         let dummy = (0, 0);
         [
             ("in", {
@@ -134,17 +134,17 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         .into_iter()
     }
 
-    pub fn monomorphize(&mut self, polytype: &Polytype<'hir>) -> Type<'hir> {
+    pub fn monomorphize(&mut self, polytype: &Polytype<'hir, 'input>) -> Type<'hir, 'input> {
         // Takes a polymorphic type and replaces all instances of generics
         // with a fixed, unbound type.
         // For example, id: T -> T is a polymorphic type, so it goes through
         // and replaces both `T`s with an unbound type variable like `a0`,
         // which is then bound later on.
-        fn replace_unbound_typevars<'hir>(
-            tbl: &HashMap<Var, TypeKind<'hir>>,
-            hir: &mut Hir<'hir, '_>,
-            ty: Type<'hir>,
-        ) -> Type<'hir> {
+        fn replace_unbound_typevars<'hir, 'input>(
+            tbl: &HashMap<Var, TypeKind<'hir, 'input>>,
+            hir: &mut Hir<'hir, 'input>,
+            ty: Type<'hir, 'input>,
+        ) -> Type<'hir, 'input> {
             match ty.kind {
                 TypeKind::Var(var) => Type {
                     kind: tbl[&var],
@@ -184,12 +184,12 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         replace_unbound_typevars(&tvs_to_replace, self, polytype.ty)
     }
 
-    /// Convert an [`ast::Type<'_, 'input>`] annotation into an HIR [`Type<'hir>`].
+    /// Convert an [`ast::Type<'_, 'input>`] annotation into an HIR [`Type<'hir, 'input>`].
     pub fn type_from_ast(
         &mut self,
         ty: &ast::Type<'_, 'input>,
-        map: &HashMap<&str, Type<'hir>>,
-    ) -> Type<'hir> {
+        map: &HashMap<&str, Type<'hir, 'input>>,
+    ) -> Type<'hir, 'input> {
         match ty {
             ast::Type::Named(named) => match named.name.literal {
                 "i32" => Type {
@@ -233,7 +233,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         }
     }
 
-    fn occurs(&self, var: Var, ty: &Type<'_>) -> bool {
+    fn occurs(&self, var: Var, ty: &Type<'_, '_>) -> bool {
         match ty.kind {
             TypeKind::Var(typevar) => {
                 if let Some(t) = self[typevar].binding() {
@@ -251,7 +251,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         }
     }
 
-    fn check_equivalence(&self, var: Var, ty: Type<'_>) -> bool {
+    fn check_equivalence(&self, var: Var, ty: Type<'_, '_>) -> bool {
         if let Type {
             kind: TypeKind::Var(typevar),
             ..
@@ -268,8 +268,8 @@ impl<'hir, 'input> Hir<'hir, 'input> {
     }
 }
 
-impl<'hir> Index<Var> for Hir<'hir, '_> {
-    type Output = Typevar<'hir>;
+impl<'hir, 'input> Index<Var> for Hir<'hir, 'input> {
+    type Output = Typevar<'hir, 'input>;
 
     fn index(&self, index: Var) -> &Self::Output {
         &self.typevars[index.0 as usize]

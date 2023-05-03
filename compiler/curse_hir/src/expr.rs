@@ -2,8 +2,8 @@ use crate::{Type, TypeFunction, TypeKind, Var};
 use curse_ast::{tok, Span};
 use std::fmt;
 
-pub trait Ty<'hir> {
-    fn ty(&self) -> Type<'hir>;
+pub trait Ty<'hir, 'input> {
+    fn ty(&self) -> Type<'hir, 'input>;
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -28,19 +28,19 @@ pub enum ExprKind<'hir, 'input> {
     I32(i32),
     Bool(bool),
     Ident {
-        ty: TypeKind<'hir>,
+        ty: TypeKind<'hir, 'input>,
         literal: &'input str,
     },
     Tuple {
-        ty: TypeKind<'hir>,
+        ty: TypeKind<'hir, 'input>,
         exprs: &'hir [Expr<'hir, 'input>],
     },
     Closure {
-        ty: TypeKind<'hir>,
+        ty: TypeKind<'hir, 'input>,
         arms: &'hir [ExprArm<'hir, 'input>],
     },
     Appl {
-        ty: TypeKind<'hir>,
+        ty: TypeKind<'hir, 'input>,
         appl: &'hir ExprAppl<'hir, 'input>,
     },
 }
@@ -62,8 +62,8 @@ pub struct ExprAppl<'hir, 'input> {
     pub rhs: Expr<'hir, 'input>,
 }
 
-impl<'hir> Ty<'hir> for Expr<'hir, '_> {
-    fn ty(&self) -> Type<'hir> {
+impl<'hir, 'input> Ty<'hir, 'input> for Expr<'hir, 'input> {
+    fn ty(&self) -> Type<'hir, 'input> {
         match self.kind {
             ExprKind::Builtin(builtin) => Type {
                 kind: builtin.ty_kind(),
@@ -149,7 +149,7 @@ impl Builtin {
         }
     }
 
-    fn ty_kind(&self) -> TypeKind<'static> {
+    fn ty_kind(&self) -> TypeKind<'static, 'static> {
         use Builtin::*;
         match self {
             Add | Sub | Mul | Rem => TypeKind::Function(&TypeFunction {
@@ -186,8 +186,8 @@ impl Builtin {
     }
 }
 
-impl<'hir> Ty<'hir> for Builtin {
-    fn ty(&self) -> Type<'hir> {
+impl<'hir, 'input> Ty<'hir, 'input> for Builtin {
+    fn ty(&self) -> Type<'hir, 'input> {
         use Builtin::*;
         match self {
             // TODO(quinn): how to we represent the source spans
@@ -286,11 +286,11 @@ pub enum PatKind<'hir, 'input> {
     Bool(bool),
     I32(i32),
     Ident {
-        ty: TypeKind<'hir>,
+        ty: TypeKind<'hir, 'input>,
         literal: &'input str,
     },
     Tuple {
-        ty: TypeKind<'hir>,
+        ty: TypeKind<'hir, 'input>,
         pats: &'hir [Pat<'hir, 'input>],
     },
     /// An omitted pattern.
@@ -309,8 +309,8 @@ impl<'hir, 'input> PatKind<'hir, 'input> {
     }
 }
 
-impl<'hir> Ty<'hir> for Pat<'hir, '_> {
-    fn ty(&self) -> Type<'hir> {
+impl<'hir, 'input> Ty<'hir, 'input> for Pat<'hir, 'input> {
+    fn ty(&self) -> Type<'hir, 'input> {
         match self.kind {
             PatKind::Bool(_) => Type {
                 kind: TypeKind::Bool,

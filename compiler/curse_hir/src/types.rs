@@ -1,23 +1,22 @@
-use std::fmt;
-
+use crate::Hir;
+use curse_ast::tok;
 use displaydoc::Display;
 use petgraph::graph::NodeIndex;
+use std::fmt;
 use thiserror::Error;
 
-use crate::Hir;
-
-pub enum Typevar<'hir> {
+pub enum Typevar<'hir, 'input> {
     /// An unbound type variable
     Unbound,
     // A bound type variable.
     Bound {
-        ty: Type<'hir>,
+        ty: Type<'hir, 'input>,
         source: NodeIndex,
     },
 }
 
-impl<'hir> Typevar<'hir> {
-    pub fn binding(&self) -> Option<&Type<'hir>> {
+impl<'hir, 'input> Typevar<'hir, 'input> {
+    pub fn binding(&self) -> Option<&Type<'hir, 'input>> {
         match self {
             Typevar::Bound { ty, .. } => Some(ty),
             Typevar::Unbound => None,
@@ -35,12 +34,12 @@ pub struct UnboundTypevar;
 
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("{kind}")]
-pub struct Type<'hir> {
-    pub kind: TypeKind<'hir>,
+pub struct Type<'hir, 'input> {
+    pub kind: TypeKind<'hir, 'input>,
     pub span: (usize, usize),
 }
 
-impl<'hir> Type<'hir> {
+impl<'hir, 'input> Type<'hir, 'input> {
     pub fn dummy() -> Self {
         Type {
             kind: TypeKind::unit(),
@@ -50,15 +49,16 @@ impl<'hir> Type<'hir> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum TypeKind<'hir> {
+pub enum TypeKind<'hir, 'input> {
     I32,
     Bool,
     Var(Var),
-    Tuple(&'hir [Type<'hir>]),
-    Function(&'hir TypeFunction<'hir>),
+    Tuple(&'hir [Type<'hir, 'input>]),
+    Choice(&'hir TypeChoice<'hir, 'input>),
+    Function(&'hir TypeFunction<'hir, 'input>),
 }
 
-impl<'hir> TypeKind<'hir> {
+impl<'hir, 'input> TypeKind<'hir, 'input> {
     pub fn unit() -> Self {
         TypeKind::Tuple(&[])
     }
@@ -69,7 +69,7 @@ impl<'hir> TypeKind<'hir> {
         TypePrinter { ty: self, hir }
     }
 
-    pub fn resolve(&self, hir: &Hir<'hir, '_>) -> Result<Self, UnboundTypevar> {
+    pub fn resolve(&self, hir: &Hir<'hir, 'input>) -> Result<Self, UnboundTypevar> {
         let TypeKind::Var(var) = self else {
             return Ok(*self);
         };
@@ -78,29 +78,37 @@ impl<'hir> TypeKind<'hir> {
     }
 }
 
-impl fmt::Display for TypeKind<'_> {
+impl fmt::Display for TypeKind<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::Bool => write!(f, "bool"),
-            TypeKind::Tuple(types) => {
-                f.write_str("(")?;
-                if let Some((head, tail)) = types.split_first() {
-                    write!(f, "{head}")?;
-                    for ty in tail {
-                        write!(f, ", {ty}")?;
-                    }
-                }
-                f.write_str(")")
-            }
             TypeKind::Var(var) => write!(f, "{var}"),
-            TypeKind::Function(fun) => write!(f, "{fun}"),
+            TypeKind::Tuple(tuple) => {
+                write!(f, "(")?;
+                let mut iter = tuple.iter();
+                if let Some(ty) = iter.next() {
+                    write!(f, "{}", ty.kind)?;
+                }
+                for ty in iter {
+                    write!(f, ", {}", ty.kind)?;
+                }
+                write!(f, ")")
+            }
+            TypeKind::Choice(choice) => write!(f, "{}", choice.name),
+            TypeKind::Function(fun) => {
+                write!(
+                    f,
+                    "({} {} -> {})",
+                    fun.lhs.kind, fun.rhs.kind, fun.output.kind,
+                )
+            }
         }
     }
 }
 
 pub struct TypePrinter<'a> {
-    ty: TypeKind<'a>,
+    ty: TypeKind<'a, 'a>,
     hir: &'a Hir<'a, 'a>,
 }
 
@@ -109,6 +117,13 @@ impl fmt::Display for TypePrinter<'_> {
         match self.ty {
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::Bool => write!(f, "bool"),
+            TypeKind::Var(var) => {
+                if let Some(ty) = self.hir[var].binding() {
+                    write!(f, "{}", ty.kind.pretty(self.hir))
+                } else {
+                    write!(f, "{var}")
+                }
+            }
             TypeKind::Tuple(tuple) => {
                 write!(f, "(")?;
                 let mut iter = tuple.iter();
@@ -120,13 +135,7 @@ impl fmt::Display for TypePrinter<'_> {
                 }
                 write!(f, ")")
             }
-            TypeKind::Var(var) => {
-                if let Some(ty) = self.hir[var].binding() {
-                    write!(f, "{}", ty.kind.pretty(self.hir))
-                } else {
-                    write!(f, "{var}")
-                }
-            }
+            TypeKind::Choice(choice) => write!(f, "{}", choice.name),
             TypeKind::Function(fun) => {
                 write!(
                     f,
@@ -142,8 +151,20 @@ impl fmt::Display for TypePrinter<'_> {
 
 #[derive(Copy, Clone, Debug, Display)]
 #[displaydoc("({lhs} {rhs} -> {output})")]
-pub struct TypeFunction<'hir> {
-    pub lhs: Type<'hir>,
-    pub rhs: Type<'hir>,
-    pub output: Type<'hir>,
+pub struct TypeFunction<'hir, 'input> {
+    pub lhs: Type<'hir, 'input>,
+    pub rhs: Type<'hir, 'input>,
+    pub output: Type<'hir, 'input>,
+}
+
+#[derive(Debug)]
+pub struct TypeChoice<'hir, 'input> {
+    pub name: tok::Ident<'input>,
+    pub variants: Vec<ChoiceVariant<'hir, 'input>>,
+}
+
+#[derive(Debug)]
+pub struct ChoiceVariant<'hir, 'input> {
+    pub tag: tok::Ident<'input>,
+    pub payload: Option<Type<'hir, 'input>>,
 }

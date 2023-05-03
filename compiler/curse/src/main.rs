@@ -46,9 +46,9 @@ fn main() {
     };
 
     // Once we have custom types, we'll need to add them here
-    let type_scope: HashMap<&str, hir::Type<'_>> = HashMap::new();
+    let type_scope: HashMap<&str, hir::Type<'_, '_>> = HashMap::new();
 
-    let mut function_to_typescope: HashMap<&str, HashMap<&str, hir::Type<'_>>> = HashMap::new();
+    let mut function_to_typescope: HashMap<&str, HashMap<&str, hir::Type<'_, '_>>> = HashMap::new();
 
     let globals: HashMap<&str, hir::Polytype> = hir
         .default_globals()
@@ -82,8 +82,8 @@ fn main() {
         }))
         .collect();
 
-    let mut locals: Vec<(&str, hir::Type<'_>)> = Vec::with_capacity(16);
-    let mut errors: Vec<hir::LowerError<'_>> = Vec::with_capacity(0);
+    let mut locals: Vec<(&str, hir::Type<'_, '_>)> = Vec::with_capacity(16);
+    let mut errors: Vec<hir::LowerError<'_, '_>> = Vec::with_capacity(0);
 
     let lowered_items: Result<
         HashMap<&str, (hir::Polytype, hir::Expr<'_, '_>)>,

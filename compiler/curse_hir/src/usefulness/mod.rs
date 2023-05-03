@@ -19,6 +19,8 @@ enum Constructor {
     Bool(bool),
     /// An integer literal.
     Int(i32),
+    /// A choice variant
+    ChoiceVariant { id: u32 },
     /// A wildcard.
     /// Can either be an unbound ident ("a") or an actual wildcard ("_").
     Wildcard,
@@ -30,7 +32,7 @@ use Constructor::*;
 enum Pattern<'hir, 'input> {
     Pat(&'hir Pat<'hir, 'input>),
     /// Automatically match on everything
-    Wildcard(Type<'hir>),
+    Wildcard(Type<'hir, 'input>),
 }
 
 #[derive(Debug)]
@@ -64,7 +66,7 @@ impl Usefulness {
 
 /// Push wildcards to the stack for a given type so that it will always match
 fn push_wildcard_fields_for_type<'hir, 'input>(
-    kind: &TypeKind<'hir>,
+    kind: &TypeKind<'hir, 'input>,
     stack: &mut Vec<Pattern<'hir, 'input>>,
     hir: &Hir<'hir, 'input>,
 ) {
@@ -75,6 +77,7 @@ fn push_wildcard_fields_for_type<'hir, 'input>(
             stack,
             hir,
         ),
+        TypeKind::Choice(_choice) => todo!("Allow for pattern matching on choices"),
         TypeKind::Tuple(types) => stack.extend(types.iter().copied().map(Pattern::Wildcard)),
     }
 }
@@ -92,7 +95,7 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
     }
 
     fn visit_ctors_for_type(
-        kind: &TypeKind<'hir>,
+        kind: &TypeKind<'hir, 'input>,
         hir: &Hir<'hir, 'input>,
         mut is_ctor_useful: impl FnMut(Constructor) -> Usefulness,
     ) -> Usefulness {
@@ -112,11 +115,14 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                 is_ctor_useful,
             ),
             TypeKind::Tuple(_) => is_ctor_useful(Single),
+            TypeKind::Choice(_choice) => {
+                todo!("visit_ctors_for_type for choices")
+            }
             TypeKind::Function(_) => is_ctor_useful(Wildcard),
         }
     }
 
-    fn ty_kind(&self) -> TypeKind<'hir> {
+    fn ty_kind(&self) -> TypeKind<'hir, 'input> {
         match self {
             Pattern::Pat(pat) => pat.ty().kind,
             Pattern::Wildcard(ty) => ty.kind,

@@ -4,13 +4,13 @@ use petgraph::graph::{DiGraph, NodeIndex};
 
 /// A node on the inference graph.
 #[derive(Copy, Clone, Debug)]
-pub enum Node<'hir> {
+pub enum Node<'hir, 'input> {
     // #[displaydoc("{0} ≡ {1}")]
-    Equiv(Type<'hir>, Type<'hir>),
+    Equiv(Type<'hir, 'input>, Type<'hir, 'input>),
     // #[displaydoc("{0} ≢ {1}")]
-    NotEquiv(Type<'hir>, Type<'hir>),
+    NotEquiv(Type<'hir, 'input>, Type<'hir, 'input>),
     // #[displaydoc("{var} := {definition}")]
-    Binding { var: Var, definition: Type<'hir> },
+    Binding { var: Var, definition: Type<'hir, 'input> },
 }
 
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to
@@ -30,18 +30,18 @@ pub enum Edge {
 }
 
 #[derive(Default)]
-pub struct Equations<'hir> {
-    pub graph: DiGraph<Node<'hir>, Edge>,
+pub struct Equations<'hir, 'input> {
+    pub graph: DiGraph<Node<'hir, 'input>, Edge>,
 }
 
-impl<'hir> Equations<'hir> {
+impl<'hir, 'input> Equations<'hir, 'input> {
     pub fn new() -> Self {
         Equations {
             graph: DiGraph::new(),
         }
     }
 
-    pub fn add_rule(&mut self, rule: Node<'hir>) -> NodeIndex {
+    pub fn add_rule(&mut self, rule: Node<'hir, 'input>) -> NodeIndex {
         self.graph.add_node(rule)
     }
 
