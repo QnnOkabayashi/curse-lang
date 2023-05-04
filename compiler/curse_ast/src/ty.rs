@@ -6,7 +6,7 @@ pub type TypeTuple<'ast, 'input> = pat::PatTuple<&'ast Type<'ast, 'input>>;
 #[derive(Clone, Debug, Display)]
 pub enum Type<'ast, 'input> {
     #[displaydoc("{0}")]
-    Named(TypeNamed<'input>),
+    Named(tok::NamedType<'input>),
     #[displaydoc("{0}")]
     Tuple(TypeTuple<'ast, 'input>),
     #[displaydoc("{0}")]
@@ -20,24 +20,6 @@ impl Span for Type<'_, '_> {
             Type::Tuple(tuple) => tuple.span(),
             Type::Function(fun) => fun.span(),
         }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Display)]
-#[displaydoc("{name}")]
-pub struct TypeNamed<'input> {
-    pub name: tok::Ident<'input>,
-}
-
-impl<'input> TypeNamed<'input> {
-    pub fn new(name: tok::Ident<'input>) -> Self {
-        TypeNamed { name }
-    }
-}
-
-impl Span for TypeNamed<'_> {
-    fn span(&self) -> (usize, usize) {
-        self.name.span()
     }
 }
 

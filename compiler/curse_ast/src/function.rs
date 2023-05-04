@@ -11,7 +11,7 @@ pub struct FnDef<'ast, 'input> {
 
 #[derive(Clone, Debug)]
 pub struct TypeSig<'ast, 'input> {
-    pub generics: Vec<tok::Ident<'input>>,
+    pub generics: Vec<tok::NamedType<'input>>,
     pub colon: tok::Colon,
     pub ty: &'ast Type<'ast, 'input>,
     pub eq: tok::Eq,
@@ -41,7 +41,7 @@ impl Span for FnDef<'_, '_> {
 
 impl<'ast, 'input> TypeSig<'ast, 'input> {
     pub fn new(
-        generics: Vec<tok::Ident<'input>>,
+        generics: Vec<tok::NamedType<'input>>,
         colon: tok::Colon,
         ty: &'ast Type<'ast, 'input>,
         eq: tok::Eq,

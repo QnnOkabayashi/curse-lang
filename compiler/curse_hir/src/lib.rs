@@ -179,12 +179,12 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         map: &HashMap<&str, Type<'hir, 'input>>,
     ) -> Type<'hir, 'input> {
         match ty {
-            ast::Type::Named(named) => match named.name.literal {
-                "i32" => Type {
+            ast::Type::Named(named) => match named.literal {
+                "I32" => Type {
                     kind: TypeKind::I32,
                     span: named.span(),
                 },
-                "bool" => Type {
+                "Bool" => Type {
                     kind: TypeKind::Bool,
                     span: named.span(),
                 },

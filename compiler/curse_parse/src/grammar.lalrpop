@@ -16,6 +16,7 @@ extern {
         // give us the rhs.
         "ident literal" => Token::Ident(<tok::Ident<'input>>),
         "integer literal" => Token::Integer(<tok::Integer<'input>>),
+        "named type literal" => Token::NamedType(<tok::NamedType<'input>>),
         ":" => Token::Colon(<tok::Colon>),
         "," => Token::Comma(<tok::Comma>),
         "(" => Token::LParen(<tok::LParen>),
@@ -53,6 +54,8 @@ Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
+NamedType: tok::NamedType<'input> = "named type literal";
+
 pub Program: Option<Program<'ast, 'input>> = {
     FnDef => <>.map(|def| Program::new().with_fn_def(def)),
     Program FnDef => match (<>) {
@@ -68,7 +71,7 @@ pub Program: Option<Program<'ast, 'input>> = {
 };
 
 FnDef: Option<FnDef<'ast, 'input>> =
-    "fn" Ident ((Ident)* ":" Type "=")? Closure => match (<>) {
+    "fn" Ident ((NamedType)* ":" Type "=")? Closure => match (<>) {
     (fn_, ident, Some((generics, colon, Some(ty), equal)), Some(function)) => {
         Some(FnDef::new(fn_, ident, Some(TypeSig::new(generics, colon, ty, equal)), function))
     }
@@ -79,7 +82,7 @@ FnDef: Option<FnDef<'ast, 'input>> =
 };
     
 ChoiceDef: Option<ChoiceDef<'ast, 'input>> =
-    "choice" Ident (Ident)* "{" PunctTrailing<ChoiceVariant, ",">? "}" => match (<>) {
+    "choice" NamedType (NamedType)* "{" PunctTrailing<ChoiceVariant, ",">? "}" => match (<>) {
     (choice, ident, generics, lbrace, variants, rbrace) => {
         let variants: Option<ChoiceVariants<'ast, 'input>> = match variants {
             Some((Some(first), rest, trailing)) => rest
@@ -115,21 +118,13 @@ PunctTrailing<T, Sep>: (T, Vec<(Sep, T)>, Option<Sep>) = {
     }
 };
     
-ChoiceVariant: Option<ChoiceVariant<'ast, 'input>> = {
-    "'" Ident Type? => match (<>) {
-        (apostrophe, tag, Some(Some(ty))) => {
-            Some(ChoiceVariant::new(apostrophe, tag, Some(ty)))
-        },
-        (apostrophe, name, None) => {
-            Some(ChoiceVariant::new(apostrophe, name, None))
-        },
-        // Parsed a type but it was None, meaning error
-        _ => None,
-    }
-}
+ChoiceVariant: Option<ChoiceVariant<'ast, 'input>> = NamedType Type => match (<>) {
+    (tag, Some(ty)) => Some(ChoiceVariant::new(tag, ty)),
+    _ => None,
+};
 
 StartType: Option<&'ast Type<'ast, 'input>> = {
-    Ident => Some(ast.typ(Type::Named(TypeNamed::new(<>)))),
+    NamedType => Some(ast.typ(Type::Named(<>))),
     Tuple<Type> => <>.fold().map(|tup| ast.typ(Type::Tuple(tup))),
     "(" <Type> ")",
     ! => {

@@ -97,8 +97,8 @@ impl<'hir, 'input> TypeKind<'hir, 'input> {
 impl fmt::Display for TypeKind<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TypeKind::I32 => write!(f, "i32"),
-            TypeKind::Bool => write!(f, "bool"),
+            TypeKind::I32 => write!(f, "I32"),
+            TypeKind::Bool => write!(f, "Bool"),
             TypeKind::Var(var) => write!(f, "{var}"),
             TypeKind::Tuple(tuple) => {
                 write!(f, "(")?;

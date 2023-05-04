@@ -4,8 +4,8 @@ use crate::{tok, Span, Type};
 #[derive(Debug, Clone)]
 pub struct ChoiceDef<'ast, 'input> {
     pub choice: tok::Choice,
-    pub ident: tok::Ident<'input>,
-    pub generics: Vec<tok::Ident<'input>>,
+    pub ident: tok::NamedType<'input>,
+    pub generics: Vec<tok::NamedType<'input>>,
     pub lbrace: tok::LBrace,
     pub variants: ChoiceVariants<'ast, 'input>,
     pub rbrace: tok::RBrace,
@@ -14,8 +14,8 @@ pub struct ChoiceDef<'ast, 'input> {
 impl<'ast, 'input> ChoiceDef<'ast, 'input> {
     pub fn new(
         choice: tok::Choice,
-        ident: tok::Ident<'input>,
-        generics: Vec<tok::Ident<'input>>,
+        ident: tok::NamedType<'input>,
+        generics: Vec<tok::NamedType<'input>>,
         lbrace: tok::LBrace,
         variants: ChoiceVariants<'ast, 'input>,
         rbrace: tok::RBrace,
@@ -51,21 +51,12 @@ pub enum ChoiceVariants<'ast, 'input> {
 
 #[derive(Debug, Clone)]
 pub struct ChoiceVariant<'ast, 'input> {
-    pub apostrophe: tok::Apostrophe,
-    pub tag: tok::Ident<'input>,
-    pub payload: Option<&'ast Type<'ast, 'input>>,
+    pub tag: tok::NamedType<'input>,
+    pub payload: &'ast Type<'ast, 'input>,
 }
 
 impl<'ast, 'input> ChoiceVariant<'ast, 'input> {
-    pub fn new(
-        apostrophe: tok::Apostrophe,
-        tag: tok::Ident<'input>,
-        payload: Option<&'ast Type<'ast, 'input>>,
-    ) -> Self {
-        ChoiceVariant {
-            apostrophe,
-            tag,
-            payload,
-        }
+    pub fn new(tag: tok::NamedType<'input>, payload: &'ast Type<'ast, 'input>) -> Self {
+        ChoiceVariant { tag, payload }
     }
 }
