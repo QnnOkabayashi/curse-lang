@@ -68,9 +68,12 @@ pub Program: Option<Program<'ast, 'input>> = {
 };
 
 FnDef: Option<FnDef<'ast, 'input>> =
-    "fn" Ident (Ident)* ":" Type "=" EndExpr => match (<>) {
-    (fn_, ident, generics, colon, Some(typ), equal, Some(expr)) => {
-        Some(FnDef::new(fn_, ident, generics, colon, typ, equal, expr))
+    "fn" Ident ((Ident)* ":" Type "=")? Closure => match (<>) {
+    (fn_, ident, Some((generics, colon, Some(ty), equal)), Some(function)) => {
+        Some(FnDef::new(fn_, ident, Some(TypeSig::new(generics, colon, ty, equal)), function))
+    }
+    (fn_, ident, None, Some(function)) => {
+        Some(FnDef::new(fn_, ident, None, function))
     }
     _ => None,
 };

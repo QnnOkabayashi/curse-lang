@@ -1,4 +1,4 @@
-use crate::{tok, ExprLit, Span};
+use crate::{tok, ExprLit};
 
 mod tuple;
 pub use tuple::*;

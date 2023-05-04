@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // choice variants either have 0 or 1 values
 // variants are labeled with a single quote
 // at the beginning
@@ -11,6 +12,52 @@ choice Option T {
 //     |'some v| v in print,
 //     |'none| (),
 // }
+"#;
+
+pub const BINARY_TREE: &str = r#"
+choice Option T {
+    'some T,
+    'none (),
+}
+
+fn then {
+    |true, f| 'some (() f ()),
+    |false, _| 'none
+}
+
+fn else {
+    |'some val, _| 'some val,
+    |'none, f| () f ()
+}
+
+choice Tree T {
+    'node (i32, T, Tree T, Tree T),
+    'empty (),
+}
+
+fn insert {
+    |'empty (), (k, v)|
+        'node (k, v, 'empty (), 'empty ()),
+    |'node (key, value, left, right), (k, v)|
+        k > key then (||
+            'node (key, value, left, right insert (k, v))
+        ) else || k < key then (||
+            'node (key, value, left insert (k, v), right)
+        ) else ||
+            'node (key, v, left, right)
+}
+
+fn get {
+    |'empty (), _|
+        'none,
+    |'node (key, value, left, right), k|
+        k > key then (||
+            right find k
+        ) else || k < key then (||
+            left find k
+        ) else ||
+            'some value
+}
 "#;
 
 pub const FIB: &str = r#"

@@ -66,7 +66,7 @@ impl<'hir, 'input> Ty<'hir, 'input> for Expr<'hir, 'input> {
     fn ty(&self) -> Type<'hir, 'input> {
         match self.kind {
             ExprKind::Builtin(builtin) => Type {
-                kind: builtin.ty_kind(),
+                kind: builtin.type_kind(),
                 span: self.span,
             },
             ExprKind::I32(_) => Type {
@@ -97,25 +97,6 @@ impl<'hir, 'input> Ty<'hir, 'input> for Expr<'hir, 'input> {
     }
 }
 
-// impl fmt::Display for Expr<'_, '_> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Expr::Builtin(builtin) => builtin.fmt(f),
-//             Expr::I32(int) => int.fmt(f),
-//             Expr::Bool(b) => b.fmt(f),
-//             Expr::Unit => f.write_str("()"),
-//             Expr::Ident { literal, .. } => literal.fmt(f),
-//             Expr::Tuple { exprs, .. } => {
-//                 write!(f, "({})", exprs.delim(", "))
-//             }
-//             Expr::Closure { branches, .. } => {
-//                 write!(f, "{}", branches.delim(" else "))
-//             }
-//             Expr::Appl { appl, .. } => appl.fmt(f),
-//         }
-//     }
-// }
-
 #[derive(Copy, Clone, Debug)]
 pub enum Builtin {
     Add,
@@ -128,7 +109,6 @@ pub enum Builtin {
     Gt,
     Le,
     Ge,
-    Print,
 }
 
 impl Builtin {
@@ -145,11 +125,10 @@ impl Builtin {
             Gt => ">",
             Le => "<=",
             Ge => ">=",
-            Print => "print",
         }
     }
 
-    fn ty_kind(&self) -> TypeKind<'static, 'static> {
+    pub fn type_kind(&self) -> TypeKind<'static, 'static> {
         use Builtin::*;
         match self {
             Add | Sub | Mul | Rem => TypeKind::Function(&TypeFunction {
@@ -181,53 +160,6 @@ impl Builtin {
                     span: (0, 0),
                 },
             }),
-            Print => todo!("Type of print"),
-        }
-    }
-}
-
-impl<'hir, 'input> Ty<'hir, 'input> for Builtin {
-    fn ty(&self) -> Type<'hir, 'input> {
-        use Builtin::*;
-        match self {
-            // TODO(quinn): how to we represent the source spans
-            // of builtin values like (+)?
-            Add | Sub | Mul | Rem => Type {
-                kind: TypeKind::Function(&TypeFunction {
-                    lhs: Type {
-                        kind: TypeKind::I32,
-                        span: (0, 0),
-                    },
-                    rhs: Type {
-                        kind: TypeKind::I32,
-                        span: (0, 0),
-                    },
-                    output: Type {
-                        kind: TypeKind::I32,
-                        span: (0, 0),
-                    },
-                }),
-                span: (0, 0),
-            },
-            Div => todo!("Type of div"),
-            Eq | Lt | Gt | Le | Ge => Type {
-                kind: TypeKind::Function(&TypeFunction {
-                    lhs: Type {
-                        kind: TypeKind::I32,
-                        span: (0, 0),
-                    },
-                    rhs: Type {
-                        kind: TypeKind::I32,
-                        span: (0, 0),
-                    },
-                    output: Type {
-                        kind: TypeKind::I32,
-                        span: (0, 0),
-                    },
-                }),
-                span: (0, 0),
-            },
-            Print => todo!("Type of print"),
         }
     }
 }

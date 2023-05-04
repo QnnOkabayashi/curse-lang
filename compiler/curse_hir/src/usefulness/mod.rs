@@ -71,7 +71,6 @@ fn push_wildcard_fields_for_type<'hir, 'input>(
     hir: &Hir<'hir, 'input>,
 ) {
     match kind {
-        TypeKind::I32 | TypeKind::Bool | TypeKind::Function(_) => {}
         TypeKind::Var(var) => push_wildcard_fields_for_type(
             &hir[*var].binding().expect("unbound type var").kind,
             stack,
@@ -81,6 +80,7 @@ fn push_wildcard_fields_for_type<'hir, 'input>(
             todo!("push_wildcard_fields_for_type for choice types- may need to rewrite this fn")
         }
         TypeKind::Tuple(types) => stack.extend(types.iter().copied().map(Pattern::Wildcard)),
+        _ => {}
     }
 }
 

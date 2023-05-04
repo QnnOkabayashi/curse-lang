@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use curse_ast::Span;
 use curse_hir as hir;
 use curse_parse as parse;
@@ -50,19 +49,24 @@ fn main() {
 
     let mut function_to_typescope: HashMap<&str, HashMap<&str, hir::Type<'_, '_>>> = HashMap::new();
 
-    let globals: HashMap<&str, hir::Polytype> = hir
+    let globals: HashMap<&str, hir::TypeTemplate> = hir
         .default_globals()
-        .chain(program.fn_defs.iter().map(|item| {
+        .chain(program.fn_defs.iter().map(|fn_def| {
             // Since items (i.e. functions for now) can be generic over types,
             // we need to extend the set of currently in-scope types with the
             // generics that this item introduces. To avoid bringing the types
             // into the global program scope, we'll create a temporary inner scope
             let mut inner_type_scope = type_scope.clone();
 
-            let mut typevars = SmallVec::with_capacity(item.generics.len());
-            inner_type_scope.reserve(item.generics.len());
+            let sig = fn_def
+                .type_sig
+                .as_ref()
+                .expect("functions with inferred type signatures aren't yet supported");
 
-            for generic in item.generics.iter() {
+            let mut typevars = SmallVec::with_capacity(sig.generics.len());
+            inner_type_scope.reserve(sig.generics.len());
+
+            for generic in sig.generics.iter() {
                 let var = hir.new_typevar();
                 typevars.push(var);
                 inner_type_scope.insert(
@@ -74,11 +78,16 @@ fn main() {
                 );
             }
 
-            let typ = hir.type_from_ast(item.typ, &inner_type_scope);
+            // TODO(quinn): make types brought into scope for the particular function
+            // (aka the generics here) be passed in in some other intelligent
+            // way so we don't have to clone the hashmap.
+            let ty = hir.type_from_ast(sig.ty, &inner_type_scope);
 
-            function_to_typescope.insert(item.name.literal, inner_type_scope);
+            let template = hir::TypeTemplate { typevars, ty };
 
-            (item.name.literal, hir::Polytype { typevars, ty: typ })
+            function_to_typescope.insert(fn_def.name.literal, inner_type_scope);
+
+            (fn_def.name.literal, template)
         }))
         .collect();
 
@@ -86,7 +95,7 @@ fn main() {
     let mut errors: Vec<hir::LowerError<'_, '_>> = Vec::with_capacity(0);
 
     let lowered_items: Result<
-        HashMap<&str, (hir::Polytype, hir::Expr<'_, '_>)>,
+        HashMap<&str, (hir::TypeTemplate, hir::Expr<'_, '_>)>,
         hir::PushedErrors,
     > = program
         .fn_defs
@@ -102,7 +111,7 @@ fn main() {
             );
 
             let polytype = globals[item_name].clone();
-            let expr = scope.lower(item.expr)?;
+            let expr = scope.lower_closure(&item.function)?;
 
             // Make sure the function actually lines up with its type signature.
             let ty = scope.hir.monomorphize(&polytype);
@@ -155,3 +164,19 @@ fn main() {
         return;
     }
 }
+
+const CORE_ARITH: &str = r#"
+// Stubs for errors messages
+
+fn `+`: i32 i32 -> i32 = |a, b| a + b
+fn `-`: i32 i32 -> i32 = |a, b| a - b
+fn `*`: i32 i32 -> i32 = |a, b| a * b
+fn `%`: i32 i32 -> i32 = |a, b| a % b
+fn `/`: i32 i32 -> i32 = |a, b| a / b
+
+fn `=`: i32 i32 -> bool = |a, b| a = b
+fn `<`: i32 i32 -> bool = |a, b| a < b
+fn `>`: i32 i32 -> bool = |a, b| a > b
+fn `<=`: i32 i32 -> bool = |a, b| a <= b
+fn `>=`: i32 i32 -> bool = |a, b| a >= b
+"#;

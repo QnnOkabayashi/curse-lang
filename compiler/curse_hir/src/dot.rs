@@ -1,5 +1,5 @@
 //! Utilities for writing an AST in dot format for Graphviz.
-use crate::{expr::Ty, Expr, ExprKind, Hir};
+use crate::{Expr, ExprKind, Hir};
 use std::fmt::Write as _;
 
 pub struct Builder<'env> {
@@ -24,7 +24,7 @@ impl<'env> Builder<'env> {
                 write!(
                     self.out,
                     "p{id}[label = \"{builtin}: {ty}\"]",
-                    ty = builtin.ty().kind.pretty(self.env),
+                    ty = builtin.type_kind().pretty(self.env),
                 )
                 .unwrap();
             }

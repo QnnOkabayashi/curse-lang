@@ -1,6 +1,6 @@
 use crate::{
-    Builtin, Edge, Expr, ExprAppl, ExprArm, ExprKind, Hir, LowerError, Node, Pat, PatKind,
-    Polytype, Ty, Type, TypeFunction, TypeKind, Typevar,
+    Builtin, Edge, Expr, ExprAppl, ExprArm, ExprKind, Hir, LowerError, Node, Pat, PatKind, Ty,
+    Type, TypeFunction, TypeKind, TypeTemplate, Typevar,
 };
 use ast::Span;
 use curse_ast as ast;
@@ -12,7 +12,7 @@ pub struct Scope<'outer, 'hir, 'input> {
     type_map: &'outer HashMap<&'outer str, Type<'hir, 'input>>,
     errors: &'outer mut Vec<LowerError<'hir, 'input>>,
     original_errors_len: usize,
-    globals: &'hir HashMap<&'hir str, Polytype<'hir, 'input>>,
+    globals: &'hir HashMap<&'hir str, TypeTemplate<'hir, 'input>>,
     locals: &'outer mut Vec<(&'hir str, Type<'hir, 'input>)>,
     original_locals_len: usize,
 }
@@ -22,7 +22,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         hir: &'outer mut Hir<'hir, 'input>,
         type_map: &'outer HashMap<&'outer str, Type<'hir, 'input>>,
         errors: &'outer mut Vec<LowerError<'hir, 'input>>,
-        globals: &'hir HashMap<&'hir str, Polytype<'hir, 'input>>,
+        globals: &'hir HashMap<&'hir str, TypeTemplate<'hir, 'input>>,
         locals: &'outer mut Vec<(&'hir str, Type<'hir, 'input>)>,
     ) -> Self {
         let original_errors_len = errors.len();
@@ -76,6 +76,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         self.errors.len() > self.original_errors_len
     }
 
+    // TODO(quinn): Move each branch into its own method to clean up this function.
     pub fn lower(
         &mut self,
         expr: &ast::Expr<'_, 'input>,
@@ -187,107 +188,119 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     span: tuple.span(),
                 })
             }
-            ast::Expr::Closure(closure) => {
+            ast::Expr::Closure(closure) => self.lower_closure(closure),
+            ast::Expr::Appl(appl) => self.lower_appl(appl),
+        }
+    }
+
+    /// Lowers an [`ast::ExprClosure`].
+    pub fn lower_closure(
+        &mut self,
+        closure: &ast::ExprClosure<'_, 'input>,
+    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
+        let mut inner = self.enter_scope();
+        let [lhs, rhs] = inner.pats_of_many_params(closure.head())?;
+        let body = inner.lower(closure.head().body)?;
+        drop(inner);
+
+        let arm1 = ExprArm {
+            open: closure.head().open,
+            lhs,
+            rhs,
+            close: closure.head().close,
+            body,
+        };
+
+        let arms = if let Some(tail) = closure.tail() {
+            let arms = self
+                .hir
+                .arms
+                .alloc_extend(iter::repeat_with(ExprArm::dummy).take(1 + tail.len()));
+
+            for ((_comma, arm), i) in tail.iter().zip(1..) {
                 let mut inner = self.enter_scope();
-                let [lhs, rhs] = inner.pats_of_many_params(closure.head())?;
-                let body = inner.lower(closure.head().body)?;
+                let [lhs, rhs] = inner.pats_of_many_params(arm)?;
+                let body = inner.lower(arm.body)?;
                 drop(inner);
 
-                let arm1 = ExprArm {
-                    open: closure.head().open,
-                    lhs,
-                    rhs,
-                    close: closure.head().close,
-                    body,
-                };
-
-                let arms = if let Some(tail) = closure.tail() {
-                    let arms = self
-                        .hir
-                        .arms
-                        .alloc_extend(iter::repeat_with(ExprArm::dummy).take(1 + tail.len()));
-
-                    for ((_comma, arm), i) in tail.iter().zip(1..) {
-                        let mut inner = self.enter_scope();
-                        let [lhs, rhs] = inner.pats_of_many_params(arm)?;
-                        let body = inner.lower(arm.body)?;
-                        drop(inner);
-
-                        self.unify(arm1.lhs.ty(), lhs.ty());
-                        self.unify(arm1.rhs.ty(), rhs.ty());
-                        self.unify(arm1.body.ty(), body.ty());
-
-                        if self.had_errors() {
-                            return Err(PushedErrors);
-                        }
-
-                        arms[i] = ExprArm {
-                            open: arm.open,
-                            lhs,
-                            rhs,
-                            close: arm.close,
-                            body,
-                        };
-                    }
-                    arms[0] = arm1;
-                    arms
-                } else {
-                    std::slice::from_ref(self.hir.arms.alloc(arm1))
-                };
-
-                Ok(Expr {
-                    kind: ExprKind::Closure {
-                        ty: TypeKind::Function(self.hir.type_fns.alloc(TypeFunction {
-                            lhs: arm1.lhs.ty(),
-                            rhs: arm1.rhs.ty(),
-                            output: arm1.body.ty(),
-                        })),
-                        arms,
-                    },
-                    span: closure.span(),
-                })
-            }
-            ast::Expr::Appl(appl) => {
-                let lhs = self.lower(appl.lhs);
-                let rhs = self.lower(appl.rhs);
-                let function = self.lower(appl.function);
-
-                let (Ok(lhs), Ok(rhs), Ok(function)) = (lhs, rhs, function) else {
-                    return Err(PushedErrors);
-                };
-
-                let ty = Type {
-                    kind: TypeKind::Var(self.hir.new_typevar()),
-                    span: appl.span(),
-                };
-
-                let expected_function = self.hir.type_fns.alloc(TypeFunction {
-                    lhs: lhs.ty(),
-                    rhs: rhs.ty(),
-                    output: ty,
-                });
-
-                self.unify(
-                    function.ty(),
-                    Type {
-                        kind: TypeKind::Function(expected_function),
-                        span: appl.function.span(),
-                    },
-                );
+                self.unify(arm1.lhs.ty(), lhs.ty());
+                self.unify(arm1.rhs.ty(), rhs.ty());
+                self.unify(arm1.body.ty(), body.ty());
 
                 if self.had_errors() {
                     return Err(PushedErrors);
                 }
 
-                Ok(Expr {
-                    kind: ExprKind::Appl {
-                        ty: ty.kind,
-                        appl: self.hir.appls.alloc(ExprAppl { lhs, function, rhs }),
-                    },
-                    span: appl.span(),
-                })
+                arms[i] = ExprArm {
+                    open: arm.open,
+                    lhs,
+                    rhs,
+                    close: arm.close,
+                    body,
+                };
             }
+            arms[0] = arm1;
+            arms
+        } else {
+            std::slice::from_ref(self.hir.arms.alloc(arm1))
+        };
+
+        Ok(Expr {
+            kind: ExprKind::Closure {
+                ty: TypeKind::Function(self.hir.type_fns.alloc(TypeFunction {
+                    lhs: arm1.lhs.ty(),
+                    rhs: arm1.rhs.ty(),
+                    output: arm1.body.ty(),
+                })),
+                arms,
+            },
+            span: closure.span(),
+        })
+    }
+
+    /// Lowers an [`ast::ExprAppl`].
+    fn lower_appl(
+        &mut self,
+        appl: &ast::ExprAppl<'_, 'input>,
+    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
+        let lhs = self.lower(appl.lhs);
+        let rhs = self.lower(appl.rhs);
+        let function = self.lower(appl.function);
+
+        let (Ok(lhs), Ok(rhs), Ok(function)) = (lhs, rhs, function) else {
+                    return Err(PushedErrors);
+                };
+
+        let ty = Type {
+            kind: TypeKind::Var(self.hir.new_typevar()),
+            span: appl.span(),
+        };
+
+        let expected_function = self.hir.type_fns.alloc(TypeFunction {
+            lhs: lhs.ty(),
+            rhs: rhs.ty(),
+            output: ty,
+        });
+
+        self.unify(
+            function.ty(),
+            Type {
+                kind: TypeKind::Function(expected_function),
+                span: appl.function.span(),
+            },
+        );
+
+        if self.had_errors() {
+            return Err(PushedErrors);
         }
+
+        Ok(Expr {
+            kind: ExprKind::Appl {
+                ty: ty.kind,
+                appl: self.hir.appls.alloc(ExprAppl { lhs, function, rhs }),
+            },
+            span: appl.span(),
+        })
     }
 
     /// Returns the [`Type<'hir, 'input>`] of an [`ast::ExprPat`].
@@ -530,6 +543,30 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 },
             ) => {
                 let conclusion = self.hir.equations.add_rule(Node::Equiv(t1, t2));
+                // TODO(quinn): The problem at hand is we need to be able to unify
+                // the types of builtin functions with the types of custom functions.
+                // I made an enum `TypeFunctionKind` that allows for either, but its
+                // lhs/rhs/output functions return a `&TypeKind`, not a `Type`,
+                // meaning I can't unify on it (which was the whole point...).
+                // I know that unification only requires the type in the case
+                // that we do var binding, and only uses the span if it's a var
+                // (which it never will be for builtins), or if it's a cyclic type
+                // (which it never is because it's literally addition).
+                // So I think I need some other alternative.
+                //
+                // One idea I had was to create a customized error message when
+                // unification fails on a builtin (e.g. "tried to pass bool to `+` operator"),
+                // but this wouldn't work well with higher-order functions.
+                //
+                // A more permanent solution would be to create some pseudo definition
+                // site for the builtins and have error messages reference that instead.
+                // That would require having miette work on errors with text from different
+                // sources though...
+                //
+                // In pursuit of this idea, I've created a `CORE_ARITH` string at the
+                // bottom on `compiler/curse/src/main.rs` that can serve as the function stubs.
+                // Now all I need is a way of telling my miette errors which string to use,
+                // and then hooking that up in the main fn.
                 let lhs_proof = self.unify(f1.lhs, f2.lhs);
                 let rhs_proof = self.unify(f1.rhs, f2.rhs);
                 let output_proof = self.unify(f1.output, f2.output); // here

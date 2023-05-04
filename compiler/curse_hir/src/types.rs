@@ -2,8 +2,24 @@ use crate::Hir;
 use curse_ast::tok;
 use displaydoc::Display;
 use petgraph::graph::NodeIndex;
+use smallvec::SmallVec;
 use std::fmt;
 use thiserror::Error;
+
+#[derive(Clone, Debug)]
+pub struct TypeTemplate<'hir, 'input> {
+    pub typevars: SmallVec<[Var; 4]>,
+    pub ty: Type<'hir, 'input>,
+}
+
+impl<'hir, 'input> TypeTemplate<'hir, 'input> {
+    pub fn new(ty: Type<'hir, 'input>) -> Self {
+        TypeTemplate {
+            typevars: SmallVec::new(),
+            ty,
+        }
+    }
+}
 
 pub enum Typevar<'hir, 'input> {
     /// An unbound type variable
@@ -115,8 +131,6 @@ pub struct TypePrinter<'a> {
 impl fmt::Display for TypePrinter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.ty {
-            TypeKind::I32 => write!(f, "i32"),
-            TypeKind::Bool => write!(f, "bool"),
             TypeKind::Var(var) => {
                 if let Some(ty) = self.hir[var].binding() {
                     write!(f, "{}", ty.kind.pretty(self.hir))
@@ -145,6 +159,7 @@ impl fmt::Display for TypePrinter<'_> {
                     fun.output.kind.pretty(self.hir)
                 )
             }
+            other => write!(f, "{other}"),
         }
     }
 }

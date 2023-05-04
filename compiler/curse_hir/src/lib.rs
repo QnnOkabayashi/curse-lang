@@ -1,6 +1,6 @@
 use ast::Span;
 use curse_ast as ast;
-use smallvec::{smallvec, SmallVec};
+use smallvec::smallvec;
 use std::{
     collections::HashMap,
     iter,
@@ -26,21 +26,6 @@ pub use types::*;
 
 mod lowering;
 pub use lowering::*;
-
-#[derive(Clone, Debug)]
-pub struct Polytype<'hir, 'input> {
-    pub typevars: SmallVec<[Var; 4]>,
-    pub ty: Type<'hir, 'input>,
-}
-
-impl<'hir, 'input> Polytype<'hir, 'input> {
-    pub fn new(ty: Type<'hir, 'input>) -> Self {
-        Polytype {
-            typevars: SmallVec::new(),
-            ty,
-        }
-    }
-}
 
 pub struct Hir<'hir, 'input> {
     pub type_fns: &'hir Arena<TypeFunction<'hir, 'input>>,
@@ -70,7 +55,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
     /// `print`: `x () -> ()`
     pub fn default_globals(
         &mut self,
-    ) -> impl Iterator<Item = (&'static str, Polytype<'hir, 'input>)> {
+    ) -> impl Iterator<Item = (&'static str, TypeTemplate<'hir, 'input>)> {
         let dummy = (0, 0);
         [
             ("in", {
@@ -85,7 +70,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                     span: dummy,
                 };
 
-                Polytype {
+                TypeTemplate {
                     typevars: smallvec![x, y],
                     ty: Type {
                         kind: TypeKind::Function(self.type_fns.alloc(TypeFunction {
@@ -114,7 +99,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                     span: dummy,
                 };
 
-                Polytype {
+                TypeTemplate {
                     typevars: smallvec![x],
                     ty: Type {
                         kind: TypeKind::Function(self.type_fns.alloc(TypeFunction {
@@ -136,7 +121,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
         .into_iter()
     }
 
-    pub fn monomorphize(&mut self, polytype: &Polytype<'hir, 'input>) -> Type<'hir, 'input> {
+    pub fn monomorphize(&mut self, template: &TypeTemplate<'hir, 'input>) -> Type<'hir, 'input> {
         // Takes a polymorphic type and replaces all instances of generics
         // with a fixed, unbound type.
         // For example, id: T -> T is a polymorphic type, so it goes through
@@ -164,6 +149,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                     let replaced_types = hir
                         .types
                         .alloc_extend(iter::repeat_with(Type::dummy).take(types.len()));
+
                     for (i, ty) in types.iter().enumerate() {
                         replaced_types[i] = replace_unbound_typevars(tbl, hir, *ty);
                     }
@@ -177,13 +163,13 @@ impl<'hir, 'input> Hir<'hir, 'input> {
             }
         }
 
-        let tvs_to_replace = polytype
+        let tvs_to_replace = template
             .typevars
             .iter()
             .map(|tv| (*tv, TypeKind::Var(self.new_typevar())))
             .collect();
 
-        replace_unbound_typevars(&tvs_to_replace, self, polytype.ty)
+        replace_unbound_typevars(&tvs_to_replace, self, template.ty)
     }
 
     /// Convert an [`ast::Type<'_, 'input>`] annotation into an HIR [`Type<'hir, 'input>`].
