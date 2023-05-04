@@ -68,7 +68,9 @@ impl<'hir, 'input> Hir<'hir, 'input> {
     /// and
     ///
     /// `print`: `x () -> ()`
-    pub fn default_globals(&mut self) -> impl Iterator<Item = (&'static str, Polytype<'hir, 'input>)> {
+    pub fn default_globals(
+        &mut self,
+    ) -> impl Iterator<Item = (&'static str, Polytype<'hir, 'input>)> {
         let dummy = (0, 0);
         [
             ("in", {

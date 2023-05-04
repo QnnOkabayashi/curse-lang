@@ -1,6 +1,6 @@
 use crate::{pat, tok, ty, Span};
 
-pub type ExprPat<'ast, 'input> = pat::Pat<'ast, ExprLit<'input>>;
+pub type ExprPat<'ast, 'input> = pat::Pat<'ast, 'input>;
 pub type ExprTuple<'ast, 'input> = pat::PatTuple<&'ast Expr<'ast, 'input>>;
 
 #[derive(Clone, Debug)]

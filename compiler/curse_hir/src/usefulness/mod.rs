@@ -5,7 +5,7 @@
 //! https://doc.rust-lang.org/nightly/nightly-rustc/rustc_mir_build/thir/pattern/usefulness/index.html
 use crate::{Expr, ExprArm, ExprKind, Hir, Pat, PatKind, Ty, Type, TypeKind};
 use smallvec::SmallVec;
-use std::fmt;
+use std::{convert::TryInto, fmt};
 
 mod error;
 pub use error::{RedundentArmError, UsefulnessError, UsefulnessErrors};
@@ -20,7 +20,7 @@ enum Constructor {
     /// An integer literal.
     Int(i32),
     /// A choice variant
-    ChoiceVariant { id: u32 },
+    ChoiceVariant(u32),
     /// A wildcard.
     /// Can either be an unbound ident ("a") or an actual wildcard ("_").
     Wildcard,
@@ -77,12 +77,16 @@ fn push_wildcard_fields_for_type<'hir, 'input>(
             stack,
             hir,
         ),
-        TypeKind::Choice(_choice) => todo!("Allow for pattern matching on choices"),
+        TypeKind::Choice(_choice) => {
+            todo!("push_wildcard_fields_for_type for choice types- may need to rewrite this fn")
+        }
         TypeKind::Tuple(types) => stack.extend(types.iter().copied().map(Pattern::Wildcard)),
     }
 }
 
 impl<'hir, 'input> Pattern<'hir, 'input> {
+    /// Used on q to visit q's ctors, where `is_ctor_useful` will
+    /// determine if that ctor is useful w.r.t. all other p's.
     fn visit_ctors(
         &self,
         hir: &Hir<'hir, 'input>,
@@ -94,6 +98,7 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
         }
     }
 
+    /// Only used in `Pattern::visit_ctors`.
     fn visit_ctors_for_type(
         kind: &TypeKind<'hir, 'input>,
         hir: &Hir<'hir, 'input>,
@@ -115,8 +120,22 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                 is_ctor_useful,
             ),
             TypeKind::Tuple(_) => is_ctor_useful(Single),
-            TypeKind::Choice(_choice) => {
-                todo!("visit_ctors_for_type for choices")
+            TypeKind::Choice(choice) => {
+                let last_index = choice
+                    .variants
+                    .len()
+                    .checked_sub(1)
+                    .expect("Must have at least one variant, otherwise typeck would have failed")
+                    .try_into()
+                    .expect("Variant count doesn't fit in u32");
+
+                for variant in 0..last_index {
+                    if is_ctor_useful(ChoiceVariant(variant)).is_useful() {
+                        return Usefulness::Useful;
+                    }
+                }
+
+                is_ctor_useful(ChoiceVariant(last_index))
             }
             TypeKind::Function(_) => is_ctor_useful(Wildcard),
         }
@@ -136,7 +155,8 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                 PatKind::I32(i) => Int(i),
                 PatKind::Tuple { .. } => Single,
                 PatKind::Ident { .. } => Wildcard,
-                PatKind::Omitted(_) => Wildcard,
+                PatKind::Choice { variant, .. } => ChoiceVariant(variant),
+                PatKind::Omitted => Single,
             },
             Pattern::Wildcard(_) => Wildcard,
         }
@@ -144,20 +164,30 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
 
     /// Pushes the fields of a pattern onto the stack.
     /// This function should only be called when it matches the q.
+    ///
+    /// For example, pushing the fields of a tuple to the pat stack.
+    /// [(a, b)]
+    /// [a, b]
     fn push_fields(&self, stack: &mut Vec<Pattern<'hir, 'input>>, hir: &Hir<'hir, 'input>) {
         match self {
-            Pattern::Pat(pat) => match &pat.kind {
-                PatKind::Bool(_) | PatKind::I32(_) => {}
-                PatKind::Tuple { pats, .. } => stack.extend(pats.iter().map(Pattern::Pat)),
-                PatKind::Ident { ty, .. } => push_wildcard_fields_for_type(ty, stack, hir),
-                PatKind::Omitted(var) => {
-                    let kind = &hir[*var].binding().expect("unbound typevar").kind;
-
-                    push_wildcard_fields_for_type(kind, stack, hir)
-                }
-            },
+            Pattern::Pat(pat) => pat_kind_push_fields(&pat.kind, stack, hir),
             Pattern::Wildcard(ty) => push_wildcard_fields_for_type(&ty.kind, stack, hir),
         }
+    }
+}
+
+fn pat_kind_push_fields<'hir, 'input>(
+    kind: &PatKind<'hir, 'input>,
+    stack: &mut Vec<Pattern<'hir, 'input>>,
+    hir: &Hir<'hir, 'input>,
+) {
+    match kind {
+        PatKind::Tuple { pats, .. } => stack.extend(pats.iter().map(Pattern::Pat)),
+        PatKind::Ident { ty, .. } => push_wildcard_fields_for_type(ty, stack, hir),
+        PatKind::Choice {
+            payload: Some(pat), ..
+        } => pat_kind_push_fields(&pat.kind, stack, hir),
+        _ => {}
     }
 }
 
@@ -195,12 +225,10 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
         stacks: &mut [Vec<Pattern<'hir, 'input>>],
         hir: &Hir<'hir, 'input>,
     ) -> Option<Specialization<'hir, 'input>> {
-        // I am a wildcard, ctor in Bool(true).
-        // pat is a wildcard
         let (patstack, self_pat) = self
             .specialize(stacks)
             .expect("we only call specialize on PatternStacks with an element in them");
-        // when we scope, we should also return the think that we specialized on
+
         let did_expand: bool = match (ctor, self_pat.ctor()) {
             (Single, Single) => {
                 self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
@@ -208,6 +236,27 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
             }
             (Bool(a), Bool(b)) => a == b,
             (Int(a), Int(b)) => a == b,
+            (ChoiceVariant(v1), ChoiceVariant(v2)) => {
+                if v1 == v2 {
+                    // TODO(quinn): the problem is this fn call right here.
+                    // I think that we don't want to be calling `push_fields` here since
+                    // we already know its a ChoiceVariant.
+                    //
+                    // What I want is a way to just push the pattern of the payload,
+                    // if there is one. Otherwise push nothing.
+                    // But in this match arm, I've already lost any information about
+                    // the payload and am just left with the indices (v1/v2) of which
+                    // variant is present. I want to maintain information about the payload
+                    // pattern, without bundling it into `Constructor::ChoiceVariant`.
+                    //
+                    // This issue is also impacted by the case below where
+                    // `ctor` is a wildcard and `self_pat.ctor()` isn't...
+                    self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
+                    true
+                } else {
+                    false
+                }
+            }
             (Wildcard, pat) => {
                 // If the specialization is a wildcard, then it means that the particular
                 // type can only be exhausted by a wildcard. For example, integers
@@ -215,7 +264,7 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
                 // and functions, which can't be matched on by anything _but_ a wildcard.
                 matches!(pat, Wildcard)
             }
-            (_, Wildcard) => {
+            (_pat, Wildcard) => {
                 // the pattern above is a wildcard and the q isn't
                 // Example:
                 // match Some(4) {
@@ -234,8 +283,9 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
                 self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
                 true
             }
-            _ => panic!("different type patterns, this shouldn't be possible after typeck"),
+            _ => unreachable!("different type patterns, this shouldn't be possible after typeck"),
         };
+
         if did_expand {
             Some(patstack)
         } else {
@@ -281,9 +331,10 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
         self.specializations.push(p_n);
     }
 
+    /// Returns the usefulness of `self.q` w.r.t. the other patterns.
     fn run(&mut self, hir: &Hir<'hir, 'input>) -> Usefulness {
         self.sanity_check("start of run");
-        let Some((q_prime_generalized, pat)) = self.q.specialize(self.patstacks) else {
+        let Some((q_prime_generalized, q_pat)) = self.q.specialize(self.patstacks) else {
             // Nothing left to specialize on, are we unique?
             // We're unique if there's nothing above us anymore.
             return if self.specializations.is_empty() { Usefulness::Useful } else {
@@ -293,7 +344,7 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
 
         q_prime_generalized.cleanup(self.patstacks);
 
-        pat.visit_ctors(hir, |ctor| {
+        q_pat.visit_ctors(hir, |ctor| {
             let q_prime = self
                 .q
                 .specialize_if_matching(ctor, self.patstacks, hir)

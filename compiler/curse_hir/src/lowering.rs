@@ -350,12 +350,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 }
 
                 Ok(Pat {
-                    kind: PatKind::Tuple {
-                        ty: TypeKind::Tuple(types),
-                        pats,
-                    },
+                    kind: PatKind::Tuple { ty: types, pats },
                     span: tuple.span(),
                 })
+            }
+            ast::Pat::Choice(_choice) => {
+                todo!("lower choice patterns")
             } // When we add struct destructuring, we can unify the type of the field
               // with the returned type of the pattern in that field.
               // e.g. If we have a `struct Number(i32)` and have the pattern

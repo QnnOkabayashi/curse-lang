@@ -10,7 +10,10 @@ pub enum Node<'hir, 'input> {
     // #[displaydoc("{0} ≢ {1}")]
     NotEquiv(Type<'hir, 'input>, Type<'hir, 'input>),
     // #[displaydoc("{var} := {definition}")]
-    Binding { var: Var, definition: Type<'hir, 'input> },
+    Binding {
+        var: Var,
+        definition: Type<'hir, 'input>,
+    },
 }
 
 /// An edge on the inference graph i.e. the reason why a proof (node) leads to

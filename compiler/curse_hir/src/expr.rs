@@ -1,4 +1,4 @@
-use crate::{Type, TypeFunction, TypeKind, Var};
+use crate::{Type, TypeChoice, TypeFunction, TypeKind};
 use curse_ast::{tok, Span};
 use std::fmt;
 
@@ -290,48 +290,41 @@ pub enum PatKind<'hir, 'input> {
         literal: &'input str,
     },
     Tuple {
-        ty: TypeKind<'hir, 'input>,
+        ty: &'hir [Type<'hir, 'input>],
         pats: &'hir [Pat<'hir, 'input>],
+    },
+    Choice {
+        ty: &'hir TypeChoice<'hir, 'input>,
+        variant: u32,
+        payload: Option<&'hir Pat<'hir, 'input>>,
     },
     /// An omitted pattern.
     ///
     /// For example, the rhs pattern in `|x| ...` would be `Omitted`
-    /// because it is omitted.
-    Omitted(Var),
+    /// because there's only a lhs pattern.
+    Omitted,
 }
 
 impl<'hir, 'input> PatKind<'hir, 'input> {
     pub fn unit() -> Self {
-        PatKind::Tuple {
-            ty: TypeKind::unit(),
-            pats: &[],
-        }
+        PatKind::Tuple { ty: &[], pats: &[] }
     }
 }
 
 impl<'hir, 'input> Ty<'hir, 'input> for Pat<'hir, 'input> {
     fn ty(&self) -> Type<'hir, 'input> {
-        match self.kind {
-            PatKind::Bool(_) => Type {
-                kind: TypeKind::Bool,
-                span: self.span,
-            },
-            PatKind::I32(_) => Type {
-                kind: TypeKind::I32,
-                span: self.span,
-            },
-            PatKind::Ident { ty, .. } => Type {
-                kind: ty,
-                span: self.span,
-            },
-            PatKind::Tuple { ty, .. } => Type {
-                kind: ty,
-                span: self.span,
-            },
-            PatKind::Omitted(var) => Type {
-                kind: TypeKind::Var(var),
-                span: self.span,
-            },
+        let kind = match self.kind {
+            PatKind::Bool(_) => TypeKind::Bool,
+            PatKind::I32(_) => TypeKind::I32,
+            PatKind::Ident { ty, .. } => ty,
+            PatKind::Tuple { ty, .. } => TypeKind::Tuple(ty),
+            PatKind::Choice { ty, .. } => TypeKind::Choice(ty),
+            PatKind::Omitted => TypeKind::Tuple(&[]),
+        };
+
+        Type {
+            kind,
+            span: self.span,
         }
     }
 }
