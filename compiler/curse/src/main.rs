@@ -9,6 +9,19 @@ use typed_arena::Arena;
 
 mod programs;
 
+// TODO(quinn):
+// Make it so that tuples don't count as possible functions
+// Choice variant usefulness
+// Choice variant parsing in expressions and patterns
+// type-inferred function syntax
+// Attributes (like inline)
+// Tail recursion checking- I feel like with tail recursion, people either _need_ it or do not care
+// about it. It shouldn't be a hassle to determine if it's applied or not, so we should have a
+// `#[tail_recursive]` attribute where if present, it _will_ be tail recursive (or compiler error),
+// and if absent, no tail recursion will be applied. This would require good diagnostics for why it
+// cannot be applied too if that error occurs.
+// Since this language is pretty functional right now, tail recursion is a must.
+
 fn main() {
     let input: &str = programs::FIB;
 

@@ -12,8 +12,7 @@ pub enum Pat<'ast, 'input> {
 
 #[derive(Clone, Debug)]
 pub struct PatChoice<'ast, 'input> {
-    pub apostrophe: tok::Apostrophe,
-    pub tag: tok::Ident<'input>,
+    pub name: tok::NamedType<'input>,
     pub payload: Option<&'ast Pat<'ast, 'input>>,
 }
 

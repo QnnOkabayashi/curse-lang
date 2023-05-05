@@ -1,8 +1,16 @@
 #![allow(dead_code)]
-// choice variants either have 0 or 1 values
-// variants are labeled with a single quote
-// at the beginning
-pub const CHOICE_TYPES: &str = r#"
+pub const CUSTOM_TYPES: &str = r#"
+let Option: Type -> Type = |T| choice {
+    Some T,
+    None,
+}
+
+let is_some: Type -> fn = |T|
+    {
+        |Some _| True,
+        |None| False,
+    }
+
 choice Option T {
     Some T,
     None,
@@ -16,48 +24,86 @@ choice Option T {
 
 pub const BINARY_TREE: &str = r#"
 choice Option T {
-    Some T,
-    None (),
+    Some(T),
+    None,
 }
 
-fn then {
-    |True, f| Some (() f ()),
+fn then_do {
+    |True, f| Some(() f ()),
     |False, _| None
 }
 
-fn else {
-    |Some val, _| Some val,
+fn then {
+    |True, x| Some(x)
+    |False, _| None
+}
+
+fn else_do {
+    |Some(val), _| val,
     |None, f| () f ()
 }
 
+fn else {
+    |Some(val), _| val,
+    |None, x| x
+}
+
 choice Tree T {
-    Node (I32, T, Tree T, Tree T),
-    Empty (),
+    Node { key: I32, value: T, left: Tree T, right: Tree T },
+    Empty,
 }
 
 fn insert {
-    |Empty (), (k, v)|
-        Node (k, v, Empty (), Empty ()),
-    |Node (key, value, left, right), (k, v)|
-        k > key then (||
-            Node (key, value, left, right insert (k, v))
-        ) else || k < key then (||
-            Node (key, value, left insert (k, v), right)
-        ) else ||
-            Node (key, v, left, right)
+    |Empty, (k, v)|
+        Node (k, v, Empty, Empty),
+    |Node { key, value, left, right }, (k, v)|
+        k > key then_do (||
+            right insert (k, v) in |right|
+            Node { key, value, left, right }
+        ) else_do || k < key then_do (||
+            left insert (k, v) in |left|
+            Node { key, value, left, right }
+        ) else_do ||
+            Node { key, value: v, left, right }
 }
 
 fn get {
-    |Empty (), _|
+    |Empty, _|
         None,
-    |Node (key, value, left, right), k|
-        k > key then (||
+    |Node(key, value, left, right), k|
+        k > key then_do (||
             right find k
-        ) else || k < key then (||
+        ) else_do || k < key then_do (||
             left find k
-        ) else ||
-            Some value
+        ) else_do ||
+            Some(value)
 }
+
+fn print_to_n_iterators |n, io|
+    0 .. n for_each |i|
+        i println io
+
+fn print_to_n_loop |n, io|
+    0 in |mut count|
+    loop of || count == n then Break(()) else_do ||
+        count println io;
+        count += 1;
+        Continue
+
+choice ControlFlow T {
+    Break(T),
+    Continue,
+}
+
+fn loop |f|
+    () f () in {
+        |Break(value)| value,
+        |Continue| loop of f,
+    }
+
+fn in |x, f| f of x
+
+fn of |f, x| x f ()
 "#;
 
 pub const FIB: &str = r#"
