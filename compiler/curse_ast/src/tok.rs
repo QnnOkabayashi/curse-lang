@@ -125,13 +125,11 @@ declare_tokens! {
     "/" => Slash,
     "|" => Pipe,
     "fn" => Fn,
-    "else" => Else,
     "struct" => Struct,
     "choice" => Choice,
     "{" => LBrace,
     "}" => RBrace,
     "->" => Arrow,
-    "'" => Apostrophe,
 
     "=" => Eq,
     "<" => Lt,

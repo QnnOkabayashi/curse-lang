@@ -31,13 +31,11 @@ extern {
         "/" => Token::Slash(<tok::Slash>),
         "|" => Token::Pipe(<tok::Pipe>),
         "fn" => Token::Fn(<tok::Fn>),
-        "else" => Token::Else(<tok::Else>),
         "struct" => Token::Struct(<tok::Struct>),
         "choice" => Token::Choice(<tok::Choice>),
         "{" => Token::LBrace(<tok::LBrace>),
         "}" => Token::RBrace(<tok::RBrace>),
         "->" => Token::Arrow(<tok::Arrow>),
-        "'" => Token::Apostrophe(<tok::Apostrophe>),
 
         "=" => Token::Eq(<tok::Eq>),
         "<" => Token::Lt(<tok::Lt>),
@@ -233,6 +231,7 @@ Param: Option<ExprParam<'ast, 'input>> = Pat (":" Type)? => match (<>) {
     _ => None,
 };
 
+// Hmm... We can never have a tuple as a function, should we make that a parsing issue?
 Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Term Rhs => match (<>) {
     (Some(lhs), Some(function), Some(rhs)) => Some(ExprAppl::new(lhs, function, rhs)),
     _ => None,
