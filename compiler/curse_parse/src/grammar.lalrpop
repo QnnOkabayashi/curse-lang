@@ -151,9 +151,13 @@ Lit: ExprLit<'input> = {
     "false" => ExprLit::False(<>),
 };
 
-Closure: Res<ExprClosure<'ast, 'input>> = {
-    Arm => ExprClosure::nonpiecewise_from_grammar(<>),
-    "{" Arm ("," Arm)* ","? "}" => ExprClosure::piecewise_from_grammar(<>),
+NonpiecewiseClosure: Res<ExprClosure<'ast, 'input>> = Arm => ExprClosure::nonpiecewise_from_grammar(<>);
+
+PiecewiseClosure: Res<ExprClosure<'ast, 'input>> = "{" Arm ("," Arm)* ","? "}" => ExprClosure::piecewise_from_grammar(<>);
+
+Closure = {
+    NonpiecewiseClosure,
+    PiecewiseClosure,
 };
 
 Arm: Res<ExprArm<'ast, 'input>> = "|" (Param ",")* Param? "|" EndExpr => ExprArm::from_grammar(<>);
@@ -167,6 +171,7 @@ Term: Res<&'ast Expr<'ast, 'input>> = {
     Symbol => Ok(ast.expr(Expr::Symbol(<>))),
     Lit => Ok(ast.expr(Expr::Lit(<>))),
     Tuple<EndExpr> => ast.try_expr(Expr::tuple_from_grammar(<>)),
+    PiecewiseClosure => ast.try_expr(Expr::closure_from_grammar(<>)),
     ! => {
         errors.push(<>.error.into());
         Err(ParseError)
@@ -175,7 +180,7 @@ Term: Res<&'ast Expr<'ast, 'input>> = {
 
 EndTerm = {
     Term,
-    Closure => ast.try_expr(Expr::closure_from_grammar(<>)),
+    NonpiecewiseClosure => ast.try_expr(Expr::closure_from_grammar(<>)),
 };
 
 Expr = {
