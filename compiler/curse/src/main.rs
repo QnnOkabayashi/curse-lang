@@ -177,19 +177,3 @@ fn main() {
         return;
     }
 }
-
-const CORE_ARITH: &str = r#"
-// Stubs for errors messages
-
-fn `+`: i32 i32 -> i32 = |a, b| a + b
-fn `-`: i32 i32 -> i32 = |a, b| a - b
-fn `*`: i32 i32 -> i32 = |a, b| a * b
-fn `%`: i32 i32 -> i32 = |a, b| a % b
-fn `/`: i32 i32 -> i32 = |a, b| a / b
-
-fn `=`: i32 i32 -> bool = |a, b| a = b
-fn `<`: i32 i32 -> bool = |a, b| a < b
-fn `>`: i32 i32 -> bool = |a, b| a > b
-fn `<=`: i32 i32 -> bool = |a, b| a <= b
-fn `>=`: i32 i32 -> bool = |a, b| a >= b
-"#;
