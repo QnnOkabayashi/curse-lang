@@ -207,7 +207,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
             ast::Type::Function(fun) => {
                 let lhs = self.type_from_ast(fun.lhs, map);
                 let rhs = self.type_from_ast(fun.rhs, map);
-                let output = self.type_from_ast(fun.ret, map);
+                let output = self.type_from_ast(fun.output, map);
 
                 Type {
                     kind: TypeKind::Function(self.type_fns.alloc(TypeFunction {

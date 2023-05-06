@@ -1,5 +1,5 @@
-use crate::{tok, Span};
-use std::fmt;
+use crate::{tok, Res, Span};
+use std::{fmt, iter};
 
 #[derive(Clone, Debug)]
 pub struct PatTuple<T> {
@@ -23,8 +23,32 @@ pub struct TupleNonempty<T> {
     pub trailing: Option<T>,
 }
 
+impl<T> TupleNonempty<Res<T>> {
+    /// Converts a `TupleNonempty<Res<T>>` into a `Res<TupleNonempty<T>>`.
+    pub fn transpose(self) -> Res<TupleNonempty<T>> {
+        Ok(TupleNonempty {
+            first: self.first?,
+            comma: self.comma,
+            remaining: self
+                .remaining
+                .into_iter()
+                .map(|(t, comma)| t.map(|t| (t, comma)))
+                .collect::<Res<_>>()?,
+            trailing: self.trailing.transpose()?,
+        })
+    }
+}
+
 impl<T> PatTuple<T> {
-    pub fn nonempty(
+    pub fn unit_from_grammar(lparen: tok::LParen, rparen: tok::RParen) -> Self {
+        PatTuple {
+            lparen,
+            kind: None,
+            rparen,
+        }
+    }
+
+    pub fn nonempty_from_grammar(
         lparen: tok::LParen,
         first: T,
         comma: tok::Comma,
@@ -44,20 +68,11 @@ impl<T> PatTuple<T> {
         }
     }
 
-    pub fn empty(lparen: tok::LParen, rparen: tok::RParen) -> Self {
-        PatTuple {
-            lparen,
-            kind: None,
-            rparen,
-        }
-    }
-
     pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
         self.kind
             .as_ref()
             .map(|inner| {
-                Some(&inner.first)
-                    .into_iter()
+                iter::once(&inner.first)
                     .chain(inner.remaining.iter().map(|(elem, _)| elem))
                     .chain(inner.trailing.as_ref())
             })
@@ -74,33 +89,6 @@ impl<T> PatTuple<T> {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-}
-
-impl<T> PatTuple<Option<T>> {
-    pub fn fold(self) -> Option<PatTuple<T>> {
-        let kind = self.kind.and_then(|nonempty| {
-            Some(TupleNonempty {
-                first: nonempty.first?,
-                comma: nonempty.comma,
-                remaining: nonempty
-                    .remaining
-                    .into_iter()
-                    .map(|(t, comma)| t.map(|t| (t, comma)))
-                    .collect::<Option<_>>()?,
-                trailing: match nonempty.trailing {
-                    Some(Some(t)) => Some(t),
-                    Some(None) => return None,
-                    None => None,
-                },
-            })
-        });
-
-        Some(PatTuple {
-            lparen: self.lparen,
-            kind,
-            rparen: self.rparen,
-        })
     }
 }
 

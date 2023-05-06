@@ -64,20 +64,13 @@
 //! Another downside is that constructing nested types may look a little confusing after
 //! looking at Curse syntax for awhile. For example, `Ok Some 5` means `Ok(Some(5))`,
 //! but also kind of looks like `Ok` and `5` being applied to `Some`.
-use crate::{tok, Type};
+use crate::{tok, Punct, Res, Type};
 
 mod choice_def;
 mod struct_def;
 
 pub use choice_def::*;
 pub use struct_def::*;
-
-/// 0 or more `T`s separated by `Sep`, with an optional trailing `Sep`.
-#[derive(Clone, Debug)]
-pub struct Punct<T, Sep> {
-    pub elements: Vec<(T, Sep)>,
-    pub trailing: Option<T>,
-}
 
 /// A named field, e.g. `height: I32`
 ///
@@ -93,13 +86,9 @@ impl<'ast, 'input> NamedField<'ast, 'input> {
     pub fn from_grammar(
         name: tok::Ident<'input>,
         colon: tok::Colon,
-        opt_ty: Option<&'ast Type<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(NamedField {
-            name,
-            colon,
-            ty: opt_ty?,
-        })
+        res_ty: Res<&'ast Type<'ast, 'input>>,
+    ) -> Res<Self> {
+        res_ty.map(|ty| NamedField { name, colon, ty })
     }
 }
 
@@ -117,34 +106,25 @@ pub enum FieldKind<'ast, 'input> {
 }
 
 impl<'ast, 'input> FieldKind<'ast, 'input> {
-    pub fn newtype_from_grammar(newtype: Option<&'ast Type<'ast, 'input>>) -> Option<Self> {
-        Some(FieldKind::Newtype(newtype?))
+    pub fn newtype_from_grammar(res_newtype: Res<&'ast Type<'ast, 'input>>) -> Res<Self> {
+        res_newtype.map(FieldKind::Newtype)
     }
 
     pub fn record_from_grammar(
         lbrace: tok::LBrace,
-        elements: Vec<(Option<NamedField<'ast, 'input>>, tok::Comma)>,
-        trailing: Option<Option<NamedField<'ast, 'input>>>,
+        elements: Vec<(Res<NamedField<'ast, 'input>>, tok::Comma)>,
+        trailing: Option<Res<NamedField<'ast, 'input>>>,
         rbrace: tok::RBrace,
-    ) -> Option<Self> {
+    ) -> Res<Self> {
         let elements = elements
             .into_iter()
-            .map(|(opt_field, comma)| opt_field.map(|field| (field, comma)))
-            .collect::<Option<_>>()?;
+            .map(|(res_field, comma)| res_field.map(|field| (field, comma)))
+            .collect::<Res<_>>()?;
 
-        inside_out(trailing).map(|trailing| FieldKind::Record {
+        trailing.transpose().map(|trailing| FieldKind::Record {
             lbrace,
             fields: Punct { elements, trailing },
             rbrace,
         })
-    }
-}
-
-/// Transposes an `Option<Option<T>>`
-fn inside_out<T>(v: Option<Option<T>>) -> Option<Option<T>> {
-    match v {
-        Some(Some(v)) => Some(Some(v)),
-        Some(None) => None,
-        None => Some(None),
     }
 }

@@ -230,11 +230,6 @@ pub enum PatKind<'hir, 'input> {
         variant: u32,
         payload: Option<&'hir Pat<'hir, 'input>>,
     },
-    /// An omitted pattern.
-    ///
-    /// For example, the rhs pattern in `|x| ...` would be `Omitted`
-    /// because there's only a lhs pattern.
-    Omitted,
 }
 
 impl<'hir, 'input> PatKind<'hir, 'input> {
@@ -251,7 +246,6 @@ impl<'hir, 'input> Ty<'hir, 'input> for Pat<'hir, 'input> {
             PatKind::Ident { ty, .. } => ty,
             PatKind::Tuple { ty, .. } => TypeKind::Tuple(ty),
             PatKind::Choice { ty, .. } => TypeKind::Choice(ty),
-            PatKind::Omitted => TypeKind::Tuple(&[]),
         };
 
         Type {

@@ -156,7 +156,6 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                 PatKind::Tuple { .. } => Single,
                 PatKind::Ident { .. } => Wildcard,
                 PatKind::Choice { variant, .. } => ChoiceVariant(variant),
-                PatKind::Omitted => Single,
             },
             Pattern::Wildcard(_) => Wildcard,
         }

@@ -399,26 +399,24 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         &mut self,
         arm: &ast::ExprArm<'_, 'input>,
     ) -> Result<[Pat<'hir, 'input>; 2], PushedErrors> {
-        match &arm.params {
-            ast::ExprParams::Zero => Ok([Pat {
-                kind: PatKind::unit(),
-                span: arm.close.span(),
-            }; 2]),
-            ast::ExprParams::One(lhs) => {
-                let lhs_type = self.lower_param(lhs);
-                Ok([
-                    lhs_type?,
-                    Pat {
-                        kind: PatKind::unit(),
-                        span: arm.close.span(),
-                    },
-                ])
-            }
-            ast::ExprParams::Two(lhs, _, rhs) => {
-                let lhs_type = self.lower_param(lhs);
-                let rhs_type = self.lower_param(rhs);
-                Ok([lhs_type?, rhs_type?])
-            }
+        let mut params = arm.params.iter();
+
+        let mut pats = [Pat {
+            kind: PatKind::unit(),
+            span: arm.close.span(),
+        }; 2];
+
+        for (pat, param) in pats.iter_mut().zip(params.by_ref()) {
+            *pat = self.lower_param(param)?;
+        }
+
+        if params.count() == 0 {
+            Ok(pats)
+        } else {
+            self.errors.push(LowerError::TooManyParams {
+                span: arm.open.span_between(arm.close).into(),
+            });
+            Err(PushedErrors)
         }
     }
 

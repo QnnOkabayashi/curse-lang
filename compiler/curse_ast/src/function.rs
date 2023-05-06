@@ -1,4 +1,4 @@
-use crate::{tok, ExprClosure, Span, Type};
+use crate::{tok, ExprClosure, Res, Span, Type};
 
 /// AST representation of a function definition.
 #[derive(Clone, Debug)]
@@ -9,27 +9,19 @@ pub struct FnDef<'ast, 'input> {
     pub function: ExprClosure<'ast, 'input>,
 }
 
-#[derive(Clone, Debug)]
-pub struct TypeSig<'ast, 'input> {
-    pub generics: Vec<tok::NamedType<'input>>,
-    pub colon: tok::Colon,
-    pub ty: &'ast Type<'ast, 'input>,
-    pub eq: tok::Eq,
-}
-
 impl<'ast, 'input> FnDef<'ast, 'input> {
-    pub fn new(
+    pub fn from_grammar(
         fn_: tok::Fn,
         name: tok::Ident<'input>,
-        type_sig: Option<TypeSig<'ast, 'input>>,
-        function: ExprClosure<'ast, 'input>,
-    ) -> Self {
-        FnDef {
+        opt_res_type_sig: Option<Res<TypeSig<'ast, 'input>>>,
+        res_function: Res<ExprClosure<'ast, 'input>>,
+    ) -> Res<Self> {
+        Ok(FnDef {
             fn_,
             name,
-            type_sig,
-            function,
-        }
+            type_sig: opt_res_type_sig.transpose()?,
+            function: res_function?,
+        })
     }
 }
 
@@ -39,18 +31,26 @@ impl Span for FnDef<'_, '_> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct TypeSig<'ast, 'input> {
+    pub generics: Vec<tok::NamedType<'input>>,
+    pub colon: tok::Colon,
+    pub ty: &'ast Type<'ast, 'input>,
+    pub eq: tok::Eq,
+}
+
 impl<'ast, 'input> TypeSig<'ast, 'input> {
-    pub fn new(
+    pub fn from_grammar(
         generics: Vec<tok::NamedType<'input>>,
         colon: tok::Colon,
-        ty: &'ast Type<'ast, 'input>,
+        ty: Res<&'ast Type<'ast, 'input>>,
         eq: tok::Eq,
-    ) -> Self {
-        TypeSig {
+    ) -> Res<Self> {
+        ty.map(|ty| TypeSig {
             generics,
             colon,
             ty,
             eq,
-        }
+        })
     }
 }

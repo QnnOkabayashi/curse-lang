@@ -1,4 +1,4 @@
-use curse_ast::{Expr, ExprPat, Program, Type};
+use curse_ast::{Expr, ExprPat, ParseError, Program, Res, Type};
 use lalrpop_util::lalrpop_mod;
 use typed_arena::Arena;
 
@@ -38,12 +38,23 @@ impl<'ast, 'input> Ast<'ast, 'input> {
         self.exprs.alloc(expr)
     }
 
+    pub fn try_expr(
+        &'ast self,
+        res_expr: Res<Expr<'ast, 'input>>,
+    ) -> Res<&'ast Expr<'ast, 'input>> {
+        res_expr.map(|expr| self.expr(expr))
+    }
+
     pub fn pat(&'ast self, pat: ExprPat<'ast, 'input>) -> &'ast ExprPat<'ast, 'input> {
         self.pats.alloc(pat)
     }
 
-    pub fn typ(&'ast self, typ: Type<'ast, 'input>) -> &'ast Type<'ast, 'input> {
-        self.types.alloc(typ)
+    pub fn ty(&'ast self, ty: Type<'ast, 'input>) -> &'ast Type<'ast, 'input> {
+        self.types.alloc(ty)
+    }
+
+    pub fn try_ty(&'ast self, res_ty: Res<Type<'ast, 'input>>) -> Res<&'ast Type<'ast, 'input>> {
+        res_ty.map(|ty| self.ty(ty))
     }
 }
 
@@ -53,8 +64,8 @@ pub fn parse_program<'ast, 'input>(
 ) -> Result<Program<'ast, 'input>, Vec<Error>> {
     let mut errors = Vec::with_capacity(0);
     match grammar::ProgramParser::new().parse(ast, &mut errors, Lexer::new(input)) {
-        Ok(Some(program)) => Ok(program),
-        Ok(None) => Err(errors),
+        Ok(Ok(program)) => Ok(program),
+        Ok(Err(ParseError)) => Err(errors),
         Err(err) => {
             errors.push(err.into());
             Err(errors)
@@ -68,8 +79,8 @@ pub fn parse_expr<'ast, 'input>(
 ) -> Result<&'ast Expr<'ast, 'input>, Vec<Error>> {
     let mut errors = Vec::with_capacity(0);
     match grammar::EndExprParser::new().parse(context, &mut errors, Lexer::new(input)) {
-        Ok(Some(expr)) => Ok(expr),
-        Ok(None) => Err(errors),
+        Ok(Ok(expr)) => Ok(expr),
+        Ok(Err(ParseError)) => Err(errors),
         Err(err) => {
             errors.push(err.into());
             Err(errors)

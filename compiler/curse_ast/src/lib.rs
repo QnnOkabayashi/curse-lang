@@ -1,4 +1,3 @@
-// mod choice;
 mod defs;
 mod expr;
 mod function;
@@ -6,12 +5,31 @@ mod pat;
 pub mod tok;
 mod ty;
 
-// pub use choice::*;
 pub use defs::*;
 pub use expr::*;
 pub use function::*;
 pub use pat::*;
 pub use ty::*;
+
+/// 0 or more `T`s separated by `Sep`, with an optional trailing `Sep`.
+#[derive(Clone, Debug)]
+pub struct Punct<T, Sep> {
+    pub elements: Vec<(T, Sep)>,
+    pub trailing: Option<T>,
+}
+
+impl<T, Sep> Punct<T, Sep> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.elements
+            .iter()
+            .map(|(t, _sep)| t)
+            .chain(self.trailing.as_ref())
+    }
+}
+
+pub struct ParseError;
+
+pub type Res<T> = Result<T, ParseError>;
 
 pub trait Span {
     fn span(&self) -> (usize, usize);

@@ -1,5 +1,5 @@
-use super::{inside_out, FieldKind, Punct};
-use crate::{tok, Span};
+use super::{FieldKind, Punct};
+use crate::{tok, Res, Span};
 
 /// A definition for a new choice type.
 ///
@@ -20,16 +20,16 @@ impl<'ast, 'input> ChoiceDef<'ast, 'input> {
         name: tok::NamedType<'input>,
         generics: Vec<tok::NamedType<'input>>,
         lbrace: tok::LBrace,
-        elements: Vec<(Option<VariantDef<'ast, 'input>>, tok::Comma)>,
-        trailing: Option<Option<VariantDef<'ast, 'input>>>,
+        elements: Vec<(Res<VariantDef<'ast, 'input>>, tok::Comma)>,
+        trailing: Option<Res<VariantDef<'ast, 'input>>>,
         rbrace: tok::RBrace,
-    ) -> Option<Self> {
+    ) -> Res<Self> {
         let elements = elements
             .into_iter()
-            .map(|(opt_field, comma)| opt_field.map(|field| (field, comma)))
-            .collect::<Option<_>>()?;
+            .map(|(res_field, comma)| res_field.map(|field| (field, comma)))
+            .collect::<Res<_>>()?;
 
-        inside_out(trailing).map(|trailing| ChoiceDef {
+        trailing.transpose().map(|trailing| ChoiceDef {
             choice,
             name,
             generics,
@@ -58,11 +58,8 @@ pub struct VariantDef<'ast, 'input> {
 impl<'ast, 'input> VariantDef<'ast, 'input> {
     pub fn from_grammar(
         name: tok::NamedType<'input>,
-        opt_fields: Option<FieldKind<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(VariantDef {
-            name,
-            fields: opt_fields?,
-        })
+        res_fields: Res<FieldKind<'ast, 'input>>,
+    ) -> Res<Self> {
+        res_fields.map(|fields| VariantDef { name, fields })
     }
 }

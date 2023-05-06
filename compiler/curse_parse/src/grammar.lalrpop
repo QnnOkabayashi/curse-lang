@@ -59,74 +59,62 @@ NamedType: tok::NamedType<'input> = "named type literal";
 
 /// === Program ===
 
-pub Program: Option<Program<'ast, 'input>> = {
+pub Program: Res<Program<'ast, 'input>> = {
     FnDef => <>.map(|def| Program::new().with_fn_def(def)),
     ChoiceDef => <>.map(|def| Program::new().with_choice_def(def)),
 
     Program FnDef => match (<>) {
-        (Some(program), Some(def)) => Some(program.with_fn_def(def)),
-        _ => None,
+        (Ok(program), Ok(def)) => Ok(program.with_fn_def(def)),
+        _ => Err(ParseError),
     },
     Program ChoiceDef => match (<>) {
-        (Some(program), Some(def)) => Some(program.with_choice_def(def)),
-        _ => None,
+        (Ok(program), Ok(def)) => Ok(program.with_choice_def(def)),
+        _ => Err(ParseError),
     },
 };
 
 
 /// === Function Definitions ===
 
-FnDef: Option<FnDef<'ast, 'input>> =
-    "fn" Ident ((NamedType)* ":" Type "=")? Closure => match (<>) {
-    (fn_, ident, Some((generics, colon, Some(ty), equal)), Some(function)) => {
-        Some(FnDef::new(fn_, ident, Some(TypeSig::new(generics, colon, ty, equal)), function))
-    }
-    (fn_, ident, None, Some(function)) => {
-        Some(FnDef::new(fn_, ident, None, function))
-    }
-    _ => None,
-};
+FnDef: Res<FnDef<'ast, 'input>> = "fn" Ident TypeSig? Closure => FnDef::from_grammar(<>);
+
+TypeSig: Res<TypeSig<'ast, 'input>> = NamedType* ":" Type "=" => TypeSig::from_grammar(<>);
     
 
 /// === Type Defs ===
 
-NamedField: Option<NamedField<'ast, 'input>> = Ident ":" Type => NamedField::from_grammar(<>);
+NamedField: Res<NamedField<'ast, 'input>> = Ident ":" Type => NamedField::from_grammar(<>);
 
-FieldKind: Option<FieldKind<'ast, 'input>> = {
+FieldKind: Res<FieldKind<'ast, 'input>> = {
     Type => FieldKind::newtype_from_grammar(<>),
     "{" (NamedField ",")* NamedField? "}" => FieldKind::record_from_grammar(<>),
 };
 
-StructDef: Option<StructDef<'ast, 'input>> = {
+StructDef: Res<StructDef<'ast, 'input>> = {
     "struct" NamedType (NamedType)* FieldKind => StructDef::from_grammar(<>),
 };
 
-ChoiceDef: Option<ChoiceDef<'ast, 'input>> = {
+ChoiceDef: Res<ChoiceDef<'ast, 'input>> = {
     "choice" NamedType (NamedType)* "{" (VariantDef ",")* VariantDef? "}" => ChoiceDef::from_grammar(<>),
 };
     
-VariantDef: Option<VariantDef<'ast, 'input>> = NamedType FieldKind => VariantDef::from_grammar(<>);
+VariantDef: Res<VariantDef<'ast, 'input>> = NamedType FieldKind => VariantDef::from_grammar(<>);
 
 
 /// === Chaos ===
 
-StartType: Option<&'ast Type<'ast, 'input>> = {
-    NamedType => Some(ast.typ(Type::Named(<>))),
-    Tuple<Type> => <>.fold().map(|tup| ast.typ(Type::Tuple(tup))),
+StartType: Res<&'ast Type<'ast, 'input>> = {
+    NamedType => Ok(ast.ty(Type::named_from_grammar(<>))),
+    Tuple<Type> => ast.try_ty(Type::tuple_from_grammar(<>)),
     "(" <Type> ")",
     ! => {
         errors.push(<>.error.into());
-        None
+        Err(ParseError)
     }
 };
 
 Type = {
-    StartType StartType "->" Type => match (<>) {
-        (Some(lhs), Some(rhs), arrow, Some(res)) => {
-            Some(ast.typ(Type::Function(TypeFunction::new(lhs, rhs, arrow, res))))
-        }
-        _ => None,
-    },
+    StartType StartType "->" Type => ast.try_ty(Type::function_from_grammar(<>)),
     StartType,
 };
 
@@ -135,14 +123,9 @@ Pat: &'ast ExprPat<'ast, 'input> = {
     Tuple<Pat> => ast.pat(ExprPat::Tuple(<>)),
 };
 
-Paren: Option<ExprParen<'ast, 'input>> = "(" EndExpr ")" => match (<>) {
-    (lparen, Some(expr), rparen) => Some(ExprParen::new(lparen, expr, rparen)),
-    _ => None,
-};
-
 Tuple<T>: PatTuple<T> = {
-    "(" ")" => PatTuple::empty(<>),
-    "(" T "," (T ",")* T? ")" => PatTuple::nonempty(<>),
+    "(" ")" => PatTuple::unit_from_grammar(<>),
+    "(" T "," (T ",")* T? ")" => PatTuple::nonempty_from_grammar(<>),
 };
 
 Symbol: ExprSymbol = {
@@ -168,114 +151,50 @@ Lit: ExprLit<'input> = {
     "false" => ExprLit::False(<>),
 };
 
-Closure: Option<ExprClosure<'ast, 'input>> = {
-    Arm => <>.map(ExprClosure::new_non_piecewise),
-    "{" Arm ClosureTail? ","? "}" => match (<>) {
-        (lbrace, Some(head), Some(Ok(tail)), trailing_comma, rbrace) => {
-            Some(ExprClosure::new_piecewise(lbrace, head, tail, trailing_comma, rbrace))
-        }
-        (lbrace, Some(head), None, trailing_comma, rbrace) => {
-            Some(ExprClosure::new_piecewise(lbrace, head, vec![], trailing_comma, rbrace))
-        }
-        _ => None
-    }
+Closure: Res<ExprClosure<'ast, 'input>> = {
+    Arm => ExprClosure::nonpiecewise_from_grammar(<>),
+    "{" Arm ("," Arm)* ","? "}" => ExprClosure::piecewise_from_grammar(<>),
 };
 
-ClosureTail: Result<Vec<(tok::Comma, ExprArm<'ast, 'input>)>, ()> = {
-    "," Arm => match (<>) {
-        (comma, Some(arm)) => Ok(vec![(comma, arm)]),
-        _ => Err(()),
-    },
-    ClosureTail "," Arm => match (<>) {
-        (Ok(mut tail), comma, Some(arm)) => {
-            tail.push((comma, arm));
-            Ok(tail)
-        }
-        _ => Err(()),
-    }
-}
+Arm: Res<ExprArm<'ast, 'input>> = "|" (Param ",")* Param? "|" EndExpr => ExprArm::from_grammar(<>);
 
-Arm: Option<ExprArm<'ast, 'input>> = {
-    "|" "|" EndExpr => match (<>) {
-        (open, close, Some(body)) => Some(ExprArm::new(open, ExprParams::Zero, close, body)),
-        _ => None,
-    },
-    "|" Param "|" EndExpr => match (<>) {
-        (open, Some(lhs), close, Some(body)) => Some(ExprArm::new(open, ExprParams::One(lhs), close, body)),
-        _ => None,
-    },
-    "|" Param "," Param "|" EndExpr => match (<>) {
-        (open, Some(lhs), comma, Some(rhs), close, Some(body)) => Some(ExprArm::new(open, ExprParams::Two(lhs, comma, rhs), close, body)),
-        _ => None,
-    },
-};
+Param: Res<ExprParam<'ast, 'input>> = Pat (":" Type)? => ExprParam::from_grammar(<>);
 
-Param: Option<ExprParam<'ast, 'input>> = Pat (":" Type)? => match (<>) {
-    (pat, Some((colon, Some(ty)))) => {
-        Some(ExprParam::new(pat, Some((colon, ty))))
-    },
-    (pat, None) => {
-        Some(ExprParam::new(pat, None))
-    }
-    _ => None,
-};
+Appl<Rhs>: Res<ExprAppl<'ast, 'input>> = Expr Term Rhs => ExprAppl::from_grammar(<>);
 
-// Hmm... We can never have a tuple as a function, should we make that a parsing issue?
-Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Applyable Rhs => match (<>) {
-    (Some(lhs), Some(function), Some(rhs)) => Some(ExprAppl::new(lhs, function, rhs)),
-    _ => None,
-};
-
-Applyable: Option<&'ast Expr<'ast, 'input>> = {
-    Paren => <>.map(|paren| ast.expr(Expr::Paren(paren))),
-    Symbol => Some(ast.expr(Expr::Symbol(<>))),
-    Lit => Some(ast.expr(Expr::Lit(<>))),
+Term: Res<&'ast Expr<'ast, 'input>> = {
+    "(" EndExpr ")" => ast.try_expr(Expr::paren_from_grammar(<>)),
+    Symbol => Ok(ast.expr(Expr::Symbol(<>))),
+    Lit => Ok(ast.expr(Expr::Lit(<>))),
+    Tuple<EndExpr> => ast.try_expr(Expr::tuple_from_grammar(<>)),
     ! => {
         errors.push(<>.error.into());
-        None
-    }
-};
-
-Field<T>: () = {
-    Ident ":" T => (),
-};
-
-StructFieldKind<T>: () = {
-    "{" "}" => (),
-    "{" T "," (T ",")* T? "}" => (),
-};
-
-Constructor: () = {
-    NamedType => (), // unit struct constructor
-    NamedType Tuple<EndExpr> => (), // tuple struct constructor
-    NamedType StructFieldKind<Field<Ident>> => (), // named fields struct constructor
-};
-
-Term: Option<&'ast Expr<'ast, 'input>> = {
-    Applyable,
-    Tuple<EndExpr> => <>.fold().map(|tup| ast.expr(Expr::Tuple(tup))),
+        Err(ParseError)
+    },
 };
 
 EndTerm = {
     Term,
-    Closure => <>.map(|closure| ast.expr(Expr::Closure(closure))),
+    Closure => ast.try_expr(Expr::closure_from_grammar(<>)),
 };
 
 Expr = {
     Term,
-    Appl<Term> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
+    Appl<Term> => ast.try_expr(Expr::appl_from_grammar(<>)),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => <>.map(|appl| ast.expr(Expr::Appl(appl))),
+    Appl<EndTerm> => ast.try_expr(Expr::appl_from_grammar(<>)),
+
+    // For nice diagnostics
     Expr Closure => match (<>) {
-        (Some(_expr), Some(closure)) => {
+        (Ok(_expr), Ok(closure)) => {
             errors.push(Error::ClosureApplMissingRhs {
                 location: closure.span().0,
             });
-            None
+            Err(ParseError)
         }
-        _ => None,
+        _ => Err(ParseError),
     },
 }

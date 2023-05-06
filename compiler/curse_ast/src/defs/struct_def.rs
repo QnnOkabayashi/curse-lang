@@ -1,5 +1,5 @@
 use super::FieldKind;
-use crate::{tok, Span};
+use crate::{tok, Res, Span};
 
 /// A definition for a new struct type.
 ///
@@ -17,13 +17,13 @@ impl<'ast, 'input> StructDef<'ast, 'input> {
         struct_: tok::Struct,
         name: tok::NamedType<'input>,
         generics: Vec<tok::NamedType<'input>>,
-        opt_fields: Option<FieldKind<'ast, 'input>>,
-    ) -> Option<Self> {
-        Some(StructDef {
+        res_fields: Res<FieldKind<'ast, 'input>>,
+    ) -> Res<Self> {
+        res_fields.map(|fields| StructDef {
             struct_,
             name,
             generics,
-            fields: opt_fields?,
+            fields,
         })
     }
 }

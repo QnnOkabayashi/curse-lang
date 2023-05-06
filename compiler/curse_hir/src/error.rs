@@ -54,6 +54,13 @@ pub enum LowerError<'hir, 'input> {
         span: SourceSpan,
         literal: String,
     },
+
+    #[error("Function arm has too many parameters.")]
+    #[diagnostic(help("If you need many parameters, try putting them into a tuple."))]
+    TooManyParams {
+        #[label("This arm here")]
+        span: SourceSpan,
+    },
 }
 
 impl From<&ast::tok::Integer<'_>> for LowerError<'_, '_> {
