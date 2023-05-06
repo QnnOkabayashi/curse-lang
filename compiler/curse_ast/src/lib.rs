@@ -1,11 +1,13 @@
-mod choice;
+// mod choice;
+mod defs;
 mod expr;
 mod function;
 mod pat;
 pub mod tok;
 mod ty;
 
-pub use choice::*;
+// pub use choice::*;
+pub use defs::*;
 pub use expr::*;
 pub use function::*;
 pub use pat::*;
@@ -38,6 +40,7 @@ impl Span for (usize, usize) {
 #[derive(Clone, Debug)]
 pub struct Program<'ast, 'input> {
     pub fn_defs: Vec<FnDef<'ast, 'input>>,
+    pub struct_defs: Vec<StructDef<'ast, 'input>>,
     pub choice_defs: Vec<ChoiceDef<'ast, 'input>>,
 }
 
@@ -45,12 +48,18 @@ impl<'ast, 'input> Program<'ast, 'input> {
     pub fn new() -> Self {
         Program {
             fn_defs: vec![],
+            struct_defs: vec![],
             choice_defs: vec![],
         }
     }
 
     pub fn with_fn_def(mut self, fn_def: FnDef<'ast, 'input>) -> Self {
         self.fn_defs.push(fn_def);
+        self
+    }
+
+    pub fn with_struct_def(mut self, struct_def: StructDef<'ast, 'input>) -> Self {
+        self.struct_defs.push(struct_def);
         self
     }
 

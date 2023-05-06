@@ -49,12 +49,10 @@ impl fmt::Debug for Integer<'_> {
     }
 }
 
-/// NamedTypes are like idents, but start with a tick (`'`).
+/// NamedTypes are like idents, but PascalCase.
 #[derive(Copy, Clone)]
 pub struct NamedType<'input> {
-    /// Index of the apostrophe
     pub location: usize,
-    /// Spanning from the apostrophe to the end of the ident
     pub literal: &'input str,
 }
 

@@ -48,25 +48,33 @@ extern {
     }
 }
 
+/// === Term Aliases ===
+
 Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
 NamedType: tok::NamedType<'input> = "named type literal";
 
+
+/// === Program ===
+
 pub Program: Option<Program<'ast, 'input>> = {
     FnDef => <>.map(|def| Program::new().with_fn_def(def)),
+    ChoiceDef => <>.map(|def| Program::new().with_choice_def(def)),
+
     Program FnDef => match (<>) {
         (Some(program), Some(def)) => Some(program.with_fn_def(def)),
         _ => None,
     },
-
-    ChoiceDef => <>.map(|def| Program::new().with_choice_def(def)),
     Program ChoiceDef => match (<>) {
         (Some(program), Some(def)) => Some(program.with_choice_def(def)),
         _ => None,
     },
 };
+
+
+/// === Function Definitions ===
 
 FnDef: Option<FnDef<'ast, 'input>> =
     "fn" Ident ((NamedType)* ":" Type "=")? Closure => match (<>) {
@@ -79,47 +87,28 @@ FnDef: Option<FnDef<'ast, 'input>> =
     _ => None,
 };
     
-ChoiceDef: Option<ChoiceDef<'ast, 'input>> =
-    "choice" NamedType (NamedType)* "{" PunctTrailing<ChoiceVariant, ",">? "}" => match (<>) {
-    (choice, ident, generics, lbrace, variants, rbrace) => {
-        let variants: Option<ChoiceVariants<'ast, 'input>> = match variants {
-            Some((Some(first), rest, trailing)) => rest
-                .into_iter()
-                .map(|(comma, maybe_variant)| maybe_variant.map(|variant| (comma, variant)))
-                .collect::<Option<Vec<_>>>()
-                .map(|rest| ChoiceVariants::Variants { first, rest, trailing }),
-            None => Some(ChoiceVariants::Empty),
-            _ => None,
-        };
 
-        variants.map(|variants| {
-            ChoiceDef::new(choice, ident, generics, lbrace, variants, rbrace)
-        })
-    }
+/// === Type Defs ===
+
+NamedField: Option<NamedField<'ast, 'input>> = Ident ":" Type => NamedField::from_grammar(<>);
+
+FieldKind: Option<FieldKind<'ast, 'input>> = {
+    Type => FieldKind::newtype_from_grammar(<>),
+    "{" (NamedField ",")* NamedField? "}" => FieldKind::record_from_grammar(<>),
 };
 
-// A `Sep` punctuated sequence of `T`'s containing at least one `T` without trailing `Sep`'s
-// For an optional trailing separator, use `PunctTrailing` instead.
-Punct<T, Sep>: (T, Vec<(Sep, T)>) = {
-    T => (<>, vec![]),
-    Punct<T, Sep> Sep T => match (<>) {
-        ((first, mut rest), sep, next) => {
-            rest.push((sep, next));
-            (first, rest)
-        }
-    },
+StructDef: Option<StructDef<'ast, 'input>> = {
+    "struct" NamedType (NamedType)* FieldKind => StructDef::from_grammar(<>),
 };
 
-PunctTrailing<T, Sep>: (T, Vec<(Sep, T)>, Option<Sep>) = {
-    Punct<T, Sep> Sep? => match (<>) {
-        ((first, rest), trailing) => (first, rest, trailing),
-    }
+ChoiceDef: Option<ChoiceDef<'ast, 'input>> = {
+    "choice" NamedType (NamedType)* "{" (VariantDef ",")* VariantDef? "}" => ChoiceDef::from_grammar(<>),
 };
     
-ChoiceVariant: Option<ChoiceVariant<'ast, 'input>> = NamedType Type => match (<>) {
-    (tag, Some(ty)) => Some(ChoiceVariant::new(tag, ty)),
-    _ => None,
-};
+VariantDef: Option<VariantDef<'ast, 'input>> = NamedType FieldKind => VariantDef::from_grammar(<>);
+
+
+/// === Chaos ===
 
 StartType: Option<&'ast Type<'ast, 'input>> = {
     NamedType => Some(ast.typ(Type::Named(<>))),
@@ -232,20 +221,39 @@ Param: Option<ExprParam<'ast, 'input>> = Pat (":" Type)? => match (<>) {
 };
 
 // Hmm... We can never have a tuple as a function, should we make that a parsing issue?
-Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Term Rhs => match (<>) {
+Appl<Rhs>: Option<ExprAppl<'ast, 'input>> = Expr Applyable Rhs => match (<>) {
     (Some(lhs), Some(function), Some(rhs)) => Some(ExprAppl::new(lhs, function, rhs)),
     _ => None,
 };
 
-Term: Option<&'ast Expr<'ast, 'input>> = {
+Applyable: Option<&'ast Expr<'ast, 'input>> = {
     Paren => <>.map(|paren| ast.expr(Expr::Paren(paren))),
     Symbol => Some(ast.expr(Expr::Symbol(<>))),
     Lit => Some(ast.expr(Expr::Lit(<>))),
-    Tuple<EndExpr> => <>.fold().map(|tup| ast.expr(Expr::Tuple(tup))),
     ! => {
         errors.push(<>.error.into());
         None
     }
+};
+
+Field<T>: () = {
+    Ident ":" T => (),
+};
+
+StructFieldKind<T>: () = {
+    "{" "}" => (),
+    "{" T "," (T ",")* T? "}" => (),
+};
+
+Constructor: () = {
+    NamedType => (), // unit struct constructor
+    NamedType Tuple<EndExpr> => (), // tuple struct constructor
+    NamedType StructFieldKind<Field<Ident>> => (), // named fields struct constructor
+};
+
+Term: Option<&'ast Expr<'ast, 'input>> = {
+    Applyable,
+    Tuple<EndExpr> => <>.fold().map(|tup| ast.expr(Expr::Tuple(tup))),
 };
 
 EndTerm = {
