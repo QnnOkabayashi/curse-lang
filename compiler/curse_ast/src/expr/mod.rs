@@ -3,6 +3,9 @@ use crate::{pat, tok, ParseError, Res, Span};
 mod closure;
 pub use closure::*;
 
+mod constructor;
+pub use constructor::*;
+
 pub type ExprPat<'ast, 'input> = pat::Pat<'ast, 'input>;
 pub type ExprTuple<'ast, 'input> = pat::PatTuple<&'ast Expr<'ast, 'input>>;
 
@@ -12,6 +15,7 @@ pub enum Expr<'ast, 'input> {
     Symbol(ExprSymbol),
     Lit(ExprLit<'input>),
     Tuple(ExprTuple<'ast, 'input>),
+    Constructor(ExprConstructor<'ast, 'input>),
     Closure(ExprClosure<'ast, 'input>),
     Appl(ExprAppl<'ast, 'input>),
 }
@@ -46,6 +50,13 @@ impl<'ast, 'input> Expr<'ast, 'input> {
     pub fn appl_from_grammar(res_appl: Res<ExprAppl<'ast, 'input>>) -> Res<Self> {
         res_appl.map(Expr::Appl)
     }
+
+    pub fn constructor_from_grammar(
+        name: tok::NamedType<'input>,
+        fields: ExprFields<'ast, 'input>,
+    ) -> Self {
+        Expr::Constructor(ExprConstructor { name, fields })
+    }
 }
 
 impl Span for Expr<'_, '_> {
@@ -57,6 +68,7 @@ impl Span for Expr<'_, '_> {
             Expr::Tuple(tuple) => tuple.span(),
             Expr::Closure(closure) => closure.span(),
             Expr::Appl(appl) => appl.span(),
+            Expr::Constructor(_) => todo!(),
         }
     }
 }

@@ -83,22 +83,32 @@ fn print_to_n_iterators |n, io|
     0 .. n for_each |i|
         i println io
 
-fn print_to_n_loop |n, io|
-    0 in |mut count|
-    loop of || count == n then Break(()) else_do ||
-        count println io;
-        count += 1;
-        Continue
+```
+let rec fix f x = f (fix f) x (* note the extra x; here fix f = \x-> f (fix f) x *)
 
-choice ControlFlow T {
-    Break(T),
-    Continue,
-}
+let factabs fact = function   (* factabs has extra level of lambda abstraction *)
+   0 -> 1
+ | x -> x * fact (x-1)
 
-fn loop |f|
-    () f () in {
-        |Break(value)| value,
-        |Continue| loop of f,
+let _ = (fix factabs) 5
+```
+
+// Y-combinator (works in strict languages)
+fn rec |x, f| f of (|x| x fix f) of x
+
+// Tail-recursive factorial function
+fn fact |n|
+    (1, n) rec |loop| {
+        |(acc, 1)| acc,
+        |(acc, n)| loop of (acc * n, n - 1),
+    }
+
+fn print_0_to_n |n, io|
+    0 rec |loop| {
+        |10| 10 println io,
+        |i|
+            i println io;
+            loop of (i + 1)
     }
 
 fn in |x, f| f of x
