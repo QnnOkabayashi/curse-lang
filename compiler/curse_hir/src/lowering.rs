@@ -190,6 +190,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             }
             ast::Expr::Closure(closure) => self.lower_closure(closure),
             ast::Expr::Appl(appl) => self.lower_appl(appl),
+            ast::Expr::Constructor(_) => todo!(),
         }
     }
 

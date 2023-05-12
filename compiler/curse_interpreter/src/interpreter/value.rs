@@ -1,31 +1,32 @@
 use super::EvalError;
 use curse_ast::*;
+use curse_hir::{Expr, ExprArm};
 use std::{collections::HashMap, fmt};
 
-type BuiltinFn<'ast, 'input> = fn(
-    Value<'ast, 'input>,
-    Value<'ast, 'input>,
-    &mut HashMap<&'input str, Value<'ast, 'input>>,
-) -> Result<Value<'ast, 'input>, EvalError<'input>>;
+type BuiltinFn<'hir, 'input> = fn(
+    &mut HashMap<&'input str, Value<'hir, 'input>>,
+    Value<'hir, 'input>,
+    Value<'hir, 'input>,
+) -> Result<Value<'hir, 'input>, EvalError<'input>>;
 
 #[derive(Clone)]
-pub enum Value<'ast, 'input> {
+pub enum Value<'hir, 'input> {
     Integer(i32),
     Symbol(ExprSymbol),
     Boolean(bool),
-    Closure(&'ast ExprClosure<'ast, 'input>),
-    Tuple(Vec<Value<'ast, 'input>>),
-    Vector(Vec<Value<'ast, 'input>>),
-    Builtin(BuiltinFn<'ast, 'input>),
+    Closure(&'hir [ExprArm<'hir, 'input>]),
+    Tuple(Vec<Value<'hir, 'input>>),
+    Vector(Vec<Value<'hir, 'input>>),
+    Builtin(BuiltinFn<'hir, 'input>),
 }
 
-impl<'ast, 'input> Default for Value<'ast, 'input> {
+impl<'hir, 'input> Default for Value<'hir, 'input> {
     fn default() -> Self {
         Value::Tuple(vec![])
     }
 }
 
-impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
+impl<'hir, 'input> fmt::Display for Value<'hir, 'input> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Integer(n) => write!(f, "{n}"),
@@ -40,11 +41,11 @@ impl<'ast, 'input> fmt::Display for Value<'ast, 'input> {
             Value::Symbol(ExprSymbol::Dot(_)) => write!(f, "."),
             Value::Symbol(ExprSymbol::DotDot(_)) => write!(f, ".."),
             Value::Symbol(ExprSymbol::Semi(_)) => write!(f, ";"),
-            Value::Symbol(ExprSymbol::Equal(_)) => write!(f, "="),
-            Value::Symbol(ExprSymbol::Less(_)) => write!(f, "<"),
-            Value::Symbol(ExprSymbol::Greater(_)) => write!(f, ">"),
-            Value::Symbol(ExprSymbol::LessEqual(_)) => write!(f, "<="),
-            Value::Symbol(ExprSymbol::GreaterEqual(_)) => write!(f, ">="),
+            Value::Symbol(ExprSymbol::Eq(_)) => write!(f, "="),
+            Value::Symbol(ExprSymbol::Lt(_)) => write!(f, "<"),
+            Value::Symbol(ExprSymbol::Gt(_)) => write!(f, ">"),
+            Value::Symbol(ExprSymbol::Le(_)) => write!(f, "<="),
+            Value::Symbol(ExprSymbol::Ge(_)) => write!(f, ">="),
             Value::Tuple(t) => {
                 write!(f, "(")?;
                 if let Some((first, rest)) = t.split_first() {

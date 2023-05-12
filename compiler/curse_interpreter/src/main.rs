@@ -1,82 +1,151 @@
-use curse_parse::{parse_program, Context, SourceErrors};
-use miette::{IntoDiagnostic, NamedSource};
-use std::{fs, path::PathBuf};
+use curse_ast::Span;
+use curse_hir as hir;
+use curse_parse as parse;
+use hir::Ty;
+use miette::{GraphicalReportHandler, NamedSource};
+use smallvec::SmallVec;
+use std::collections::HashMap;
+use typed_arena::Arena;
+
+use crate::interpreter::eval_expr;
 
 mod interpreter;
-mod repl;
 
-use clap::Parser;
+fn main() {
+    let input: &str = "fn main: () () -> I32 = || 1 + 1 * 3 - (1 + 2)";
 
-// TODO:
-// Custom errors
-// Syntax for types
+    let ast = parse::Ast::new();
+    let program = match parse::parse_program(&ast, input) {
+        Ok(program) => program,
+        Err(errors) => {
+            let error = parse::SourceErrors {
+                code: NamedSource::new("input", input.to_string()),
+                errors,
+            };
 
-#[derive(Parser)]
-struct Cli {
-    /// The file to evaluate
-    #[arg(long = "file")]
-    file: Option<PathBuf>,
-}
+            let mut buf = String::with_capacity(1024);
+            GraphicalReportHandler::new()
+                .render_report(&mut buf, &error)
+                .unwrap();
 
-fn main() -> miette::Result<()> {
-    if let Some(path) = Cli::parse().file {
-        // Example: cargo run -- --file examples/branching.curse
-        let input = fs::read_to_string(&path).into_diagnostic()?;
-        let arena = Context::new();
-
-        match parse_program(&arena, &input) {
-            Ok(program) => interpreter::eval_program(program).unwrap(),
-            Err(errors) => {
-                return Err(miette::Report::from(SourceErrors {
-                    code: NamedSource::new(path.to_string_lossy(), input.clone()),
-                    errors,
-                }));
-            }
+            println!("{buf}");
+            return;
         }
+    };
+
+    // println!("{:#?}", program.choice_defs);
+
+    let mut hir = hir::Hir {
+        type_fns: &Arena::new(),
+        appls: &Arena::new(),
+        arms: &Arena::new(),
+        exprs: &Arena::new(),
+        types: &Arena::new(),
+        pats: &Arena::new(),
+        typevars: Vec::new(),
+        equations: hir::Equations::new(),
+    };
+
+    // Once we have custom types, we'll need to add them here
+    let type_scope: HashMap<&str, hir::Type<'_, '_>> = HashMap::new();
+
+    let mut function_to_typescope: HashMap<&str, HashMap<&str, hir::Type<'_, '_>>> = HashMap::new();
+
+    let globals: HashMap<&str, hir::TypeTemplate> = hir
+        .default_globals()
+        .chain(program.fn_defs.iter().map(|fn_def| {
+            // Since items (i.e. functions for now) can be generic over types,
+            // we need to extend the set of currently in-scope types with the
+            // generics that this item introduces. To avoid bringing the types
+            // into the global program scope, we'll create a temporary inner scope
+            let mut inner_type_scope = type_scope.clone();
+
+            let sig = fn_def
+                .type_sig
+                .as_ref()
+                .expect("functions with inferred type signatures aren't yet supported");
+
+            let mut typevars = SmallVec::with_capacity(sig.generics.len());
+            inner_type_scope.reserve(sig.generics.len());
+
+            for generic in sig.generics.iter() {
+                let var = hir.new_typevar();
+                typevars.push(var);
+                inner_type_scope.insert(
+                    generic.literal,
+                    hir::Type {
+                        kind: hir::TypeKind::Var(var),
+                        span: generic.span(),
+                    },
+                );
+            }
+
+            // TODO(quinn): make types brought into scope for the particular function
+            // (aka the generics here) be passed in in some other intelligent
+            // way so we don't have to clone the hashmap.
+            let ty = hir.type_from_ast(sig.ty, &inner_type_scope);
+
+            let template = hir::TypeTemplate { typevars, ty };
+
+            function_to_typescope.insert(fn_def.name.literal, inner_type_scope);
+
+            (fn_def.name.literal, template)
+        }))
+        .collect();
+
+    let mut locals: Vec<(&str, hir::Type<'_, '_>)> = Vec::with_capacity(16);
+    let mut errors: Vec<hir::LowerError<'_, '_>> = Vec::with_capacity(0);
+
+    let lowered_items: Result<
+        HashMap<&str, (hir::TypeTemplate, hir::Expr<'_, '_>)>,
+        hir::PushedErrors,
+    > = program
+        .fn_defs
+        .iter()
+        .map(|item| {
+            let item_name = item.name.literal;
+            let mut scope = hir::Scope::new(
+                &mut hir,
+                &function_to_typescope[item_name],
+                &mut errors,
+                &globals,
+                &mut locals,
+            );
+
+            let polytype = globals[item_name].clone();
+            let expr = scope.lower_closure(&item.function)?;
+
+            // Make sure the function actually lines up with its type signature.
+            let ty = scope.hir.monomorphize(&polytype);
+            scope.unify(expr.ty(), ty);
+            if scope.had_errors() {
+                return Err(hir::PushedErrors);
+            }
+            Ok((item_name, (polytype, expr)))
+        })
+        .collect();
+
+    // Lowering and type errors
+    let Ok(lowered_items) = lowered_items else {
+        assert!(!errors.is_empty());
+        let errors = hir::LowerErrors {
+            code: NamedSource::new("input", input.to_string()),
+            errors,
+        };
+        let mut buf = String::with_capacity(1024);
+        GraphicalReportHandler::new()
+            .render_report(&mut buf, &errors)
+            .unwrap();
+        println!("{buf}");
+        return;
+    };
+
+    let (_, main_fn) = lowered_items.get("main").expect("Missing `main` function!");
+    if let hir::ExprKind::Closure { ty: _, arms: [arm] } = main_fn.kind {
+        println!("{}", eval_expr(&mut HashMap::new(), &arm.body).unwrap());
     } else {
-        repl::repl()?;
+        unreachable!("`main` must be a function with a body to even parse");
     }
-    Ok(())
+
+    assert!(errors.is_empty());
 }
-
-const _MATH: &str = r#"
-1 + 2 * 3 - 3
-"#;
-
-const _FUNC: &str = r#"
-1 (|x y| x + y) 2
-"#;
-
-const _LET: &str = r#"
-3 in |x| x in print
-"#;
-
-const _IN: &str = r#"
-(|x f| x f ()) (|in|
-    4 in |x|
-    5 in |y|
-    x + y
-) ()
-"#;
-
-const _ITER: &str = r#"
-0 .. 20
-    map (|x| x + 1)
-    step_by 2
-    collect ()
-"#;
-
-const _PATS: &str = r#"
-(1 * 2, 2 in |x| x * 2) (|(a, b) (c, d)|
-    (a * c) + (b * d)
-) (3, 4)
-"#;
-
-const _REF: &str = r#"
-3 in {
-    |1| 1 in print,
-    |2| 2 in print,
-    |3| 7 in print,
-    |x| x in print,
-}
-"#;

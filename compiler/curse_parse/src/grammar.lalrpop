@@ -169,12 +169,12 @@ Appl<Rhs>: Res<ExprAppl<'ast, 'input>> = Expr Term Rhs => ExprAppl::from_grammar
 
 // The thing that comes after a type name in an expression.
 // Example: `Some <end-expr>` or `Account { online: true, score: 0 }`.
-ExprFields: ExprFields<'ast, 'input> = {
-    EndExpr => ExprFields::newtype_from_grammar(<>),
-    "{" (ExprNamedField ",")* ExprNamedField? "}" => ExprFields::record_from_grammar(<>),
-}
-
-ExprNamedField: ExprNamedField<'ast, 'input> = Ident ":" EndExpr => ExprNamedField::from_grammar(<>);
+// ExprFields: ExprFields<'ast, 'input> = {
+//     EndExpr => ExprFields::newtype_from_grammar(<>),
+//     "{" (ExprNamedField ",")* ExprNamedField? "}" => ExprFields::record_from_grammar(<>),
+// }
+// 
+// ExprNamedField: ExprNamedField<'ast, 'input> = Ident ":" EndExpr => ExprNamedField::from_grammar(<>);
 
 Term: Res<&'ast Expr<'ast, 'input>> = {
     "(" EndExpr ")" => ast.try_expr(Expr::paren_from_grammar(<>)),
@@ -182,7 +182,7 @@ Term: Res<&'ast Expr<'ast, 'input>> = {
     Lit => Ok(ast.expr(Expr::Lit(<>))),
     Tuple<EndExpr> => ast.try_expr(Expr::tuple_from_grammar(<>)),
     PiecewiseClosure => ast.try_expr(Expr::closure_from_grammar(<>)),
-    NamedType ExprFields => ast.expr(Expr::constructor_from_grammar(<>)),
+    // NamedType ExprFields => ast.expr(Expr::constructor_from_grammar(<>)),
     ! => {
         errors.push(<>.error.into());
         Err(ParseError)

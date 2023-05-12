@@ -4,5 +4,6 @@ members = [
     "compiler/curse_ast",
     "compiler/curse_arena",
     "compiler/curse_parse",
-    "compiler/curse_hir"
+    "compiler/curse_hir",
+    "compiler/curse_interpreter",
 ]
