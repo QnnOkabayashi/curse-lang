@@ -188,6 +188,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     span: tuple.span(),
                 })
             }
+            ast::Expr::Constructor(_ctor) => todo!("Lower constructor expressions"),
             ast::Expr::Closure(closure) => self.lower_closure(closure),
             ast::Expr::Appl(appl) => self.lower_appl(appl),
         }

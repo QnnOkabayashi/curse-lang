@@ -51,11 +51,8 @@ impl<'ast, 'input> Expr<'ast, 'input> {
         res_appl.map(Expr::Appl)
     }
 
-    pub fn constructor_from_grammar(
-        name: tok::NamedType<'input>,
-        fields: ExprFields<'ast, 'input>,
-    ) -> Self {
-        Expr::Constructor(ExprConstructor { name, fields })
+    pub fn constructor_from_grammar(res_ctor: Res<ExprConstructor<'ast, 'input>>) -> Res<Self> {
+        res_ctor.map(Expr::Constructor)
     }
 }
 
@@ -68,7 +65,7 @@ impl Span for Expr<'_, '_> {
             Expr::Tuple(tuple) => tuple.span(),
             Expr::Closure(closure) => closure.span(),
             Expr::Appl(appl) => appl.span(),
-            Expr::Constructor(_) => todo!(),
+            Expr::Constructor(ctor) => ctor.span(),
         }
     }
 }
