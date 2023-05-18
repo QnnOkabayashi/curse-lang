@@ -6,13 +6,13 @@ choice Option T {
 }
 
 fn then_do {
-    |True (), f| Some () f (),
-    |False (), _| None (),
+    |true, f| Some () f (),
+    |false, _| None (),
 }
 
 fn then {
-    |True (), x| Some x,
-    |False (), _| None (),
+    |true, x| Some x,
+    |false, _| None (),
 }
 
 fn else_do {
@@ -128,16 +128,16 @@ fn not_exhaustive: I32 () -> i32 = {
 
 pub const COND: &str = r#"
 fn int_of_bool: bool () -> I32 = {
-    |True| 1,
-    |False| 0
+    |true| 1,
+    |false| 0
 }
 "#;
 
 pub const NESTED_MATCHES: &str = r#"
 fn crazy: Bool (Bool, I32) -> i32 = {
-    |True, (True, _)| 0,
-    |True, (_, _)| 0,
-    |_, (False, _)| 0,
+    |true, (true, _)| 0,
+    |true, (_, _)| 0,
+    |_, (false, _)| 0,
     |_, (_, n)| 0
 }
 "#;
@@ -216,5 +216,5 @@ fn main: () () -> () = ||
 pub const CLOSURE_MISMATCH_ARM_TYPES: &str = r#"
 fn fib: I32 () -> I32 =
     |a| 4,
-    |True| 5
+    |true| 5
 "#;
