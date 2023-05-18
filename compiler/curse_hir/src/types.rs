@@ -1,4 +1,4 @@
-use crate::Hir;
+use crate::{Hir, Spanned};
 use curse_ast::tok;
 use displaydoc::Display;
 use petgraph::graph::NodeIndex;
@@ -48,21 +48,7 @@ pub struct Var(pub usize);
 #[error("Unbound typevar")]
 pub struct UnboundTypevar;
 
-#[derive(Copy, Clone, Debug, Display)]
-#[displaydoc("{kind}")]
-pub struct Type<'hir, 'input> {
-    pub kind: TypeKind<'hir, 'input>,
-    pub span: (usize, usize),
-}
-
-impl<'hir, 'input> Type<'hir, 'input> {
-    pub fn dummy() -> Self {
-        Type {
-            kind: TypeKind::unit(),
-            span: (0, 0),
-        }
-    }
-}
+pub type Type<'hir, 'input> = Spanned<TypeKind<'hir, 'input>>;
 
 #[derive(Copy, Clone, Debug)]
 pub enum TypeKind<'hir, 'input> {
@@ -91,6 +77,12 @@ impl<'hir, 'input> TypeKind<'hir, 'input> {
         };
 
         hir[*var].binding().ok_or(UnboundTypevar)?.kind.resolve(hir)
+    }
+}
+
+impl Default for TypeKind<'_, '_> {
+    fn default() -> Self {
+        TypeKind::unit()
     }
 }
 

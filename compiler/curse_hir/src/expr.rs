@@ -1,4 +1,4 @@
-use crate::{Type, TypeChoice, TypeFunction, TypeKind};
+use crate::{Spanned, Type, TypeChoice, TypeFunction, TypeKind};
 use curse_ast::{tok, Span};
 use std::fmt;
 
@@ -6,20 +6,7 @@ pub trait Ty<'hir, 'input> {
     fn ty(&self) -> Type<'hir, 'input>;
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Expr<'hir, 'input> {
-    pub kind: ExprKind<'hir, 'input>,
-    pub span: (usize, usize),
-}
-
-impl<'hir, 'input> Expr<'hir, 'input> {
-    pub fn dummy() -> Self {
-        Expr {
-            kind: ExprKind::unit(),
-            span: (0, 0),
-        }
-    }
-}
+pub type Expr<'hir, 'input> = Spanned<ExprKind<'hir, 'input>>;
 
 /// A cheap `Copy` enum representing an expression.
 #[derive(Copy, Clone, Debug)]
@@ -45,8 +32,8 @@ pub enum ExprKind<'hir, 'input> {
     },
 }
 
-impl<'hir, 'input> ExprKind<'hir, 'input> {
-    fn unit() -> Self {
+impl Default for ExprKind<'_, '_> {
+    fn default() -> Self {
         ExprKind::Tuple {
             ty: TypeKind::Tuple(&[]),
             exprs: &[],
@@ -170,7 +157,7 @@ impl fmt::Display for Builtin {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 // #[displaydoc("|{lhs}, {rhs}| {body}")]
 pub struct ExprArm<'hir, 'input> {
     pub open: tok::Pipe,
@@ -180,38 +167,13 @@ pub struct ExprArm<'hir, 'input> {
     pub body: Expr<'hir, 'input>,
 }
 
-impl<'hir, 'input> ExprArm<'hir, 'input> {
-    pub fn dummy() -> Self {
-        ExprArm {
-            open: tok::Pipe::default(),
-            lhs: Pat::dummy(),
-            rhs: Pat::dummy(),
-            close: tok::Pipe::default(),
-            body: Expr::dummy(),
-        }
-    }
-}
-
 impl Span for ExprArm<'_, '_> {
     fn span(&self) -> (usize, usize) {
         self.open.span_between(self.close)
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Pat<'hir, 'input> {
-    pub kind: PatKind<'hir, 'input>,
-    pub span: (usize, usize),
-}
-
-impl<'hir, 'input> Pat<'hir, 'input> {
-    pub fn dummy() -> Self {
-        Pat {
-            kind: PatKind::unit(),
-            span: (0, 0),
-        }
-    }
-}
+pub type Pat<'hir, 'input> = Spanned<PatKind<'hir, 'input>>;
 
 #[derive(Copy, Clone, Debug)]
 pub enum PatKind<'hir, 'input> {
@@ -235,6 +197,12 @@ pub enum PatKind<'hir, 'input> {
 impl<'hir, 'input> PatKind<'hir, 'input> {
     pub fn unit() -> Self {
         PatKind::Tuple { ty: &[], pats: &[] }
+    }
+}
+
+impl Default for PatKind<'_, '_> {
+    fn default() -> Self {
+        PatKind::unit()
     }
 }
 

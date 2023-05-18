@@ -1,60 +1,42 @@
 #![allow(dead_code)]
-pub const CUSTOM_TYPES: &str = r#"
-let Option: Type -> Type = |T| choice {
-    Some T,
-    None,
-}
-
-let is_some: Type -> fn = |T|
-    {
-        |Some _| True,
-        |None| False,
-    }
-
-choice Option T {
-    Some T,
-    None,
-}
-
-// fn print_if_some: Option T, () -> () = {
-//     |Some v| v in print,
-//     |None| (),
-// }
-"#;
-
 pub const BINARY_TREE: &str = r#"
 choice Option T {
-    Some(T),
-    None,
+    Some T,
+    None (),
 }
 
 fn then_do {
-    |True, f| Some(() f ()),
-    |False, _| None
+    |True (), f| Some () f (),
+    |False (), _| None (),
 }
 
 fn then {
-    |True, x| Some(x)
-    |False, _| None
+    |True (), x| Some x,
+    |False (), _| None (),
 }
 
 fn else_do {
-    |Some(val), _| val,
-    |None, f| () f ()
+    |Some val, _| val,
+    |None (), f| () f ()
 }
 
 fn else {
-    |Some(val), _| val,
-    |None, x| x
+    |Some val, _| val,
+    |None (), x| x
 }
 
 choice Tree T {
-    Node { key: I32, value: T, left: Tree T, right: Tree T },
-    Empty,
+    Node {
+        key: I32,
+        value: T,
+        left: Tree T,
+        right: Tree T,
+    },
+    Empty (),
 }
 
 fn insert {
-    |Empty, (k, v)|
+    |Empty (), (k, v)|
         Node (k, v, Empty, Empty),
     |Node { key, value, left, right }, (k, v)|
         k > key then_do (||
@@ -68,15 +50,15 @@ fn insert {
 }
 
 fn get {
-    |Empty, _|
-        None,
-    |Node(key, value, left, right), k|
+    |Empty (), _|
+        None (),
+    |Node { key, value, left, right }, k|
         k > key then_do (||
             right find k
         ) else_do || k < key then_do (||
             left find k
         ) else_do ||
-            Some(value)
+            Some value
 }
 
 fn print_to_n_iterators |n, io|

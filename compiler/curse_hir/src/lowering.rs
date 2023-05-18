@@ -168,11 +168,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 let types = self
                     .hir
                     .types
-                    .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
+                    .alloc_extend(iter::repeat_with(Type::default).take(tuple.len()));
                 let exprs = self
                     .hir
                     .exprs
-                    .alloc_extend(iter::repeat_with(Expr::dummy).take(tuple.len()));
+                    .alloc_extend(iter::repeat_with(Expr::default).take(tuple.len()));
 
                 for (i, ast_expr) in tuple.iter_elements().enumerate() {
                     let hir_expr = self.lower(ast_expr)?;
@@ -216,7 +216,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             let arms = self
                 .hir
                 .arms
-                .alloc_extend(iter::repeat_with(ExprArm::dummy).take(1 + tail.len()));
+                .alloc_extend(iter::repeat_with(ExprArm::default).take(1 + tail.len()));
 
             for ((_comma, arm), i) in tail.iter().zip(1..) {
                 let mut inner = self.enter_scope();
@@ -351,11 +351,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 let pats = self
                     .hir
                     .pats
-                    .alloc_extend(iter::repeat_with(Pat::dummy).take(tuple.len()));
+                    .alloc_extend(iter::repeat_with(Pat::default).take(tuple.len()));
                 let types = self
                     .hir
                     .types
-                    .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
+                    .alloc_extend(iter::repeat_with(Type::default).take(tuple.len()));
 
                 for (i, ast_pat) in tuple.iter_elements().enumerate() {
                     let hir_pat = self.lower_pat(ast_pat)?;

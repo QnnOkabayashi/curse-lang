@@ -8,6 +8,9 @@ use std::{
 };
 use typed_arena::Arena;
 
+mod spanned;
+pub use spanned::Spanned;
+
 mod equations;
 pub use equations::{Edge, Equations, Node};
 
@@ -148,7 +151,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
                 TypeKind::Tuple(types) => {
                     let replaced_types = hir
                         .types
-                        .alloc_extend(iter::repeat_with(Type::dummy).take(types.len()));
+                        .alloc_extend(iter::repeat_with(Type::default).take(types.len()));
 
                     for (i, ty) in types.iter().enumerate() {
                         replaced_types[i] = replace_unbound_typevars(tbl, hir, *ty);
@@ -193,7 +196,7 @@ impl<'hir, 'input> Hir<'hir, 'input> {
             ast::Type::Tuple(tuple) => {
                 let types = self
                     .types
-                    .alloc_extend(iter::repeat_with(Type::dummy).take(tuple.len()));
+                    .alloc_extend(iter::repeat_with(Type::default).take(tuple.len()));
 
                 for (i, ty) in tuple.iter_elements().enumerate() {
                     types[i] = self.type_from_ast(ty, map);
