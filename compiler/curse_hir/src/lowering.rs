@@ -1,34 +1,35 @@
 use crate::{
-    Builtin, Edge, Expr, ExprAppl, ExprArm, ExprKind, Hir, LowerError, Node, Pat, PatKind, Ty,
-    Type, TypeFunction, TypeKind, TypeTemplate, Typevar,
+    ctx, Builtin, Edge, Expr, ExprAppl, ExprArm, ExprFields, ExprKind, LowerError, Node, Pat,
+    PatKind, Ty, Type, TypeFunction, TypeKind, TypeSymbol, TypeTemplate, Typevar, ValueIdent,
+    ValueSymbol,
 };
 use ast::Span;
 use curse_ast as ast;
 use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, iter};
 
-pub struct Scope<'outer, 'hir, 'input> {
-    pub hir: &'outer mut Hir<'hir, 'input>,
-    type_map: &'outer HashMap<&'outer str, Type<'hir, 'input>>,
-    errors: &'outer mut Vec<LowerError<'hir, 'input>>,
+pub struct Scope<'outer, 'cx> {
+    pub ctx: &'outer mut ctx::Typeck<'cx>,
+    type_map: &'outer HashMap<TypeSymbol, Type<'cx>>,
+    errors: &'outer mut Vec<LowerError<'cx>>,
     original_errors_len: usize,
-    globals: &'hir HashMap<&'hir str, TypeTemplate<'hir, 'input>>,
-    locals: &'outer mut Vec<(&'hir str, Type<'hir, 'input>)>,
+    globals: &'cx HashMap<ValueSymbol, TypeTemplate<'cx>>,
+    locals: &'outer mut Vec<(ValueIdent, Type<'cx>)>,
     original_locals_len: usize,
 }
 
-impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
+impl<'outer, 'cx: 'outer> Scope<'outer, 'cx> {
     pub fn new(
-        hir: &'outer mut Hir<'hir, 'input>,
-        type_map: &'outer HashMap<&'outer str, Type<'hir, 'input>>,
-        errors: &'outer mut Vec<LowerError<'hir, 'input>>,
-        globals: &'hir HashMap<&'hir str, TypeTemplate<'hir, 'input>>,
-        locals: &'outer mut Vec<(&'hir str, Type<'hir, 'input>)>,
+        ctx: &'outer mut ctx::Typeck<'cx>,
+        type_map: &'outer HashMap<TypeSymbol, Type<'cx>>,
+        errors: &'outer mut Vec<LowerError<'cx>>,
+        globals: &'cx HashMap<ValueSymbol, TypeTemplate<'cx>>,
+        locals: &'outer mut Vec<(ValueIdent, Type<'cx>)>,
     ) -> Self {
         let original_errors_len = errors.len();
         let original_locals_len = locals.len();
         Scope {
-            hir,
+            ctx,
             type_map,
             errors,
             original_errors_len,
@@ -39,19 +40,19 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     }
 
     /// Search through local variables first, then search through global variables.
-    pub fn type_of(&mut self, var: &str) -> Option<Type<'hir, 'input>> {
+    pub fn type_of(&mut self, var: ValueIdent) -> Option<Type<'cx>> {
         self.locals
             .iter()
             .rev()
-            .find_map(|(ident, ty)| (*ident == var).then(|| *ty))
-            .or_else(|| {
+            .find_map(|(ident, ty)| (ident.symbol == var.symbol).then(|| *ty))
+            .or_else(move || {
                 self.globals
-                    .get(var)
-                    .map(|polytype| self.hir.monomorphize(polytype))
+                    .get(&var.symbol)
+                    .map(|polytype| self.ctx.monomorphize(polytype))
             })
     }
 
-    pub fn add_local(&mut self, var: &'hir str, ty: Type<'hir, 'input>) {
+    pub fn add_local(&mut self, var: ValueIdent, ty: Type<'cx>) {
         self.locals.push((var, ty));
     }
 
@@ -62,9 +63,9 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     /// all bindings that were added in the inner scope will be removed,
     /// leaving the original scope in its initial state and accessible again
     /// since it's no longer borrowed.
-    pub fn enter_scope(&mut self) -> Scope<'_, 'hir, 'input> {
+    pub fn enter_scope(&mut self) -> Scope<'_, 'cx> {
         Scope::new(
-            self.hir,
+            self.ctx,
             self.type_map,
             self.errors,
             self.globals,
@@ -77,59 +78,56 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
     }
 
     // TODO(quinn): Move each branch into its own method to clean up this function.
-    pub fn lower(
-        &mut self,
-        expr: &ast::Expr<'_, 'input>,
-    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
+    pub fn lower(&mut self, expr: &ast::Expr<'_, '_>) -> Result<Expr<'cx>, PushedErrors> {
         match expr {
             ast::Expr::Paren(paren) => self.lower(paren.expr),
             ast::Expr::Symbol(symbol) => match symbol {
-                ast::ExprSymbol::Plus(plus) => Ok(Expr {
+                ast::Symbol::Plus(plus) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Add),
                     span: plus.span(),
                 }),
-                ast::ExprSymbol::Minus(minus) => Ok(Expr {
+                ast::Symbol::Minus(minus) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Sub),
                     span: minus.span(),
                 }),
-                ast::ExprSymbol::Star(star) => Ok(Expr {
+                ast::Symbol::Star(star) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Mul),
                     span: star.span(),
                 }),
-                ast::ExprSymbol::Percent(percent) => Ok(Expr {
+                ast::Symbol::Percent(percent) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Rem),
                     span: percent.span(),
                 }),
-                ast::ExprSymbol::Slash(slash) => Ok(Expr {
+                ast::Symbol::Slash(slash) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Div),
                     span: slash.span(),
                 }),
-                ast::ExprSymbol::Dot(_dot) => todo!("lower `.`"),
-                ast::ExprSymbol::DotDot(_dotdot) => todo!("lower `..`"),
-                ast::ExprSymbol::Semi(_semi) => todo!("lower `;`"),
-                ast::ExprSymbol::Eq(equal) => Ok(Expr {
+                ast::Symbol::Dot(_dot) => todo!("lower `.`"),
+                ast::Symbol::DotDot(_dotdot) => todo!("lower `..`"),
+                ast::Symbol::Semi(_semi) => todo!("lower `;`"),
+                ast::Symbol::Eq(equal) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Eq),
                     span: equal.span(),
                 }),
-                ast::ExprSymbol::Lt(less) => Ok(Expr {
+                ast::Symbol::Lt(less) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Lt),
                     span: less.span(),
                 }),
-                ast::ExprSymbol::Gt(greater) => Ok(Expr {
+                ast::Symbol::Gt(greater) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Gt),
                     span: greater.span(),
                 }),
-                ast::ExprSymbol::Le(less_equal) => Ok(Expr {
+                ast::Symbol::Le(less_equal) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Le),
                     span: less_equal.span(),
                 }),
-                ast::ExprSymbol::Ge(greater_equal) => Ok(Expr {
+                ast::Symbol::Ge(greater_equal) => Ok(Expr {
                     kind: ExprKind::Builtin(Builtin::Ge),
                     span: greater_equal.span(),
                 }),
             },
             ast::Expr::Lit(lit) => match lit {
-                ast::ExprLit::Integer(integer) => match integer.literal.parse() {
+                ast::Lit::Integer(integer) => match integer.literal.parse() {
                     Ok(int) => Ok(Expr {
                         kind: ExprKind::I32(int),
                         span: integer.span(),
@@ -139,11 +137,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         Err(PushedErrors)
                     }
                 },
-                ast::ExprLit::Ident(ident) => {
-                    if let Some(ty) = self.type_of(ident.literal) {
+                ast::Lit::Ident(ident) => {
+                    let interned = self.ctx.global.get_or_intern_value_ident(ident);
+                    if let Some(ty) = self.type_of(interned) {
                         Ok(Expr {
                             kind: ExprKind::Ident {
-                                literal: ident.literal,
+                                literal: interned,
                                 ty: ty.kind,
                             },
                             span: ident.span(),
@@ -153,105 +152,153 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         Err(PushedErrors)
                     }
                 }
-                ast::ExprLit::True(tru) => Ok(Expr {
+                ast::Lit::True(tru) => Ok(Expr {
                     kind: ExprKind::Bool(true),
                     span: tru.span(),
                 }),
-                ast::ExprLit::False(fals) => Ok(Expr {
+                ast::Lit::False(fals) => Ok(Expr {
                     kind: ExprKind::Bool(false),
                     span: fals.span(),
                 }),
             },
-            ast::Expr::Tuple(tuple) => {
-                // Need to prealloc in the arena with defaults (essentially free to
-                // construct/destruct) so the inner RefCell doesn't get accessed simultaneously.
-                let types = self
-                    .hir
-                    .types
-                    .alloc_extend(iter::repeat_with(Type::default).take(tuple.len()));
-                let exprs = self
-                    .hir
-                    .exprs
-                    .alloc_extend(iter::repeat_with(Expr::default).take(tuple.len()));
+            ast::Expr::Record(record) => {
+                let (types, exprs) = tuple
+                    .elements
+                    .as_ref()
+                    .map(|nonempty| {
+                        let len = 1
+                            + nonempty.remaining.len()
+                            + if nonempty.trailing.is_some() { 1 } else { 0 };
 
-                for (i, ast_expr) in tuple.iter_elements().enumerate() {
-                    let hir_expr = self.lower(ast_expr)?;
-                    types[i] = hir_expr.ty();
-                    exprs[i] = hir_expr;
-                }
+                        let types = self
+                            .ctx
+                            .global
+                            .types
+                            .alloc_extend(iter::repeat_with(Type::default).take(len));
+
+                        let exprs = self
+                            .ctx
+                            .global
+                            .exprs
+                            .alloc_extend(iter::repeat_with(Expr::default).take(len));
+
+                        iter::once(nonempty.first)
+                            .chain(nonempty.remaining.iter().map(|(expr, _)| expr))
+                            .chain(nonempty.trailing)
+                            .enumerate()
+                            .try_for_each(|(index, expr)| {
+                                self.lower(expr).map(|expr| {
+                                    types[index] = expr.ty();
+                                    exprs[index] = expr;
+                                })
+                            })
+                            .map(|()| (types, exprs))
+                    })
+                    .transpose()?
+                    .unwrap_or_default();
 
                 Ok(Expr {
-                    kind: ExprKind::Tuple {
-                        ty: TypeKind::Tuple(types),
+                    kind: ExprKind::Record {
+                        ty: TypeKind::Record(types),
                         exprs,
                     },
                     span: tuple.span(),
                 })
             }
-            ast::Expr::Constructor(_ctor) => todo!("Lower constructor expressions"),
+            ast::Expr::Constructor(constructor) => {
+                todo!()
+            },
             ast::Expr::Closure(closure) => self.lower_closure(closure),
             ast::Expr::Appl(appl) => self.lower_appl(appl),
+            ast::Expr::Error => todo!("error handling :)"),
         }
     }
 
-    /// Lowers an [`ast::ExprClosure`].
-    pub fn lower_closure(
+    pub fn lower_constructor(
         &mut self,
-        closure: &ast::ExprClosure<'_, 'input>,
-    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
-        let mut inner = self.enter_scope();
-        let [lhs, rhs] = inner.pats_of_many_params(closure.head())?;
-        let body = inner.lower(closure.head().body)?;
-        drop(inner);
+        constructor: &ast::Constructor<'_, '_>,
+    ) -> Result<Expr<'cx>, PushedErrors> {
+        // TODO(quinn): figure out what the type is based on the
+        // name by searching for it in some ctx
 
-        let arm1 = ExprArm {
-            open: closure.head().open,
-            lhs,
-            rhs,
-            close: closure.head().close,
-            body,
+        let fields = match constructor.fields {
+            ast::fields::FieldsKind::Newtype(expr) => {
+                let lowered = self.ctx.global.exprs.alloc(self.lower(expr)?);
+                ExprFields::Newtype(lowered)
+            }
+            ast::fields::FieldsKind::Record { ref fields, .. } => {
+                let lowered = self
+                    .ctx
+                    .global
+                    .exprs
+                    .alloc_extend(iter::repeat_with(Expr::default).take(fields.len()));
+
+                for (slot, (field, _comma)) in lowered.iter_mut().zip(fields) {
+                    *slot = self.lower(&field.value)?;
+                }
+
+                ExprFields::Record(lowered)
+            }
         };
 
-        let arms = if let Some(tail) = closure.tail() {
-            let arms = self
-                .hir
-                .arms
-                .alloc_extend(iter::repeat_with(ExprArm::default).take(1 + tail.len()));
+        Ok(Expr {
+            kind: ExprKind::Constructor {
+                fields,
+                ty: todo!("figure out the type of the ctor"),
+            },
+            span: constructor.span(),
+        })
+    }
 
-            for ((_comma, arm), i) in tail.iter().zip(1..) {
-                let mut inner = self.enter_scope();
-                let [lhs, rhs] = inner.pats_of_many_params(arm)?;
-                let body = inner.lower(arm.body)?;
-                drop(inner);
+    /// Lowers an [`astClosure`].
+    pub fn lower_closure(
+        &mut self,
+        closure: &ast::Closure<'_, '_>,
+    ) -> Result<Expr<'cx>, PushedErrors> {
+        // Preallocate so we can arena allocate recursively
+        let arms = self
+            .ctx
+            .global
+            .arms
+            .alloc_extend(iter::repeat_with(ExprArm::default).take(closure.arm_count()));
 
-                self.unify(arm1.lhs.ty(), lhs.ty());
-                self.unify(arm1.rhs.ty(), rhs.ty());
-                self.unify(arm1.body.ty(), body.ty());
+        let mut unifying_types: Option<[Type; 3]> = None;
+
+        for (slot, arm) in arms.iter_mut().zip(closure.iter_arms()) {
+            let mut inner = self.enter_scope();
+            let [lhs, rhs] = inner.pats_of_many_params(arm)?;
+            let body = inner.lower(arm.body)?;
+            drop(inner);
+
+            if let Some([lhs1, rhs1, body1]) = unifying_types {
+                self.unify(lhs1, lhs.ty());
+                self.unify(rhs1, rhs.ty());
+                self.unify(body1, body.ty());
 
                 if self.had_errors() {
                     return Err(PushedErrors);
                 }
-
-                arms[i] = ExprArm {
-                    open: arm.open,
-                    lhs,
-                    rhs,
-                    close: arm.close,
-                    body,
-                };
+            } else {
+                unifying_types = Some([lhs.ty(), rhs.ty(), body.ty()]);
             }
-            arms[0] = arm1;
-            arms
-        } else {
-            std::slice::from_ref(self.hir.arms.alloc(arm1))
-        };
+
+            *slot = ExprArm {
+                open: arm.open,
+                lhs,
+                rhs,
+                close: arm.close,
+                body,
+            };
+        }
+
+        let [lhs, rhs, body] = unifying_types.expect("at least one closure arm");
 
         Ok(Expr {
             kind: ExprKind::Closure {
-                ty: TypeKind::Function(self.hir.type_fns.alloc(TypeFunction {
-                    lhs: arm1.lhs.ty(),
-                    rhs: arm1.rhs.ty(),
-                    output: arm1.body.ty(),
+                ty: TypeKind::Function(self.ctx.global.type_fns.alloc(TypeFunction {
+                    lhs,
+                    rhs,
+                    output: body,
                 })),
                 arms,
             },
@@ -259,25 +306,22 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         })
     }
 
-    /// Lowers an [`ast::ExprAppl`].
-    fn lower_appl(
-        &mut self,
-        appl: &ast::ExprAppl<'_, 'input>,
-    ) -> Result<Expr<'hir, 'input>, PushedErrors> {
+    /// Lowers an [`ast::Appl`].
+    fn lower_appl(&mut self, appl: &ast::Appl<'_, '_>) -> Result<Expr<'cx>, PushedErrors> {
         let lhs = self.lower(appl.lhs);
         let rhs = self.lower(appl.rhs);
-        let function = self.lower(appl.function);
+        let function = self.lower(appl.fun);
 
         let (Ok(lhs), Ok(rhs), Ok(function)) = (lhs, rhs, function) else {
-                    return Err(PushedErrors);
-                };
+            return Err(PushedErrors);
+        };
 
         let ty = Type {
-            kind: TypeKind::Var(self.hir.new_typevar()),
+            kind: TypeKind::Var(self.ctx.new_typevar()),
             span: appl.span(),
         };
 
-        let expected_function = self.hir.type_fns.alloc(TypeFunction {
+        let expected_function = self.ctx.global.type_fns.alloc(TypeFunction {
             lhs: lhs.ty(),
             rhs: rhs.ty(),
             output: ty,
@@ -287,7 +331,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             function.ty(),
             Type {
                 kind: TypeKind::Function(expected_function),
-                span: appl.function.span(),
+                span: appl.fun.span(),
             },
         );
 
@@ -298,20 +342,17 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         Ok(Expr {
             kind: ExprKind::Appl {
                 ty: ty.kind,
-                appl: self.hir.appls.alloc(ExprAppl { lhs, function, rhs }),
+                appl: self.ctx.global.appls.alloc(ExprAppl { lhs, function, rhs }),
             },
             span: appl.span(),
         })
     }
 
-    /// Returns the [`Type<'hir, 'input>`] of an [`ast::ExprPat`].
-    fn lower_pat(
-        &mut self,
-        pat: &ast::ExprPat<'_, 'input>,
-    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
+    /// Returns the [`Type<'cx>`] of an [`astPat`].
+    fn lower_pat(&mut self, pat: &ast::Pat<'_, '_>) -> Result<Pat<'cx>, PushedErrors> {
         match pat {
             ast::Pat::Lit(lit) => match lit {
-                ast::ExprLit::Integer(integer) => match integer.literal.parse() {
+                ast::Lit::Integer(integer) => match integer.literal.parse() {
                     Ok(int) => Ok(Pat {
                         kind: PatKind::I32(int),
                         span: integer.span(),
@@ -321,10 +362,10 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                         Err(PushedErrors)
                     }
                 },
-                ast::ExprLit::Ident(ident) => {
-                    let ty = TypeKind::Var(self.hir.new_typevar());
+                ast::Lit::Ident(ident) => {
+                    let ty = TypeKind::Var(self.ctx.new_typevar());
                     self.add_local(
-                        ident.literal,
+                        self.ctx.global.get_or_intern_value_ident(ident),
                         Type {
                             kind: ty,
                             span: ident.span(),
@@ -332,28 +373,31 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     );
                     Ok(Pat {
                         kind: PatKind::Ident {
-                            literal: ident.literal,
+                            literal: self.ctx.global.get_or_intern_value_ident(ident),
                             ty,
                         },
                         span: ident.span(),
                     })
                 }
-                ast::ExprLit::True(tru) => Ok(Pat {
+                ast::Lit::True(tru) => Ok(Pat {
                     kind: PatKind::Bool(true),
                     span: tru.span(),
                 }),
-                ast::ExprLit::False(fals) => Ok(Pat {
+                ast::Lit::False(fals) => Ok(Pat {
                     kind: PatKind::Bool(false),
                     span: fals.span(),
                 }),
             },
             ast::Pat::Tuple(tuple) => {
                 let pats = self
-                    .hir
+                    .ctx
+                    .global
                     .pats
                     .alloc_extend(iter::repeat_with(Pat::default).take(tuple.len()));
+
                 let types = self
-                    .hir
+                    .ctx
+                    .global
                     .types
                     .alloc_extend(iter::repeat_with(Type::default).take(tuple.len()));
 
@@ -367,9 +411,6 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     kind: PatKind::Tuple { ty: types, pats },
                     span: tuple.span(),
                 })
-            }
-            ast::Pat::Choice(_choice) => {
-                todo!("lower choice patterns")
             } // When we add struct destructuring, we can unify the type of the field
               // with the returned type of the pattern in that field.
               // e.g. If we have a `struct Number(i32)` and have the pattern
@@ -378,14 +419,11 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         }
     }
 
-    /// Returns the [`Type<'hir, 'input>`] of a single [`ast::ExprParam`].
-    fn lower_param(
-        &mut self,
-        param: &ast::ExprParam<'_, 'input>,
-    ) -> Result<Pat<'hir, 'input>, PushedErrors> {
+    /// Returns the [`Type<'cx>`] of a single [`astParam`].
+    fn lower_param(&mut self, param: &ast::Param<'_, '_>) -> Result<Pat<'cx>, PushedErrors> {
         let pat = self.lower_pat(param.pat)?;
-        if let Some((_, annotation)) = param.ty {
-            let t2 = self.hir.type_from_ast(annotation, self.type_map);
+        if let Some((_, annotation)) = param.ascription {
+            let t2 = self.ctx.type_from_ast(annotation, self.type_map);
             self.unify(pat.ty(), t2);
             if self.had_errors() {
                 return Err(PushedErrors);
@@ -395,12 +433,12 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
         Ok(pat)
     }
 
-    /// Returns the [`Type<'hir, 'input>`]s of various [`ast::ExprParams`].
+    /// Returns the [`Type<'cx>`]s of various [`astParams`].
     fn pats_of_many_params(
         &mut self,
-        arm: &ast::ExprArm<'_, 'input>,
-    ) -> Result<[Pat<'hir, 'input>; 2], PushedErrors> {
-        let mut params = arm.params.iter();
+        arm: &ast::Arm<'_, '_>,
+    ) -> Result<[Pat<'cx>; 2], PushedErrors> {
+        let mut params = arm.params.iter().map(|(param, _comma)| param);
 
         let mut pats = [Pat {
             kind: PatKind::unit(),
@@ -415,14 +453,14 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
             Ok(pats)
         } else {
             self.errors.push(LowerError::TooManyParams {
-                span: arm.open.span_between(arm.close).into(),
+                span: (arm.open.start(), arm.close.end()).into(),
             });
             Err(PushedErrors)
         }
     }
 
     /// Unify two types.
-    pub fn unify(&mut self, t1: Type<'hir, 'input>, t2: Type<'hir, 'input>) -> NodeIndex {
+    pub fn unify(&mut self, t1: Type<'cx>, t2: Type<'cx>) -> NodeIndex {
         match (t1, t2) {
             (
                 Type {
@@ -433,7 +471,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     kind: TypeKind::I32,
                     ..
                 },
-            ) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
+            ) => self.ctx.equations.add_rule(Node::Equiv(t1, t2)),
             (
                 Type {
                     kind: TypeKind::Bool,
@@ -443,36 +481,36 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     kind: TypeKind::Bool,
                     ..
                 },
-            ) => self.hir.equations.add_rule(Node::Equiv(t1, t2)),
+            ) => self.ctx.equations.add_rule(Node::Equiv(t1, t2)),
             (
                 Type {
-                    kind: TypeKind::Tuple(a),
+                    kind: TypeKind::Record(a),
                     ..
                 },
                 Type {
-                    kind: TypeKind::Tuple(b),
+                    kind: TypeKind::Record(b),
                     ..
                 },
             ) => {
                 if a.len() == b.len() {
-                    let conclusion = self.hir.equations.add_rule(Node::Equiv(t1, t2));
+                    let conclusion = self.ctx.equations.add_rule(Node::Equiv(t1, t2));
 
                     for (i, (&t1, &t2)) in a.iter().zip(b.iter()).enumerate() {
                         let mut inner = self.enter_scope();
                         let proof = inner.unify(t1, t2);
                         if inner.had_errors() {
-                            inner.hir.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
+                            inner.ctx.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
                         }
                         inner
-                            .hir
+                            .ctx
                             .equations
                             .add_proof(proof, conclusion, Edge::Tuple(i));
                     }
                     conclusion
                 } else {
                     // different length tuples
-                    self.errors.push(LowerError::unify(t1, t2));
-                    self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
+                    self.errors.push(LowerError::unify(t1, t2, self.ctx));
+                    self.ctx.equations.add_rule(Node::NotEquiv(t1, t2))
                 }
             }
             (
@@ -493,41 +531,38 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 // which we can use if we want to. For now, using
                 // `.binding()` is easier because it allows us to also
                 // get the default if it's unbounded but has a default.
-                if let Some(b) = self.hir[var].binding() {
+                if let Some(b) = self.ctx[var].binding() {
                     let proof = self.unify(a, *b);
 
                     let conclusion = if self.had_errors() {
-                        self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
+                        self.ctx.equations.add_rule(Node::NotEquiv(t1, t2))
                     } else {
-                        self.hir.equations.add_rule(Node::Equiv(t1, t2))
+                        self.ctx.equations.add_rule(Node::Equiv(t1, t2))
                     };
                     // If we wanted, we could also add an edge with `_binding_source`,
                     // which tells us exactly where the typevar was bound.
-                    self.hir
+                    self.ctx
                         .equations
                         .add_proof(proof, conclusion, Edge::Transitivity);
                     conclusion
-                } else if self.hir.check_equivalence(var, a) {
-                    self.hir.equations.add_rule(Node::Equiv(t1, t2))
-                } else if self.hir.occurs(var, &a) {
+                } else if self.ctx.check_equivalence(var, a) {
+                    self.ctx.equations.add_rule(Node::Equiv(t1, t2))
+                } else if self.ctx.occurs(var, &a) {
                     self.errors.push(LowerError::CyclicType {
                         var_span,
                         var,
                         ty_span: a.span,
                         ty_kind: a.kind,
                     });
-                    self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
+                    self.ctx.equations.add_rule(Node::NotEquiv(t1, t2))
                 } else {
                     // The actual binding code is here
                     let conclusion = self
-                        .hir
+                        .ctx
                         .equations
                         .add_rule(Node::Binding { var, definition: a });
 
-                    self.hir[var] = Typevar::Bound {
-                        ty: a,
-                        source: conclusion,
-                    };
+                    self.ctx[var] = Typevar::Bound { ty: a };
                     conclusion
                 }
             }
@@ -541,7 +576,7 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                     ..
                 },
             ) => {
-                let conclusion = self.hir.equations.add_rule(Node::Equiv(t1, t2));
+                let conclusion = self.ctx.equations.add_rule(Node::Equiv(t1, t2));
                 // TODO(quinn): The problem at hand is we need to be able to unify
                 // the types of builtin functions with the types of custom functions.
                 // I made an enum `TypeFunctionKind` that allows for either, but its
@@ -561,40 +596,35 @@ impl<'outer, 'hir, 'input: 'hir> Scope<'outer, 'hir, 'input> {
                 // site for the builtins and have error messages reference that instead.
                 // That would require having miette work on errors with text from different
                 // sources though...
-                //
-                // In pursuit of this idea, I've created a `CORE_ARITH` string at the
-                // bottom on `compiler/curse/src/main.rs` that can serve as the function stubs.
-                // Now all I need is a way of telling my miette errors which string to use,
-                // and then hooking that up in the main fn.
                 let lhs_proof = self.unify(f1.lhs, f2.lhs);
                 let rhs_proof = self.unify(f1.rhs, f2.rhs);
                 let output_proof = self.unify(f1.output, f2.output); // here
 
                 if self.had_errors() {
-                    self.hir.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
+                    self.ctx.equations.graph[conclusion] = Node::NotEquiv(t1, t2);
                 }
 
-                self.hir
+                self.ctx
                     .equations
                     .add_proof(lhs_proof, conclusion, Edge::FunctionLhs);
-                self.hir
+                self.ctx
                     .equations
                     .add_proof(rhs_proof, conclusion, Edge::FunctionRhs);
-                self.hir
+                self.ctx
                     .equations
                     .add_proof(output_proof, conclusion, Edge::FunctionOutput);
 
                 conclusion
             }
             _ => {
-                self.errors.push(LowerError::unify(t1, t2));
-                self.hir.equations.add_rule(Node::NotEquiv(t1, t2))
+                self.errors.push(LowerError::unify(t1, t2, self.ctx));
+                self.ctx.equations.add_rule(Node::NotEquiv(t1, t2))
             }
         }
     }
 }
 
-impl Drop for Scope<'_, '_, '_> {
+impl Drop for Scope<'_, '_> {
     fn drop(&mut self) {
         self.locals.truncate(self.original_locals_len);
     }

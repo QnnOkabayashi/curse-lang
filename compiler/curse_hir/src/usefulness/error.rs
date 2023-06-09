@@ -10,12 +10,12 @@ use thiserror::Error;
 
 #[derive(Debug, Diagnostic, Error)]
 #[error("Errors in usefulness checking")]
-pub struct UsefulnessErrors<'hir, 'input> {
+pub struct UsefulnessErrors<'cx> {
     #[source_code]
     pub code: NamedSource,
 
     #[related]
-    pub errors: Vec<UsefulnessError<'hir, 'input>>,
+    pub errors: Vec<UsefulnessError<'cx>>,
 }
 
 /// Report the usefulness of one particular piecewise function
@@ -23,23 +23,23 @@ pub struct UsefulnessErrors<'hir, 'input> {
 /// Invariants: either redundent_arms is nonempty or is_exhaustive is true.
 #[derive(Debug, Error)]
 #[error("Usefulness error")]
-pub struct UsefulnessError<'hir, 'input> {
-    pub redundent_arms: Vec<RedundentArmError<'hir, 'input>>,
+pub struct UsefulnessError<'cx> {
+    pub redundent_arms: Vec<RedundentArmError<'cx>>,
     /// The last branch that doesn't exhaust the rest (we need to highlight something!)
-    pub non_exhaustive: Option<&'hir ExprArm<'hir, 'input>>,
+    pub non_exhaustive: Option<&'cx ExprArm<'cx>>,
 }
 
 /// A useless arm and its coverers, i.e. the arms above it that render
 /// it useless.
 #[derive(Debug, Error)]
 #[error("Redundent arm in piecewise function")]
-pub struct RedundentArmError<'hir, 'input> {
+pub struct RedundentArmError<'cx> {
     /// Invariants: at least one coverer
-    pub coverers: SmallVec<[&'hir ExprArm<'hir, 'input>; 1]>,
-    pub redundent_arm: &'hir ExprArm<'hir, 'input>,
+    pub coverers: SmallVec<[&'cx ExprArm<'cx>; 1]>,
+    pub redundent_arm: &'cx ExprArm<'cx>,
 }
 
-impl<'hir, 'input> Diagnostic for UsefulnessError<'hir, 'input> {
+impl<'cx> Diagnostic for UsefulnessError<'cx> {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         let help = if self.non_exhaustive.is_none() {
             "Try resolving any redundent arm conflicts."
@@ -68,7 +68,7 @@ impl<'hir, 'input> Diagnostic for UsefulnessError<'hir, 'input> {
     }
 }
 
-impl<'hir, 'input> Diagnostic for RedundentArmError<'hir, 'input> {
+impl<'cx> Diagnostic for RedundentArmError<'cx> {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         Some(Box::new(
             "Try removing the redundent arm or using a different pattern.",

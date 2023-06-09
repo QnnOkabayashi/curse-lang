@@ -13,7 +13,7 @@ macro_rules! declare_tokens {
             #[regex("[_a-z][_a-zA-Z0-9]*")]
             Ident,
             #[regex("[_]*[A-Z][_a-zA-Z0-9]*", priority = 2)]
-            NamedType,
+            TypeIdent,
             #[regex("[0-9]+")]
             Integer,
             $(
@@ -26,7 +26,7 @@ macro_rules! declare_tokens {
         pub enum Token<'input> {
             Ident(tok::Ident<'input>),
             Integer(tok::Integer<'input>),
-            NamedType(tok::NamedType<'input>),
+            TypeIdent(tok::TypeIdent<'input>),
             $(
                 $(#[$attr])*
                 $name(tok::$name),
@@ -38,7 +38,7 @@ macro_rules! declare_tokens {
                 match self {
                     Token::Ident(tok) => tok.span(),
                     Token::Integer(tok) => tok.span(),
-                    Token::NamedType(tok) => tok.span(),
+                    Token::TypeIdent(tok) => tok.span(),
                     $(
                         Token::$name(tok) => tok.span(),
                     )*
@@ -51,7 +51,7 @@ macro_rules! declare_tokens {
                 match self {
                     Token::Ident(tok) => f.write_str(tok.literal),
                     Token::Integer(tok) => f.write_str(tok.literal),
-                    Token::NamedType(tok) => f.write_str(tok.literal),
+                    Token::TypeIdent(tok) => f.write_str(tok.literal),
                     $(
                         Token::$name(_) => f.write_str($tok),
                     )*
@@ -87,7 +87,7 @@ macro_rules! declare_tokens {
                         location: start,
                         literal: self.lex.slice(),
                     }),
-                    Ok(LogosToken::NamedType) => Token::NamedType(tok::NamedType {
+                    Ok(LogosToken::TypeIdent) => Token::TypeIdent(tok::TypeIdent {
                         location: start,
                         literal: self.lex.slice(),
                     }),

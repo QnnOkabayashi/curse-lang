@@ -1,43 +1,60 @@
 #![allow(dead_code)]
 pub const BINARY_TREE: &str = r#"
-choice Option T {
-    Some T,
-    None (),
-}
+choice Option T =
+    | Some T
+    | None {}
 
-fn then_do {
+choice Never = |
+
+struct Pair (A * B) = (fst: A, snd: B)
+
+struct LinearMap (K * V) = (
+    data: Vec (K, V),
+)
+
+struct Wrapper T = T
+
+struct Empty = {}
+
+fn then_do = {
     |true, f| Some () f (),
     |false, _| None (),
 }
 
-fn then {
+fn then = {
     |true, x| Some x,
     |false, _| None (),
 }
 
-fn else_do {
+fn else_do = {
     |Some val, _| val,
     |None (), f| () f ()
 }
 
-fn else {
+fn else = {
     |Some val, _| val,
     |None (), x| x
 }
 
-choice Tree T {
-    Node {
+
+choice Result (T * E) =
+    | Ok T
+    | Err E
+
+choice Tree T =
+    | Node (
         key: I32,
         value: T,
-        left: Tree T,
-        right: Tree T,
-    },
-    Empty (),
+        left: Box Tree T,
+        right: Box Tree T,
+        thing: Vec Vec Result (I32 * Error),
+    )
+    | Empty (),
 }
 
-fn insert {
+fn insert = (
     |Empty (), (k, v)|
-        Node (k, v, Empty, Empty),
+        Node { key: k, value: v, left: Empty, right: Empty },
     |Node { key, value, left, right }, (k, v)|
         k > key then_do (||
             right insert (k, v) in |right|
@@ -47,19 +64,19 @@ fn insert {
             Node { key, value, left, right }
         ) else_do ||
             Node { key, value: v, left, right }
-}
+)
 
-fn get {
+fn get = (
     |Empty (), _|
         None (),
-    |Node { key, value, left, right }, k|
+    |Node (key, value, left, right), k|
         k > key then_do (||
             right find k
         ) else_do || k < key then_do (||
             left find k
         ) else_do ||
             Some value
-}
+)
 
 fn print_to_n_iterators |n, io|
     0 .. n for_each |i|
@@ -76,16 +93,16 @@ let _ = (fix factabs) 5
 ```
 
 // Y-combinator (works in strict languages)
-fn rec |x, f| f of (|x| x fix f) of x
+fn rec = |x, f| f of (|x| x fix f) of x
 
 // Tail-recursive factorial function
-fn fact |n|
-    (1, n) rec |loop| {
-        |(acc, 1)| acc,
-        |(acc, n)| loop of (acc * n, n - 1),
-    }
+fn fact = |n|
+    { acc: 1, n } rec |loop| (
+        |{ acc, n: 1 }| acc,
+        |{ acc, n }| loop of { acc: acc * n, n: n - 1 },
+    )
 
-fn print_0_to_n |n, io|
+fn print_0_to_n = |n, io|
     0 rec |loop| {
         |10| 10 println io,
         |i|
@@ -93,12 +110,17 @@ fn print_0_to_n |n, io|
             loop of (i + 1)
     }
 
-fn in |x, f| f of x
+fn in = |x, f| f of x
 
-fn of |f, x| x f ()
+fn of = |f, x| x f ()
 "#;
 
 pub const FIB: &str = r#"
+choice Option T {
+    Some T,
+    None (),
+}
+
 fn fib: I32 () -> I32 = {
     |0| 0,
     |1| 1,

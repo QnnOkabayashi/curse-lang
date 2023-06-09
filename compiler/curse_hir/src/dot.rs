@@ -1,21 +1,21 @@
 //! Utilities for writing an AST in dot format for Graphviz.
-use crate::{Expr, ExprKind, Hir};
+use crate::{ctx, Expr, ExprKind};
 use std::fmt::Write as _;
 
-pub struct Builder<'env> {
-    env: &'env Hir<'env, 'env>,
+pub struct Builder<'cx> {
+    ctx: &'cx ctx::Typeck<'cx>,
     count: u32,
     out: String,
 }
 
-impl<'env> Builder<'env> {
-    pub fn new(env: &'env Hir<'env, 'env>) -> Self {
+impl<'cx> Builder<'cx> {
+    pub fn new(ctx: &'cx ctx::Typeck<'cx>) -> Self {
         let out = String::with_capacity(2048) + "digraph example {";
 
-        Builder { env, count: 0, out }
+        Builder { ctx, count: 0, out }
     }
 
-    pub fn visit_expr(&mut self, expr: Expr<'env, '_>, parent: Option<u32>, name: Option<&str>) {
+    pub fn visit_expr(&mut self, expr: Expr<'cx>, parent: Option<u32>, name: Option<&str>) {
         let id = self.fresh();
         self.out += "\n    ";
 
@@ -24,7 +24,7 @@ impl<'env> Builder<'env> {
                 write!(
                     self.out,
                     "p{id}[label = \"{builtin}: {ty}\"]",
-                    ty = builtin.type_kind().pretty(self.env),
+                    ty = builtin.type_kind().display(self.ctx),
                 )
                 .unwrap();
             }
@@ -37,28 +37,32 @@ impl<'env> Builder<'env> {
             ExprKind::Ident { ty, literal } => {
                 write!(
                     self.out,
-                    "p{id}[label = \"{literal}: {ty}\"]",
-                    ty = ty.pretty(self.env)
+                    "p{id}[label = \"{lit}: {ty}\"]",
+                    lit = literal.display(self.ctx.global),
+                    ty = ty.display(self.ctx)
                 )
                 .unwrap();
             }
-            ExprKind::Tuple { ty, exprs } => {
+            ExprKind::Record { ty, exprs } => {
                 write!(
                     self.out,
                     "p{id}[label = \"tuple: {ty}\"]",
-                    ty = ty.pretty(self.env)
+                    ty = ty.display(self.ctx)
                 )
                 .unwrap();
                 for expr in exprs.iter() {
                     self.visit_expr(*expr, Some(id), None);
                 }
             }
+            ExprKind::Constructor { .. } => {
+                todo!("dot visualization for ctors")
+            }
             ExprKind::Closure { ty, arms } => {
                 let name = name.unwrap_or("<closure>");
                 write!(
                     self.out,
                     "p{id}[label = \"{name}: {ty}\"]",
-                    ty = ty.pretty(self.env)
+                    ty = ty.display(self.ctx)
                 )
                 .unwrap();
                 for arm in arms.iter() {
@@ -69,7 +73,7 @@ impl<'env> Builder<'env> {
                 write!(
                     self.out,
                     "p{id}[label = \"<appl>: {ty}\"]",
-                    ty = ty.pretty(self.env)
+                    ty = ty.display(self.ctx)
                 )
                 .unwrap();
                 self.visit_expr(appl.lhs, Some(id), None);

@@ -1,127 +1,70 @@
-use crate::{tok, ty, Expr, ExprPat, Punct, Res, Span, Type};
+use crate::{Expr, Pat, tok, Type, Span};
 
 #[derive(Clone, Debug)]
-pub enum ExprClosure<'ast, 'input> {
-    NonPiecewise(ExprArm<'ast, 'input>),
+pub enum Closure<'ast, 'input> {
+    NonPiecewise(Arm<'ast, 'input>),
     Piecewise {
-        lbrace: tok::LBrace,
-        arm1: ExprArm<'ast, 'input>,
-        arms: Vec<(tok::Comma, ExprArm<'ast, 'input>)>,
-        trailing_comma: Option<tok::Comma>,
-        rbrace: tok::RBrace,
+        lparen: tok::LParen,
+        arms: Vec<(Arm<'ast, 'input>, tok::Comma)>,
+        rparen: tok::RParen,
     },
 }
 
-impl Span for ExprClosure<'_, '_> {
-    fn span(&self) -> (usize, usize) {
+impl<'ast, 'input> Closure<'ast, 'input> {
+    pub fn arm_count(&self) -> usize {
         match self {
-            ExprClosure::NonPiecewise(arm) => arm.span(),
-            ExprClosure::Piecewise { lbrace, rbrace, .. } => lbrace.span_between(rbrace),
+            Closure::NonPiecewise(_) => 1,
+            Closure::Piecewise { arms, .. } => arms.len(),
         }
     }
 }
 
-impl<'ast, 'input> ExprClosure<'ast, 'input> {
-    pub fn nonpiecewise_from_grammar(res_arm: Res<ExprArm<'ast, 'input>>) -> Res<Self> {
-        Ok(ExprClosure::NonPiecewise(res_arm?))
-    }
-
-    pub fn piecewise_from_grammar(
-        lbrace: tok::LBrace,
-        res_arm1: Res<ExprArm<'ast, 'input>>,
-        arms: Vec<(tok::Comma, Res<ExprArm<'ast, 'input>>)>,
-        trailing_comma: Option<tok::Comma>,
-        rbrace: tok::RBrace,
-    ) -> Res<Self> {
-        let arms = arms
-            .into_iter()
-            .map(|(comma, res_arm)| res_arm.map(|arm| (comma, arm)))
-            .collect::<Res<_>>()?;
-
-        Ok(ExprClosure::Piecewise {
-            lbrace,
-            arm1: res_arm1?,
-            arms,
-            trailing_comma,
-            rbrace,
-        })
-    }
-
-    pub fn num_arms(&self) -> usize {
+impl Span for Closure<'_, '_> {
+    fn start(&self) -> usize {
         match self {
-            ExprClosure::NonPiecewise(_) => 1,
-            ExprClosure::Piecewise { arms, .. } => 1 + arms.len(),
+            Closure::NonPiecewise(arm) => arm.start(),
+            Closure::Piecewise { lparen, .. } => lparen.start(),
         }
     }
 
-    pub fn head(&self) -> &ExprArm<'ast, 'input> {
+    fn end(&self) -> usize {
         match self {
-            ExprClosure::NonPiecewise(head) => head,
-            ExprClosure::Piecewise { arm1: head, .. } => head,
+            Closure::NonPiecewise(arm) => arm.end(),
+            Closure::Piecewise { rparen, .. } => rparen.end(),
         }
     }
 
-    pub fn tail(&self) -> Option<&[(tok::Comma, ExprArm<'ast, 'input>)]> {
+    fn span(&self) -> (usize, usize) {
         match self {
-            ExprClosure::NonPiecewise(_) => None,
-            ExprClosure::Piecewise { arms: tail, .. } => Some(tail),
+            Closure::NonPiecewise(arm) => arm.span(),
+            Closure::Piecewise { lparen, rparen, .. } => (lparen.start(), rparen.end()),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ExprArm<'ast, 'input> {
+pub struct Arm<'ast, 'input> {
     pub open: tok::Pipe,
-    pub params: Punct<ExprParam<'ast, 'input>, tok::Comma>,
+    // There should only be up to 2 params,
+    // but more shouldn't make the parser fail.
+    pub params: Vec<(Param<'ast, 'input>, tok::Comma)>,
+    pub trailing: Option<Param<'ast, 'input>>,
     pub close: tok::Pipe,
     pub body: &'ast Expr<'ast, 'input>,
 }
 
-impl<'ast, 'input> ExprArm<'ast, 'input> {
-    pub fn from_grammar(
-        open: tok::Pipe,
-        params: Vec<(Res<ExprParam<'ast, 'input>>, tok::Comma)>,
-        trailing: Option<Res<ExprParam<'ast, 'input>>>,
-        close: tok::Pipe,
-        res_body: Res<&'ast Expr<'ast, 'input>>,
-    ) -> Res<Self> {
-        let elements = params
-            .into_iter()
-            .map(|(res_param, comma)| res_param.map(|param| (param, comma)))
-            .collect::<Res<_>>()?;
-
-        Ok(ExprArm {
-            open,
-            params: Punct {
-                elements,
-                trailing: trailing.transpose()?,
-            },
-            close,
-            body: res_body?,
-        })
+impl Span for Arm<'_, '_> {
+    fn start(&self) -> usize {
+        self.open.start()
     }
-}
 
-impl Span for ExprArm<'_, '_> {
-    fn span(&self) -> (usize, usize) {
-        self.open.span_between(self.body)
+    fn end(&self) -> usize {
+        self.body.end()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ExprParam<'ast, 'input> {
-    pub pat: &'ast ExprPat<'ast, 'input>,
-    pub ty: Option<(tok::Colon, &'ast ty::Type<'ast, 'input>)>,
-}
-
-impl<'ast, 'input> ExprParam<'ast, 'input> {
-    pub fn from_grammar(
-        pat: &'ast ExprPat<'ast, 'input>,
-        opt_annotation: Option<(tok::Colon, Res<&'ast Type<'ast, 'input>>)>,
-    ) -> Res<Self> {
-        opt_annotation
-            .map(|(colon, res_ty)| res_ty.map(|ty| (colon, ty)))
-            .transpose()
-            .map(|ty| ExprParam { pat, ty })
-    }
+pub struct Param<'ast, 'input> {
+    pub pat: &'ast Pat<'ast, 'input>,
+    pub ascription: Option<(tok::Colon, &'ast Type<'ast, 'input>)>,
 }

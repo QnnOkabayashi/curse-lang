@@ -1,6 +1,5 @@
-use curse_ast::{Expr, ExprPat, ParseError, Program, Res, Type};
+use curse_ast::{Expr, Pat, Type, Program};
 use lalrpop_util::lalrpop_mod;
-use typed_arena::Arena;
 
 mod error;
 pub use error::{Error, SourceErrors};
@@ -8,82 +7,79 @@ pub use error::{Error, SourceErrors};
 mod lexer;
 use lexer::Lexer;
 
+mod parse;
+
 lalrpop_mod!(
     #[allow(clippy::all)]
     grammar
 );
 
-pub struct Ast<'ast, 'input> {
-    exprs: Arena<Expr<'ast, 'input>>,
-    pats: Arena<ExprPat<'ast, 'input>>,
-    types: Arena<Type<'ast, 'input>>,
+#[derive(Default)]
+pub struct Arena<'ast, 'input> {
+    pub exprs: typed_arena::Arena<Expr<'ast, 'input>>,
+    pub pats: typed_arena::Arena<Pat<'ast, 'input>>,
+    pub types: typed_arena::Arena<Type<'ast, 'input>>,
 }
 
-impl Default for Ast<'_, '_> {
-    fn default() -> Self {
-        Self::new()
+pub trait ArenaAlloc<'ast, 'input>: Sized {
+    fn alloc_in(self, arena: &'ast Arena<'ast, 'input>) -> &'ast Self;
+}
+
+impl<'ast, 'input> ArenaAlloc<'ast, 'input> for Expr<'ast, 'input> {
+    fn alloc_in(self, arena: &'ast Arena<'ast, 'input>) -> &'ast Self {
+        arena.exprs.alloc(self)
     }
 }
 
-impl<'ast, 'input> Ast<'ast, 'input> {
-    pub fn new() -> Self {
-        Ast {
-            exprs: Arena::with_capacity(1024),
-            pats: Arena::with_capacity(1024),
-            types: Arena::with_capacity(1024),
-        }
+impl<'ast, 'input> ArenaAlloc<'ast, 'input> for Pat<'ast, 'input> {
+    fn alloc_in(self, arena: &'ast Arena<'ast, 'input>) -> &'ast Self {
+        arena.pats.alloc(self)
+    }
+}
+
+impl<'ast, 'input> ArenaAlloc<'ast, 'input> for Type<'ast, 'input> {
+    fn alloc_in(self, arena: &'ast Arena<'ast, 'input>) -> &'ast Self {
+        arena.types.alloc(self)
+    }
+}
+
+impl<'ast, 'input> Arena<'ast, 'input> {
+    fn alloc<T: ArenaAlloc<'ast, 'input>>(&'ast self, val: T) -> &'ast T {
+        val.alloc_in(self)
     }
 
-    pub fn expr(&'ast self, expr: Expr<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
-        self.exprs.alloc(expr)
-    }
-
-    pub fn try_expr(
+    pub(crate) fn alloc_expr(
         &'ast self,
-        res_expr: Res<Expr<'ast, 'input>>,
-    ) -> Res<&'ast Expr<'ast, 'input>> {
-        res_expr.map(|expr| self.expr(expr))
+    ) -> impl Fn(Expr<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
+        move |expr| self.exprs.alloc(expr)
     }
 
-    pub fn pat(&'ast self, pat: ExprPat<'ast, 'input>) -> &'ast ExprPat<'ast, 'input> {
-        self.pats.alloc(pat)
+    pub(crate) fn alloc_pat(&'ast self) -> impl Fn(Pat<'ast, 'input>) -> &'ast Pat<'ast, 'input> {
+        move |pat| self.pats.alloc(pat)
     }
 
-    pub fn ty(&'ast self, ty: Type<'ast, 'input>) -> &'ast Type<'ast, 'input> {
-        self.types.alloc(ty)
-    }
-
-    pub fn try_ty(&'ast self, res_ty: Res<Type<'ast, 'input>>) -> Res<&'ast Type<'ast, 'input>> {
-        res_ty.map(|ty| self.ty(ty))
+    pub(crate) fn alloc_ty(&'ast self) -> impl Fn(Type<'ast, 'input>) -> &'ast Type<'ast, 'input> {
+        move |ty| self.types.alloc(ty)
     }
 }
 
 pub fn parse_program<'ast, 'input>(
-    ast: &'ast Ast<'ast, 'input>,
+    ast: &'ast Arena<'ast, 'input>,
     input: &'input str,
 ) -> Result<Program<'ast, 'input>, Vec<Error>> {
-    let mut errors = Vec::with_capacity(0);
-    match grammar::ProgramParser::new().parse(ast, &mut errors, Lexer::new(input)) {
-        Ok(Ok(program)) => Ok(program),
-        Ok(Err(ParseError)) => Err(errors),
-        Err(err) => {
-            errors.push(err.into());
-            Err(errors)
-        }
+    match grammar::ProgramParser::new().parse(ast, Lexer::new(input)) {
+        Ok(program) => Ok(program),
+        Err(err) => todo!(),
     }
 }
 
 pub fn parse_expr<'ast, 'input>(
-    context: &'ast Ast<'ast, 'input>,
+    context: &'ast Arena<'ast, 'input>,
     input: &'input str,
-) -> Result<&'ast Expr<'ast, 'input>, Vec<Error>> {
-    let mut errors = Vec::with_capacity(0);
-    match grammar::EndExprParser::new().parse(context, &mut errors, Lexer::new(input)) {
-        Ok(Ok(expr)) => Ok(expr),
-        Ok(Err(ParseError)) => Err(errors),
-        Err(err) => {
-            errors.push(err.into());
-            Err(errors)
-        }
+) -> &'ast Expr<'ast, 'input> {
+    match grammar::EndExprParser::new().parse(context, Lexer::new(input)) {
+        Ok(_) => todo!(),
+        Err(err) => todo!(),
     }
+    // context.exprs.alloc()
 }

@@ -1,88 +1,85 @@
-mod defs;
+mod def;
 mod expr;
-mod function;
 mod pat;
+mod record;
 pub mod tok;
 mod ty;
 
-pub use defs::*;
-pub use expr::*;
-pub use function::*;
-pub use pat::*;
-pub use ty::*;
-
-/// 0 or more `T`s separated by `Sep`, with an optional trailing `Sep`.
-#[derive(Clone, Debug)]
-pub struct Punct<T, Sep> {
-    pub elements: Vec<(T, Sep)>,
-    pub trailing: Option<T>,
-}
-
-impl<T, Sep> Punct<T, Sep> {
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.elements
-            .iter()
-            .map(|(t, _sep)| t)
-            .chain(self.trailing.as_ref())
-    }
-}
-
-pub struct ParseError;
-
-pub type Res<T> = Result<T, ParseError>;
+pub use def::{
+    ChoiceDef, ExplicitTypes, FunctionDef, GenericParams, StructDef, VariantDef, Variants,
+};
+pub use expr::{
+    Appl, Arm, Closure, Constructor, Expr, FieldExpr, Lit, Param, Paren, RecordExpr, Symbol,
+};
+pub use pat::{FieldPat, Pat, RecordPat};
+pub use record::Record;
+pub use ty::{FieldType, GenericArgs, NamedType, RecordType, Type};
 
 pub trait Span {
-    fn span(&self) -> (usize, usize);
+    /// The location of the first byte.
+    fn start(&self) -> usize;
 
-    fn span_between(&self, other: impl Span) -> (usize, usize) {
-        let (start1, len1) = self.span();
-        let (start2, len2) = other.span();
-        let start = std::cmp::min(start1, start2);
-        let end = std::cmp::max(start1 + len1, start2 + len2);
-        (start, end - start)
+    /// The location of just past the last byte.
+    fn end(&self) -> usize;
+
+    /// A pair between start and end.
+    ///
+    /// Note that this function is implemented by default, but can be overriden
+    /// to be slightly more efficient in the case that the implementor is an enum
+    /// to avoid matching twice.
+    fn span(&self) -> (usize, usize) {
+        (self.start(), self.end())
     }
 }
 
 impl<T: Span> Span for &T {
-    fn span(&self) -> (usize, usize) {
-        (*self).span()
+    fn start(&self) -> usize {
+        (*self).start()
+    }
+
+    fn end(&self) -> usize {
+        (*self).end()
     }
 }
 
 impl Span for (usize, usize) {
-    fn span(&self) -> (usize, usize) {
-        *self
+    fn start(&self) -> usize {
+        self.0
+    }
+
+    fn end(&self) -> usize {
+        self.1
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Program<'ast, 'input> {
-    pub fn_defs: Vec<FnDef<'ast, 'input>>,
-    pub struct_defs: Vec<StructDef<'ast, 'input>>,
-    pub choice_defs: Vec<ChoiceDef<'ast, 'input>>,
+    pub functions: Vec<FunctionDef<'ast, 'input>>,
+    pub structs: Vec<StructDef<'ast, 'input>>,
+    pub choices: Vec<ChoiceDef<'ast, 'input>>,
 }
 
 impl<'ast, 'input> Program<'ast, 'input> {
     pub fn new() -> Self {
         Program {
-            fn_defs: vec![],
-            struct_defs: vec![],
-            choice_defs: vec![],
+            functions: vec![],
+            structs: vec![],
+            choices: vec![],
         }
     }
 
-    pub fn with_fn_def(mut self, fn_def: FnDef<'ast, 'input>) -> Self {
-        self.fn_defs.push(fn_def);
+    pub fn with_function_def(mut self, function_def: FunctionDef<'ast, 'input>) -> Self {
+        self.functions.push(function_def);
         self
     }
 
     pub fn with_struct_def(mut self, struct_def: StructDef<'ast, 'input>) -> Self {
-        self.struct_defs.push(struct_def);
+        self.structs.push(struct_def);
         self
     }
 
     pub fn with_choice_def(mut self, choice_def: ChoiceDef<'ast, 'input>) -> Self {
-        self.choice_defs.push(choice_def);
+        self.choices.push(choice_def);
         self
     }
 }

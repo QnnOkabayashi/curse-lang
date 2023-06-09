@@ -8,8 +8,12 @@ pub struct Ident<'input> {
 }
 
 impl Span for Ident<'_> {
-    fn span(&self) -> (usize, usize) {
-        (self.location, self.literal.len())
+    fn start(&self) -> usize {
+        self.location
+    }
+
+    fn end(&self) -> usize {
+        self.location + self.literal.len()
     }
 }
 
@@ -32,8 +36,12 @@ pub struct Integer<'input> {
 }
 
 impl Span for Integer<'_> {
-    fn span(&self) -> (usize, usize) {
-        (self.location, self.literal.len())
+    fn start(&self) -> usize {
+        self.location
+    }
+
+    fn end(&self) -> usize {
+        self.location + self.literal.len()
     }
 }
 
@@ -49,26 +57,30 @@ impl fmt::Debug for Integer<'_> {
     }
 }
 
-/// NamedTypes are like idents, but PascalCase.
+/// TypeIdents are like idents, but pascal case.
 #[derive(Copy, Clone)]
-pub struct NamedType<'input> {
+pub struct TypeIdent<'input> {
     pub location: usize,
     pub literal: &'input str,
 }
 
-impl Span for NamedType<'_> {
-    fn span(&self) -> (usize, usize) {
-        (self.location, self.literal.len())
+impl Span for TypeIdent<'_> {
+    fn start(&self) -> usize {
+        self.location
+    }
+
+    fn end(&self) -> usize {
+        self.location + self.literal.len()
     }
 }
 
-impl fmt::Display for NamedType<'_> {
+impl fmt::Display for TypeIdent<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self.literal, f)
     }
 }
 
-impl fmt::Debug for NamedType<'_> {
+impl fmt::Debug for TypeIdent<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.literal, f)
     }
@@ -84,8 +96,12 @@ macro_rules! declare_tokens {
             }
 
             impl Span for $name {
-                fn span(&self) -> (usize, usize) {
-                    (self.location, $tok.len())
+                fn start(&self) -> usize {
+                    self.location
+                }
+
+                fn end(&self) -> usize {
+                    self.location + $tok.len()
                 }
             }
 

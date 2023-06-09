@@ -1,19 +1,19 @@
-use crate::{Hir, Spanned};
-use curse_ast::tok;
+use crate::{ctx, Spanned, TypeIdent};
 use displaydoc::Display;
-use petgraph::graph::NodeIndex;
 use smallvec::SmallVec;
-use std::fmt;
 use thiserror::Error;
 
+mod printer;
+use printer::TypePrinter;
+
 #[derive(Clone, Debug)]
-pub struct TypeTemplate<'hir, 'input> {
+pub struct TypeTemplate<'cx> {
     pub typevars: SmallVec<[Var; 4]>,
-    pub ty: Type<'hir, 'input>,
+    pub ty: Type<'cx>,
 }
 
-impl<'hir, 'input> TypeTemplate<'hir, 'input> {
-    pub fn new(ty: Type<'hir, 'input>) -> Self {
+impl<'cx> TypeTemplate<'cx> {
+    pub fn new(ty: Type<'cx>) -> Self {
         TypeTemplate {
             typevars: SmallVec::new(),
             ty,
@@ -21,18 +21,18 @@ impl<'hir, 'input> TypeTemplate<'hir, 'input> {
     }
 }
 
-pub enum Typevar<'hir, 'input> {
+#[derive(Copy, Clone)]
+pub enum Typevar<'cx> {
     /// An unbound type variable
     Unbound,
     // A bound type variable.
     Bound {
-        ty: Type<'hir, 'input>,
-        source: NodeIndex,
+        ty: Type<'cx>,
     },
 }
 
-impl<'hir, 'input> Typevar<'hir, 'input> {
-    pub fn binding(&self) -> Option<&Type<'hir, 'input>> {
+impl<'cx> Typevar<'cx> {
+    pub fn binding(&self) -> Option<&Type<'cx>> {
         match self {
             Typevar::Bound { ty, .. } => Some(ty),
             Typevar::Unbound => None,
@@ -48,130 +48,60 @@ pub struct Var(pub usize);
 #[error("Unbound typevar")]
 pub struct UnboundTypevar;
 
-pub type Type<'hir, 'input> = Spanned<TypeKind<'hir, 'input>>;
+pub type Type<'cx> = Spanned<TypeKind<'cx>>;
 
 #[derive(Copy, Clone, Debug)]
-pub enum TypeKind<'hir, 'input> {
+pub enum TypeKind<'cx> {
     I32,
     Bool,
+    EmptyRecord,
     Var(Var),
-    Tuple(&'hir [Type<'hir, 'input>]),
-    Choice(&'hir TypeChoice<'hir, 'input>),
-    Function(&'hir TypeFunction<'hir, 'input>),
+    Record(&'cx [Type<'cx>]),
+    Choice(&'cx TypeChoice<'cx>),
+    Function(&'cx TypeFunction<'cx>),
 }
 
-impl<'hir, 'input> TypeKind<'hir, 'input> {
+impl<'cx> TypeKind<'cx> {
     pub fn unit() -> Self {
-        TypeKind::Tuple(&[])
+        TypeKind::Record(&[])
     }
 
     /// Returns a [`Display`](fmt::Display)able type that prints a [`Type`],
     /// except with all type variables fully expanded as much as possible.
-    pub fn pretty(self, hir: &'hir Hir<'hir, 'hir>) -> TypePrinter<'hir> {
-        TypePrinter { ty: self, hir }
+    pub fn display<'a>(self, ctx: &'a ctx::Typeck<'cx>) -> TypePrinter<'a, 'cx> {
+        TypePrinter { ty: self, ctx }
     }
 
-    pub fn resolve(&self, hir: &Hir<'hir, 'input>) -> Result<Self, UnboundTypevar> {
+    pub fn resolve(&self, ctx: &ctx::Typeck<'cx>) -> Result<Self, UnboundTypevar> {
         let TypeKind::Var(var) = self else {
             return Ok(*self);
         };
 
-        hir[*var].binding().ok_or(UnboundTypevar)?.kind.resolve(hir)
+        ctx[*var].binding().ok_or(UnboundTypevar)?.kind.resolve(ctx)
     }
 }
 
-impl Default for TypeKind<'_, '_> {
+impl Default for TypeKind<'_> {
     fn default() -> Self {
         TypeKind::unit()
     }
 }
 
-impl fmt::Display for TypeKind<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TypeKind::I32 => write!(f, "I32"),
-            TypeKind::Bool => write!(f, "Bool"),
-            TypeKind::Var(var) => write!(f, "{var}"),
-            TypeKind::Tuple(tuple) => {
-                write!(f, "(")?;
-                let mut iter = tuple.iter();
-                if let Some(ty) = iter.next() {
-                    write!(f, "{}", ty.kind)?;
-                }
-                for ty in iter {
-                    write!(f, ", {}", ty.kind)?;
-                }
-                write!(f, ")")
-            }
-            TypeKind::Choice(choice) => write!(f, "{}", choice.name),
-            TypeKind::Function(fun) => {
-                write!(
-                    f,
-                    "({} {} -> {})",
-                    fun.lhs.kind, fun.rhs.kind, fun.output.kind,
-                )
-            }
-        }
-    }
-}
-
-pub struct TypePrinter<'a> {
-    ty: TypeKind<'a, 'a>,
-    hir: &'a Hir<'a, 'a>,
-}
-
-impl fmt::Display for TypePrinter<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.ty {
-            TypeKind::Var(var) => {
-                if let Some(ty) = self.hir[var].binding() {
-                    write!(f, "{}", ty.kind.pretty(self.hir))
-                } else {
-                    write!(f, "{var}")
-                }
-            }
-            TypeKind::Tuple(tuple) => {
-                write!(f, "(")?;
-                let mut iter = tuple.iter();
-                if let Some(ty) = iter.next() {
-                    write!(f, "{}", ty.kind.pretty(self.hir))?;
-                }
-                for ty in iter {
-                    write!(f, ", {}", ty.kind.pretty(self.hir))?;
-                }
-                write!(f, ")")
-            }
-            TypeKind::Choice(choice) => write!(f, "{}", choice.name),
-            TypeKind::Function(fun) => {
-                write!(
-                    f,
-                    "({} {} -> {})",
-                    fun.lhs.kind.pretty(self.hir),
-                    fun.rhs.kind.pretty(self.hir),
-                    fun.output.kind.pretty(self.hir)
-                )
-            }
-            other => write!(f, "{other}"),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Display)]
-#[displaydoc("({lhs} {rhs} -> {output})")]
-pub struct TypeFunction<'hir, 'input> {
-    pub lhs: Type<'hir, 'input>,
-    pub rhs: Type<'hir, 'input>,
-    pub output: Type<'hir, 'input>,
+#[derive(Copy, Clone, Debug)]
+pub struct TypeFunction<'cx> {
+    pub lhs: Type<'cx>,
+    pub rhs: Type<'cx>,
+    pub output: Type<'cx>,
 }
 
 #[derive(Debug)]
-pub struct TypeChoice<'hir, 'input> {
-    pub name: tok::Ident<'input>,
-    pub variants: Vec<ChoiceVariant<'hir, 'input>>,
+pub struct TypeChoice<'cx> {
+    pub name: TypeIdent,
+    pub variants: Vec<ChoiceVariant<'cx>>,
 }
 
 #[derive(Debug)]
-pub struct ChoiceVariant<'hir, 'input> {
-    pub tag: tok::Ident<'input>,
-    pub payload: Option<Type<'hir, 'input>>,
+pub struct ChoiceVariant<'cx> {
+    pub name: TypeIdent,
+    pub payload: Type<'cx>,
 }
