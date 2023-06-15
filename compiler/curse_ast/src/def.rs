@@ -1,53 +1,62 @@
-use crate::{tok, ty::Type, Closure, Span};
+use crate::{ast_struct, tok, ty::Type, Closure};
+use curse_span::HasSpan;
 
 /// Example: `(K * V)`
 #[derive(Clone, Debug)]
 pub enum GenericParams<'input> {
     Single(tok::TypeIdent<'input>),
-    CartesianProduct {
-        lparen: tok::LParen,
-        types: Vec<(tok::TypeIdent<'input>, tok::Star)>,
-        trailing: tok::TypeIdent<'input>,
-        rparen: tok::RParen,
-    },
+    CartesianProduct(
+        tok::LParen,
+        Vec<(tok::TypeIdent<'input>, tok::Star)>,
+        tok::TypeIdent<'input>,
+        tok::RParen,
+    ),
 }
 
-/// Example: `fn add = |x, y| x + y`
-#[derive(Clone, Debug)]
-pub struct FunctionDef<'ast, 'input> {
-    pub fn_: tok::Fn,
-    pub name: tok::Ident<'input>,
-    pub explicit_types: Option<ExplicitTypes<'ast, 'input>>,
-    pub eq: tok::Eq,
-    pub function: Closure<'ast, 'input>,
+ast_struct! {
+    /// Example: `fn add = |x, y| x + y`
+    #[derive(Clone, Debug)]
+    pub struct FunctionDef<'ast, 'input> {
+        pub fn_: tok::Fn,
+        pub ident: tok::Ident<'input>,
+        pub explicit_types: Option<ExplicitTypes<'ast, 'input>>,
+        pub eq: tok::Eq,
+        pub function: Closure<'ast, 'input>,
+    }
 }
 
-/// Example: `T: T -> T`
-#[derive(Clone, Debug)]
-pub struct ExplicitTypes<'ast, 'input> {
-    pub generics: GenericParams<'input>,
-    pub colon: tok::Colon,
-    pub ty: &'ast Type<'ast, 'input>,
+ast_struct! {
+    /// Example: `T: T -> T`
+    #[derive(Clone, Debug)]
+    pub struct ExplicitTypes<'ast, 'input> {
+        pub generic_params: Option<GenericParams<'input>>,
+        pub colon: tok::Colon,
+        pub ty: &'ast Type<'ast, 'input>,
+    }
 }
 
-/// Example: `struct Id = I32`
-#[derive(Clone, Debug)]
-pub struct StructDef<'ast, 'input> {
-    pub struct_: tok::Struct,
-    pub name: tok::TypeIdent<'input>,
-    pub generic_params: GenericParams<'input>,
-    pub eq: tok::Eq,
-    pub inner: &'ast Type<'ast, 'input>,
+ast_struct! {
+    /// Example: `struct Id = I32`
+    #[derive(Clone, Debug)]
+    pub struct StructDef<'ast, 'input> {
+        pub struct_: tok::Struct,
+        pub ident: tok::TypeIdent<'input>,
+        pub generic_params: Option<GenericParams<'input>>,
+        pub eq: tok::Eq,
+        pub inner: &'ast Type<'ast, 'input>,
+    }
 }
 
-/// Example: `choice Option T = Some T | None {}`
-#[derive(Clone, Debug)]
-pub struct ChoiceDef<'ast, 'input> {
-    pub choice: tok::Choice,
-    pub name: tok::TypeIdent<'input>,
-    pub generic_params: GenericParams<'input>,
-    pub eq: tok::Eq,
-    pub variants: Variants<'ast, 'input>,
+ast_struct! {
+    /// Example: `choice Option T = Some T | None {}`
+    #[derive(Clone, Debug)]
+    pub struct ChoiceDef<'ast, 'input> {
+        pub choice: tok::Choice,
+        pub ident: tok::TypeIdent<'input>,
+        pub generic_params: Option<GenericParams<'input>>,
+        pub eq: tok::Eq,
+        pub variants: Variants<'ast, 'input>,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -55,39 +64,57 @@ pub enum Variants<'ast, 'input> {
     /// "|"
     Never(tok::Pipe),
     /// "|"? (VariantDef "|")* VariantDef
-    Variants {
-        pipe: Option<tok::Pipe>,
-        variants: Vec<(VariantDef<'ast, 'input>, tok::Pipe)>,
-        trailing: VariantDef<'ast, 'input>,
-    },
+    Variants(
+        Option<tok::Pipe>,
+        Vec<(VariantDef<'ast, 'input>, tok::Pipe)>,
+        VariantDef<'ast, 'input>,
+    ),
 }
 
-/// Example: `Some T`
-#[derive(Clone, Debug)]
-pub struct VariantDef<'ast, 'input> {
-    pub name: tok::TypeIdent<'input>,
-    pub inner: &'ast Type<'ast, 'input>,
+ast_struct! {
+    /// Example: `Some T`
+    #[derive(Clone, Debug)]
+    pub struct VariantDef<'ast, 'input> {
+        pub ident: tok::TypeIdent<'input>,
+        pub inner: &'ast Type<'ast, 'input>,
+    }
 }
 
-impl Span for ChoiceDef<'_, '_> {
-    fn start(&self) -> usize {
+impl HasSpan for FunctionDef<'_, '_> {
+    fn start(&self) -> u32 {
+        self.fn_.start()
+    }
+
+    fn end(&self) -> u32 {
+        self.function.end()
+    }
+}
+
+impl HasSpan for StructDef<'_, '_> {
+    fn start(&self) -> u32 {
+        self.struct_.start()
+    }
+
+    fn end(&self) -> u32 {
+        self.inner.end()
+    }
+}
+
+impl HasSpan for ChoiceDef<'_, '_> {
+    fn start(&self) -> u32 {
         self.choice.start()
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         self.variants.end()
     }
 }
 
-impl Span for Variants<'_, '_> {
-    fn start(&self) -> usize {
+impl HasSpan for Variants<'_, '_> {
+    fn start(&self) -> u32 {
         match self {
             Variants::Never(pipe) => pipe.start(),
-            Variants::Variants {
-                pipe,
-                variants,
-                trailing,
-            } => match (pipe, variants.as_slice(), trailing) {
+            Variants::Variants(pipe, variants, last) => match (pipe, variants.as_slice(), last) {
                 (Some(pipe), _, _) => pipe.start(),
                 (None, [(first, _), ..], _) => first.start(),
                 (None, [], last) => last.start(),
@@ -95,20 +122,20 @@ impl Span for Variants<'_, '_> {
         }
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         match self {
             Variants::Never(pipe) => pipe.end(),
-            Variants::Variants { trailing, .. } => trailing.end(),
+            Variants::Variants(.., last) => last.end(),
         }
     }
 }
 
-impl Span for VariantDef<'_, '_> {
-    fn start(&self) -> usize {
-        self.name.start()
+impl HasSpan for VariantDef<'_, '_> {
+    fn start(&self) -> u32 {
+        self.ident.start()
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         self.inner.end()
     }
 }

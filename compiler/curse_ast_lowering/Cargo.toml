@@ -1,5 +1,5 @@
 [package]
-name = "curse_hir"
+name = "curse_ast_lowering"
 version = "0.0.0"
 edition = "2021"
 
@@ -8,7 +8,6 @@ curse_ast = { path = "../curse_ast" }
 curse_arena = { path = "../curse_arena" }
 curse_interner = { path = "../curse_interner" }
 curse_span = { path = "../curse_span" }
-typed-arena = "2.0.2"
+curse_hir = { path = "../curse_hir" }
 miette = "5.*"
-thiserror = "1.*"
 

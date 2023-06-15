@@ -1,51 +1,35 @@
-use crate::{Spanned, Ty, Type, TypeChoice, TypeKind, ValueIdent};
+use crate::{Lit, Map};
+use curse_interner::Ident;
+use curse_span::{HasSpan, Span};
+use std::fmt;
 
-pub type Pat<'cx> = Spanned<PatKind<'cx>>;
-
-#[derive(Copy, Clone, Debug)]
-pub enum PatKind<'cx> {
-    Bool(bool),
-    I32(i32),
-    Ident {
-        ty: TypeKind<'cx>,
-        literal: ValueIdent,
-    },
-    Tuple {
-        ty: &'cx [Type<'cx>],
-        pats: &'cx [Pat<'cx>],
-    },
-    Choice {
-        ty: &'cx TypeChoice<'cx>,
-        variant: u32,
-        payload: Option<&'cx Pat<'cx>>,
-    },
+pub struct Pat<'hir> {
+    pub kind: PatKind<'hir>,
+    pub span: Span,
 }
 
-impl<'cx> PatKind<'cx> {
-    pub fn unit() -> Self {
-        PatKind::Tuple { ty: &[], pats: &[] }
+#[derive(Debug)]
+pub enum PatKind<'hir> {
+    Lit(Lit),
+    Record(Map<'hir, Ident, Option<PatRef<'hir>>>),
+    Struct(Ident, PatRef<'hir>),
+    Error,
+}
+
+pub type PatRef<'hir> = &'hir Pat<'hir>;
+
+impl HasSpan for Pat<'_> {
+    fn start(&self) -> u32 {
+        self.span.start
+    }
+
+    fn end(&self) -> u32 {
+        self.span.end
     }
 }
 
-impl Default for PatKind<'_> {
-    fn default() -> Self {
-        PatKind::unit()
-    }
-}
-
-impl<'cx> Ty<'cx> for Pat<'cx> {
-    fn ty(&self) -> Type<'cx> {
-        let kind = match self.kind {
-            PatKind::Bool(_) => TypeKind::Bool,
-            PatKind::I32(_) => TypeKind::I32,
-            PatKind::Ident { ty, .. } => ty,
-            PatKind::Tuple { ty, .. } => TypeKind::Record(ty),
-            PatKind::Choice { ty, .. } => TypeKind::Choice(ty),
-        };
-
-        Type {
-            kind,
-            span: self.span,
-        }
+impl fmt::Debug for Pat<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.kind, f)
     }
 }

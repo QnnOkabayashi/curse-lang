@@ -1,24 +1,50 @@
-use curse_ast::{Expr, Pat, Type, Program};
+use curse_ast::{Expr, Pat, Program, Type};
 use lalrpop_util::lalrpop_mod;
+use typed_arena as ta;
 
 mod error;
-pub use error::{Error, SourceErrors};
+pub use error::Error;
 
 mod lexer;
 use lexer::Lexer;
-
-mod parse;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
     grammar
 );
 
+pub struct Parser<'ast, 'input> {
+    pub arena: &'ast Arena<'ast, 'input>,
+    pub errors: Vec<Error>,
+}
+
+impl<'ast, 'input> Parser<'ast, 'input> {
+    pub fn new(arena: &'ast Arena<'ast, 'input>) -> Self {
+        Parser {
+            arena,
+            errors: Vec::with_capacity(0),
+        }
+    }
+
+    pub fn parse_program(&mut self, input: &'input str) -> Program<'ast, 'input> {
+        grammar::ProgramParser::new()
+            .parse(self, Lexer::new(input))
+            .expect("`Program` rule recovers from all errors")
+    }
+
+    pub fn parse_expr(&mut self, input: &'input str) -> Expr<'ast, 'input> {
+        grammar::EndExprParser::new()
+            .parse(self, Lexer::new(input))
+            .expect("`EndExpr` rule recovers from all errors")
+    }
+}
+
+// Cannot use `curse_arena::DroplessArena` because these types own allocations.
 #[derive(Default)]
 pub struct Arena<'ast, 'input> {
-    pub exprs: typed_arena::Arena<Expr<'ast, 'input>>,
-    pub pats: typed_arena::Arena<Pat<'ast, 'input>>,
-    pub types: typed_arena::Arena<Type<'ast, 'input>>,
+    pub exprs: ta::Arena<Expr<'ast, 'input>>,
+    pub pats: ta::Arena<Pat<'ast, 'input>>,
+    pub types: ta::Arena<Type<'ast, 'input>>,
 }
 
 pub trait ArenaAlloc<'ast, 'input>: Sized {
@@ -47,39 +73,4 @@ impl<'ast, 'input> Arena<'ast, 'input> {
     fn alloc<T: ArenaAlloc<'ast, 'input>>(&'ast self, val: T) -> &'ast T {
         val.alloc_in(self)
     }
-
-    pub(crate) fn alloc_expr(
-        &'ast self,
-    ) -> impl Fn(Expr<'ast, 'input>) -> &'ast Expr<'ast, 'input> {
-        move |expr| self.exprs.alloc(expr)
-    }
-
-    pub(crate) fn alloc_pat(&'ast self) -> impl Fn(Pat<'ast, 'input>) -> &'ast Pat<'ast, 'input> {
-        move |pat| self.pats.alloc(pat)
-    }
-
-    pub(crate) fn alloc_ty(&'ast self) -> impl Fn(Type<'ast, 'input>) -> &'ast Type<'ast, 'input> {
-        move |ty| self.types.alloc(ty)
-    }
-}
-
-pub fn parse_program<'ast, 'input>(
-    ast: &'ast Arena<'ast, 'input>,
-    input: &'input str,
-) -> Result<Program<'ast, 'input>, Vec<Error>> {
-    match grammar::ProgramParser::new().parse(ast, Lexer::new(input)) {
-        Ok(program) => Ok(program),
-        Err(err) => todo!(),
-    }
-}
-
-pub fn parse_expr<'ast, 'input>(
-    context: &'ast Arena<'ast, 'input>,
-    input: &'input str,
-) -> &'ast Expr<'ast, 'input> {
-    match grammar::EndExprParser::new().parse(context, Lexer::new(input)) {
-        Ok(_) => todo!(),
-        Err(err) => todo!(),
-    }
-    // context.exprs.alloc()
 }

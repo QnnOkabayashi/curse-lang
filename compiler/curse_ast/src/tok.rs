@@ -1,19 +1,25 @@
-use crate::Span;
+use curse_span::HasSpan;
 use std::fmt;
 
 #[derive(Copy, Clone)]
 pub struct Ident<'input> {
-    pub location: usize,
+    pub location: u32,
     pub literal: &'input str,
 }
 
-impl Span for Ident<'_> {
-    fn start(&self) -> usize {
+impl AsRef<str> for Ident<'_> {
+    fn as_ref(&self) -> &str {
+        self.literal
+    }
+}
+
+impl HasSpan for Ident<'_> {
+    fn start(&self) -> u32 {
         self.location
     }
 
-    fn end(&self) -> usize {
-        self.location + self.literal.len()
+    fn end(&self) -> u32 {
+        self.location + self.literal.len() as u32
     }
 }
 
@@ -31,17 +37,17 @@ impl fmt::Debug for Ident<'_> {
 
 #[derive(Copy, Clone)]
 pub struct Integer<'input> {
-    pub location: usize,
+    pub location: u32,
     pub literal: &'input str,
 }
 
-impl Span for Integer<'_> {
-    fn start(&self) -> usize {
+impl HasSpan for Integer<'_> {
+    fn start(&self) -> u32 {
         self.location
     }
 
-    fn end(&self) -> usize {
-        self.location + self.literal.len()
+    fn end(&self) -> u32 {
+        self.location + self.literal.len() as u32
     }
 }
 
@@ -60,17 +66,23 @@ impl fmt::Debug for Integer<'_> {
 /// TypeIdents are like idents, but pascal case.
 #[derive(Copy, Clone)]
 pub struct TypeIdent<'input> {
-    pub location: usize,
+    pub location: u32,
     pub literal: &'input str,
 }
 
-impl Span for TypeIdent<'_> {
-    fn start(&self) -> usize {
+impl AsRef<str> for TypeIdent<'_> {
+    fn as_ref(&self) -> &str {
+        self.literal
+    }
+}
+
+impl HasSpan for TypeIdent<'_> {
+    fn start(&self) -> u32 {
         self.location
     }
 
-    fn end(&self) -> usize {
-        self.location + self.literal.len()
+    fn end(&self) -> u32 {
+        self.location + self.literal.len() as u32
     }
 }
 
@@ -92,16 +104,16 @@ macro_rules! declare_tokens {
             $(#[$attr])*
             #[derive(Copy, Clone, Default)]
             pub struct $name {
-                pub location: usize,
+                pub location: u32,
             }
 
-            impl Span for $name {
-                fn start(&self) -> usize {
+            impl HasSpan for $name {
+                fn start(&self) -> u32 {
                     self.location
                 }
 
-                fn end(&self) -> usize {
-                    self.location + $tok.len()
+                fn end(&self) -> u32 {
+                    self.location + $tok.len() as u32
                 }
             }
 

@@ -1,39 +1,39 @@
-use crate::{tok, Lit, Record, Span};
-
-pub type RecordPat<'ast, 'input> = Record<FieldPat<'ast, 'input>>;
+use crate::{tok, Lit, Record};
+use curse_span::{HasSpan, Span};
 
 #[derive(Clone, Debug)]
 pub enum Pat<'ast, 'input> {
     Lit(Lit<'input>),
-    Record(RecordPat<'ast, 'input>),
+    Record(Record<'input, &'ast Pat<'ast, 'input>>),
+    Struct(tok::TypeIdent<'input>, &'ast Pat<'ast, 'input>),
     // TODO(quinn): add support for struct and choice patterns
 }
 
-#[derive(Clone, Debug)]
-pub struct FieldPat<'ast, 'input> {
-    pub name: tok::Ident<'input>,
-    pub explicit_value: Option<(tok::Colon, &'ast Pat<'ast, 'input>)>,
-}
-
-impl Span for Pat<'_, '_> {
-    fn start(&self) -> usize {
+impl HasSpan for Pat<'_, '_> {
+    fn start(&self) -> u32 {
         match self {
             Pat::Lit(lit) => lit.start(),
             Pat::Record(record) => record.start(),
+            Pat::Struct(ident, _) => ident.start(),
         }
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         match self {
             Pat::Lit(lit) => lit.end(),
             Pat::Record(record) => record.end(),
+            Pat::Struct(_, inner) => inner.end(),
         }
     }
 
-    fn span(&self) -> (usize, usize) {
+    fn span(&self) -> Span {
         match self {
             Pat::Lit(lit) => lit.span(),
             Pat::Record(record) => record.span(),
+            Pat::Struct(ident, inner) => Span {
+                start: ident.start(),
+                end: inner.end(),
+            },
         }
     }
 }

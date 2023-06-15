@@ -1,14 +1,18 @@
 [package]
 name = "curse"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-curse_hir = { path = "../curse_hir" }
 curse_parse = { path = "../curse_parse" }
 curse_ast = { path = "../curse_ast" }
+curse_ast_lowering = { path = "../curse_ast_lowering" }
+curse_hir = { path = "../curse_hir" }
+curse_mir = { path = "../curse_mir" }
+curse_interner = { path = "../curse_interner" }
 miette = { version = "5.7.0", features = ["fancy"] }
 typed-arena = "2.0.2"
 smallvec = "1.10.0"
+thiserror = "1.0.40"
 
 

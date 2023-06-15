@@ -1,4 +1,42 @@
 #![allow(dead_code)]
+
+// TODO(quinn): make HIR types have a little more resolution,
+// such as knowing if a type struct/choice refers to a generic.
+
+pub const TEST_ERR: &str = r#"
+fn add = |x|
+    4_294_967_295 in |東京|
+    x + 東京
+
+struct Wraps T = T (I32 * I32)
+
+struct I32 = {}
+
+struct List I32 = I32
+
+struct Bool = {}
+
+struct TGeneric T = T Bool
+
+struct PrimParametric = I32 I32
+
+struct Untyped = { name, age }
+
+struct X = {
+    age: I32,
+}
+
+struct X = {
+    hot: Bool,
+}
+"#;
+
+pub const SURPRISINGLY_OK: &str = r#"
+struct X I32 = I32
+
+struct I32 = Bool
+"#;
+
 pub const BINARY_TREE: &str = r#"
 choice Option T =
     | Some T
@@ -6,70 +44,68 @@ choice Option T =
 
 choice Never = |
 
-struct Pair (A * B) = (fst: A, snd: B)
+struct Pair (A * B) = { fst: A, snd: B }
 
-struct LinearMap (K * V) = (
-    data: Vec (K, V),
-)
+struct LinearMap (K * V) = {
+    data: Vec { key: K, value: V },
+}
 
 struct Wrapper T = T
 
 struct Empty = {}
 
-fn then_do = {
-    |true, f| Some () f (),
-    |false, _| None (),
-}
+fn then_do = (
+    |true, f| Some {} f {},
+    |false, _| None {},
+)
 
-fn then = {
+fn then = (
     |true, x| Some x,
-    |false, _| None (),
-}
+    |false, _| None {},
+)
 
-fn else_do = {
+fn else_do = (
     |Some val, _| val,
-    |None (), f| () f ()
-}
+    |None {}, f| {} f {}
+)
 
-fn else = {
+fn else = (
     |Some val, _| val,
-    |None (), x| x
-}
-
+    |None {}, x| x
+)
 
 choice Result (T * E) =
     | Ok T
     | Err E
 
 choice Tree T =
-    | Node (
+    | Node {
         key: I32,
         value: T,
         left: Box Tree T,
         right: Box Tree T,
         thing: Vec Vec Result (I32 * Error),
-    )
-    | Empty (),
-}
+    }
+    | Empty {}
 
 fn insert = (
-    |Empty (), (k, v)|
-        Node { key: k, value: v, left: Empty, right: Empty },
-    |Node { key, value, left, right }, (k, v)|
+    |Empty {}, { k, v }|
+        Node { key: k, value: v, left: Empty {}, right: Empty {} },
+    |Node { key, value, left, right }, { k, v }|
         k > key then_do (||
-            right insert (k, v) in |right|
+            right insert { k, v } in |right|
             Node { key, value, left, right }
         ) else_do || k < key then_do (||
-            left insert (k, v) in |left|
+            left insert { k, v } in |left|
             Node { key, value, left, right }
         ) else_do ||
             Node { key, value: v, left, right }
 )
 
 fn get = (
-    |Empty (), _|
-        None (),
-    |Node (key, value, left, right), k|
+    |Empty {}, _|
+        None {},
+    |Node { key, value, left, right }, k|
         k > key then_do (||
             right find k
         ) else_do || k < key then_do (||
@@ -78,19 +114,13 @@ fn get = (
             Some value
 )
 
-fn print_to_n_iterators |n, io|
-    0 .. n for_each |i|
-        i println io
-
-```
-let rec fix f x = f (fix f) x (* note the extra x; here fix f = \x-> f (fix f) x *)
-
-let factabs fact = function   (* factabs has extra level of lambda abstraction *)
-   0 -> 1
- | x -> x * fact (x-1)
-
-let _ = (fix factabs) 5
-```
+// let rec fix f x = f (fix f) x (* note the extra x; here fix f = \x-> f (fix f) x *)
+// 
+// let factabs fact = function   (* factabs has extra level of lambda abstraction *)
+//    0 -> 1
+//  | x -> x * fact (x-1)
+// 
+// let _ = (fix factabs) 5
 
 // Y-combinator (works in strict languages)
 fn rec = |x, f| f of (|x| x fix f) of x
@@ -103,32 +133,28 @@ fn fact = |n|
     )
 
 fn print_0_to_n = |n, io|
-    0 rec |loop| {
+    0 rec |loop| (
         |10| 10 println io,
         |i|
             i println io;
             loop of (i + 1)
-    }
+    )
 
 fn in = |x, f| f of x
 
-fn of = |f, x| x f ()
+fn of = |f, x| x f {}
 "#;
 
 pub const FIB: &str = r#"
-choice Option T {
-    Some T,
-    None (),
-}
+choice Option T = Some T | None {}
 
-fn fib: I32 () -> I32 = {
+fn fib = (
     |0| 0,
     |1| 1,
-    |n| (n - 1 fib ()) + (n - 2 fib ())
-}
+    |n| (n - 1 fib {}) + (n - 2 fib {})
+)
 
-fn main: () () -> () = ||
-    10 fib () print ()
+fn main = || 10 fib {} print {}
 "#;
 
 pub const NESTED_CLOSURES: &str = r#"

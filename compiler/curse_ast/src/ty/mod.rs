@@ -1,26 +1,20 @@
-use crate::{tok, Record, Span};
+use crate::Record;
+use curse_span::{HasSpan, Span};
 
 mod named;
 pub use named::{GenericArgs, NamedType};
 
-pub type RecordType<'ast, 'input> = Record<FieldType<'ast, 'input>>;
-
 #[derive(Clone, Debug)]
 pub enum Type<'ast, 'input> {
     Named(NamedType<'ast, 'input>),
-    Record(RecordType<'ast, 'input>),
+    // Failing to specify the type of a field in a record should be reported during ast lowering,
+    // not during parsing, so we allow for a type to be omitted in this representation.
+    Record(Record<'input, &'ast Type<'ast, 'input>>),
     Error,
 }
 
-#[derive(Clone, Debug)]
-pub struct FieldType<'ast, 'input> {
-    pub name: tok::Ident<'input>,
-    pub colon: tok::Colon,
-    pub ty: &'ast Type<'ast, 'input>,
-}
-
-impl Span for Type<'_, '_> {
-    fn start(&self) -> usize {
+impl HasSpan for Type<'_, '_> {
+    fn start(&self) -> u32 {
         match self {
             Type::Named(named) => named.start(),
             Type::Record(record) => record.start(),
@@ -28,7 +22,7 @@ impl Span for Type<'_, '_> {
         }
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         match self {
             Type::Named(named) => named.end(),
             Type::Record(record) => record.end(),
@@ -36,7 +30,7 @@ impl Span for Type<'_, '_> {
         }
     }
 
-    fn span(&self) -> (usize, usize) {
+    fn span(&self) -> Span {
         match self {
             Type::Named(named) => named.span(),
             Type::Record(record) => record.span(),

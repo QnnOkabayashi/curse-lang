@@ -123,30 +123,72 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "curse"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "curse_ast",
+ "curse_ast_lowering",
  "curse_hir",
+ "curse_interner",
+ "curse_mir",
  "curse_parse",
  "miette",
  "smallvec",
+ "thiserror",
  "typed-arena",
 ]
 
 [[package]]
 name = "curse_arena"
-version = "0.1.0"
+version = "0.0.0"
+dependencies = [
+ "typed-arena",
+]
 
 [[package]]
 name = "curse_ast"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
+ "curse_span",
  "displaydoc",
  "smallvec",
 ]
 
 [[package]]
+name = "curse_ast_lowering"
+version = "0.0.0"
+dependencies = [
+ "curse_arena",
+ "curse_ast",
+ "curse_hir",
+ "curse_interner",
+ "curse_span",
+ "miette",
+]
+
+[[package]]
 name = "curse_hir"
+version = "0.0.0"
+dependencies = [
+ "curse_arena",
+ "curse_ast",
+ "curse_interner",
+ "curse_span",
+ "miette",
+ "thiserror",
+ "typed-arena",
+]
+
+[[package]]
+name = "curse_interner"
+version = "0.0.0"
+dependencies = [
+ "curse_span",
+ "parking_lot",
+ "string-interner",
+]
+
+[[package]]
+name = "curse_mir"
 version = "0.1.0"
 dependencies = [
  "curse_ast",
@@ -162,16 +204,22 @@ dependencies = [
 
 [[package]]
 name = "curse_parse"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "curse_ast",
+ "curse_span",
  "lalrpop",
  "lalrpop-util",
  "logos",
  "miette",
  "thiserror",
  "typed-arena",
+ "unicode-ident",
 ]
+
+[[package]]
+name = "curse_span"
+version = "0.0.0"
 
 [[package]]
 name = "diff"

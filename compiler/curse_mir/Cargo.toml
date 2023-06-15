@@ -1,0 +1,17 @@
+[package]
+name = "curse_mir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+curse_ast = { path = "../curse_ast" }
+displaydoc = "0.2.3"
+miette = "5.7.0"
+petgraph = "0.6.3"
+smallvec = "1.10.0"
+thiserror = "1.0.40"
+typed-arena = "2.0.2"
+string-interner = "0.14.0"
+
+[dev-dependencies]
+curse_parse = { path = "../curse_parse" }

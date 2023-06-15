@@ -1,11 +1,11 @@
-use crate::{lexer::*, Arena, Error, parse};
+use crate::{lexer::*, Parser};
 use curse_ast::{
-    tok, Appl, Arm, Braced,ChoiceDef, Closure, Constructor, Expr, FieldsKind, FunctionDef, Lit,
-    Field, NamedType, Param, Paren, Pat, Program, StructDef, Symbol, Record, Type, GenericArgs, GenericParams,
-    VariantDef,
+    tok, Appl, Arm, ChoiceDef, Closure, Constructor, ExplicitTypes, Expr, Field, FunctionDef,
+    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Pat, Program, Record, StructDef,
+    Symbol, Type, VariantDef, Variants,
 };
 
-grammar<'ast, 'input>(arena: &'ast Arena<'ast, 'input>);
+grammar<'ast, 'input>(parser: &mut Parser<'ast, 'input>);
 
 extern {
     type Location = usize;
@@ -64,93 +64,100 @@ TypeIdent: tok::TypeIdent<'input> = "named type literal";
 /// === Program ===
 
 pub Program: Program<'ast, 'input> = {
-    FunctionDef => Program::new().with_function_def(<>),
-    ChoiceDef => Program::new().with_choice_def(<>),
+    FunctionDef => Program::default().with_function_def(<>),
+    ChoiceDef => Program::default().with_choice_def(<>),
+    StructDef => Program::default().with_struct_def(<>),
 
     Program FunctionDef => Program::with_function_def(<>),
     Program ChoiceDef => Program::with_choice_def(<>),
+    Program StructDef => Program::with_struct_def(<>),
+
+    ! => {
+        parser.errors.push(<>.error.into());
+        Program::default()
+    }
 };
 
 /// === Definitions ===
 
 GenericParams: GenericParams<'input> = {
-    TypeIdent => parse::def::generic_single(<>),
-    "(" TypeIdent ("*" TypeIdent)* ")" => parse::def::generic_product(<>),
+    TypeIdent => GenericParams::Single(<>),
+    "(" (TypeIdent "*")* TypeIdent ")" => GenericParams::CartesianProduct(<>),
 };
 
 ExplicitTypes: ExplicitTypes<'ast, 'input> = {
-    GenericsParams? ":" Type => parse::def::explicit_types(<>),
+    GenericParams? ":" Ref<Type> => ExplicitTypes::new(<>),
 }
 
 FunctionDef: FunctionDef<'ast, 'input> = {
-    "fn" Ident ExplicitTypes? "=" Closure => parse::def::function(<>),
+    "fn" Ident ExplicitTypes? "=" Closure => FunctionDef::new(<>),
 };
 
 StructDef: StructDef<'ast, 'input> = {
-    "struct" TypeIdent GenericsDecl? "=" Type => parse::def::struct_(<>),
+    "struct" TypeIdent GenericParams? "=" Ref<Type> => StructDef::new(<>),
 };
 
 ChoiceDef: ChoiceDef<'ast, 'input> = {
-    "choice" TypeIdent (TypeIdent)* "=" "{" (VariantDef ",")* VariantDef? "}" => parse::def::choice(<>),
+    "choice" TypeIdent GenericParams? "=" Variants => ChoiceDef::new(<>),
 };
 
 Variants: Variants<'ast, 'input> = {
     "|" => Variants::Never(<>),
-    "|"? VariantDef ("|" VariantDef)* => parse::def::variants(<>),
+    "|"? (VariantDef "|")* VariantDef => Variants::Variants(<>),
 }
 
 VariantDef: VariantDef<'ast, 'input> = {
-    TypeIdent Type => parse::def::variant(arena, <>),
+    TypeIdent Ref<Type> => VariantDef::new(<>),
 };
 
 
 /// === Record ===
 
-Record<T>: Record<T> = {
-    "(" (T ",")* T? ")" => parse::record(arena, <>),
-}
+Record<T>: Record<'input, T> = {
+    "{" (Field<T> ",")* Field<T>? "}" => Record::new(<>),
+};
 
+Field<T>: Field<'input, T> = {
+    Ident (":" T)? => Field::new(<>),
+};
+
+// Get an arena-allocated reference
+Ref<T>: &'ast T = {
+    T => &*parser.arena.alloc(<>),
+}
 
 /// === Types ===
 
 Type: Type<'ast, 'input> = {
     NamedType => Type::Named(<>),
-    Record<FieldType> => Type::Record(<>),
-    ! => Type::Error,
+    Record<Ref<Type>> => Type::Record(<>),
+    ! => {
+        parser.errors.push(<>.error.into());
+        Type::Error
+    }
 };
 
-GenericArgs: GenericArgs<'input> = {
-    Type => parse::ty::generic_single(arena, <>),
-    "(" (Type "*")* Type ")" => parse::ty::generic_product(arena, <>),
+GenericArgs: GenericArgs<'ast, 'input> = {
+    Ref<Type> => GenericArgs::Single(<>),
+    "(" (Type "*")* Ref<Type> ")" => GenericArgs::CartesianProduct(<>),
 };
 
 NamedType: NamedType<'ast, 'input> = {
-    TypeIdent GenericArgs? => parse::ty::named(<>),
+    TypeIdent GenericArgs? => NamedType::new(<>),
 };
 
-FieldType: FieldType<'ast, 'input> = {
-    // Unlike Expr and Pat fields, the type is _not_ optional.
-    Ident ":" Type => parse::ty::field(arena, <>),
-}
 
 /// === Patterns ===
 
 Pat: Pat<'ast, 'input> = {
     Lit => Pat::Lit(<>),
-    Record<PatField> => Pat::Record(<>),
-    // TODO(quinn): add struct and choice pats
+    Record<Ref<Pat>> => Pat::Record(<>),
+    TypeIdent Ref<Pat> => Pat::Struct(<>),
+    // TODO(quinn): add choice pats and qpaths
 };
-
-FieldPat: FieldPat<'ast, 'input> = {
-    Ident (":" Pat)? => parse::pat::field(<>),
-}
 
 
 /// === Expressions ===
-
-FieldExpr: FieldExpr<'ast, 'input> = {
-    Ident (":" EndExpr)? => parse::expr::field(<>),
-}
 
 Symbol: Symbol = {
     "+" => Symbol::Plus(<>),
@@ -180,7 +187,8 @@ ClosureNonpiecewise: Closure<'ast, 'input> = {
 };
 
 ClosurePiecewise: Closure<'ast, 'input> = {
-    "(" (Arm ",")* ")" => parse::expr::closure_piecewise(<>),
+    "(" ")" => Closure::Empty(<>),
+    "(" (Arm ",")+ Arm? ")" => Closure::Piecewise(<>),
 };
 
 Closure = {
@@ -189,32 +197,35 @@ Closure = {
 };
 
 Arm: Arm<'ast, 'input> = {
-    "|" (Param ",")* Param? "|" EndExpr => parse::expr::closure_arm(arena, <>),
+    "|" (Param ",")* Param? "|" Ref<EndExpr> => Arm::new(<>),
 };
 
 Param: Param<'ast, 'input> = {
-    Pat (":" Type)? => parse::expr::closure_param(arena, <>),
+    Ref<Pat> (":" Ref<Type>)? => Param::new(<>),
 };
 
 Constructor: Constructor<'ast, 'input> = {
-    TypeIdent EndExpr => parse::expr::constructor(arena, <>),
+    TypeIdent Ref<EndExpr> => Constructor::new(<>),
 };
 
 Appl<Rhs>: Appl<'ast, 'input> = {
-    Expr Term Rhs => parse::expr::appl(arena, <>),
+    Ref<Expr> Ref<Term> Ref<Rhs> => Appl::new(<>),
 };
 
 Paren: Paren<'ast, 'input> = {
-    "(" EndExpr ")" => parse::expr::paren(arena, <>),
+    "(" Ref<EndExpr> ")" => Paren::new(<>),
 };
 
 Term: Expr<'ast, 'input> = {
     Paren => Expr::Paren(<>),
     Symbol => Expr::Symbol(<>),
     Lit => Expr::Lit(<>),
-    Record<FieldExpr> => Expr::Record(<>),
+    Record<Ref<EndExpr>> => Expr::Record(<>),
     ClosurePiecewise => Expr::Closure(<>),
-    ! => Expr::Error,
+    ! => {
+        parser.errors.push(<>.error.into());
+        Expr::Error
+    }
 };
 
 EndTerm = {

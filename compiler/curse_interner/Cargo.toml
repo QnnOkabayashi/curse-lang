@@ -1,9 +1,10 @@
 [package]
-name = "curse_ast"
+name = "curse_interner"
 version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-displaydoc = "0.2.3"
-smallvec = "1.10.0"
+string-interner = "0.14.*"
 curse_span = { path = "../curse_span" }
+parking_lot = "0.12.*"
+

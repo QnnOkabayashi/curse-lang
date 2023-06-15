@@ -1,4 +1,5 @@
-use crate::{tok, Record, Span};
+use crate::{ast_struct, tok, Record};
+use curse_span::{HasSpan, Span};
 
 mod closure;
 pub use closure::*;
@@ -8,20 +9,20 @@ pub enum Expr<'ast, 'input> {
     Paren(Paren<'ast, 'input>),
     Symbol(Symbol),
     Lit(Lit<'input>),
-    Record(RecordExpr<'ast, 'input>),
+    Record(Record<'input, &'ast Expr<'ast, 'input>>),
     Constructor(Constructor<'ast, 'input>),
     Closure(Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
-
-    // TODO(quinn): we'll make better use of this later...
     Error,
 }
 
-#[derive(Clone, Debug)]
-pub struct Paren<'ast, 'input> {
-    pub lparen: tok::LParen,
-    pub expr: &'ast Expr<'ast, 'input>,
-    pub rparen: tok::RParen,
+ast_struct! {
+    #[derive(Clone, Debug)]
+    pub struct Paren<'ast, 'input> {
+        pub lparen: tok::LParen,
+        pub expr: &'ast Expr<'ast, 'input>,
+        pub rparen: tok::RParen,
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -49,31 +50,27 @@ pub enum Lit<'input> {
     False(tok::False),
 }
 
-pub type RecordExpr<'ast, 'input> = Record<FieldExpr<'ast, 'input>>;
-
-#[derive(Clone, Debug)]
-pub struct FieldExpr<'ast, 'input> {
-    pub name: tok::Ident<'input>,
-    pub explicit_value: Option<(tok::Colon, &'ast Expr<'ast, 'input>)>,
+ast_struct! {
+    #[derive(Clone, Debug)]
+    pub struct Constructor<'ast, 'input> {
+        pub ident: tok::TypeIdent<'input>,
+        pub inner: &'ast Expr<'ast, 'input>,
+    }
 }
 
-#[derive(Clone, Debug)]
-pub struct Constructor<'ast, 'input> {
-    pub name: tok::TypeIdent<'input>,
-    pub inner: &'ast Expr<'ast, 'input>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Appl<'ast, 'input> {
-    pub lhs: &'ast Expr<'ast, 'input>,
-    pub fun: &'ast Expr<'ast, 'input>,
-    pub rhs: &'ast Expr<'ast, 'input>,
+ast_struct! {
+    #[derive(Clone, Debug)]
+    pub struct Appl<'ast, 'input> {
+        pub lhs: &'ast Expr<'ast, 'input>,
+        pub fun: &'ast Expr<'ast, 'input>,
+        pub rhs: &'ast Expr<'ast, 'input>,
+    }
 }
 
 // === impl Span ===
 
-impl Span for Expr<'_, '_> {
-    fn start(&self) -> usize {
+impl HasSpan for Expr<'_, '_> {
+    fn start(&self) -> u32 {
         match self {
             Expr::Paren(paren) => paren.start(),
             Expr::Symbol(symbol) => symbol.start(),
@@ -86,7 +83,7 @@ impl Span for Expr<'_, '_> {
         }
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         match self {
             Expr::Paren(paren) => paren.end(),
             Expr::Symbol(symbol) => symbol.end(),
@@ -99,7 +96,7 @@ impl Span for Expr<'_, '_> {
         }
     }
 
-    fn span(&self) -> (usize, usize) {
+    fn span(&self) -> Span {
         match self {
             Expr::Paren(paren) => paren.span(),
             Expr::Symbol(symbol) => symbol.span(),
@@ -113,18 +110,18 @@ impl Span for Expr<'_, '_> {
     }
 }
 
-impl Span for Paren<'_, '_> {
-    fn start(&self) -> usize {
+impl HasSpan for Paren<'_, '_> {
+    fn start(&self) -> u32 {
         self.lparen.start()
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         self.rparen.end()
     }
 }
 
-impl Span for Symbol {
-    fn start(&self) -> usize {
+impl HasSpan for Symbol {
+    fn start(&self) -> u32 {
         match self {
             Symbol::Plus(plus) => plus.start(),
             Symbol::Minus(minus) => minus.start(),
@@ -142,7 +139,7 @@ impl Span for Symbol {
         }
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         match self {
             Symbol::Plus(plus) => plus.end(),
             Symbol::Minus(minus) => minus.end(),
@@ -160,7 +157,7 @@ impl Span for Symbol {
         }
     }
 
-    fn span(&self) -> (usize, usize) {
+    fn span(&self) -> Span {
         match self {
             Symbol::Plus(plus) => plus.span(),
             Symbol::Minus(minus) => minus.span(),
@@ -179,8 +176,8 @@ impl Span for Symbol {
     }
 }
 
-impl Span for Lit<'_> {
-    fn start(&self) -> usize {
+impl HasSpan for Lit<'_> {
+    fn start(&self) -> u32 {
         match self {
             Lit::Integer(integer) => integer.start(),
             Lit::Ident(ident) => ident.start(),
@@ -189,7 +186,7 @@ impl Span for Lit<'_> {
         }
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         match self {
             Lit::Integer(integer) => integer.end(),
             Lit::Ident(ident) => ident.end(),
@@ -198,7 +195,7 @@ impl Span for Lit<'_> {
         }
     }
 
-    fn span(&self) -> (usize, usize) {
+    fn span(&self) -> Span {
         match self {
             Lit::Integer(integer) => integer.span(),
             Lit::Ident(ident) => ident.span(),
@@ -208,30 +205,22 @@ impl Span for Lit<'_> {
     }
 }
 
-impl Span for Constructor<'_, '_> {
-    fn start(&self) -> usize {
-        self.name.start()
+impl HasSpan for Constructor<'_, '_> {
+    fn start(&self) -> u32 {
+        self.ident.start()
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         self.inner.end()
     }
 }
 
-impl Span for Appl<'_, '_> {
-    fn start(&self) -> usize {
+impl HasSpan for Appl<'_, '_> {
+    fn start(&self) -> u32 {
         self.lhs.start()
     }
 
-    fn end(&self) -> usize {
+    fn end(&self) -> u32 {
         self.rhs.end()
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum Error<'ast, 'input> {
-    ClosureApplMissingRhs {
-        lhs: &'ast Expr<'ast, 'input>,
-        closure: Closure<'ast, 'input>,
-    },
 }

@@ -1,15 +1,9 @@
-use curse_ast::Span;
-use curse_hir::{self as hir, ctx};
-use curse_parse as parse;
-use hir::Ty;
-use miette::{GraphicalReportHandler, NamedSource};
-use smallvec::SmallVec;
-use std::collections::HashMap;
+use miette::{Diagnostic, GraphicalReportHandler, NamedSource};
+use thiserror::Error;
 
 mod programs;
 
 // TODO(quinn):
-// Make it so that tuples don't count as possible functions
 // Choice variant usefulness
 // Choice variant parsing in expressions and patterns
 // type-inferred function syntax
@@ -21,29 +15,65 @@ mod programs;
 // cannot be applied too if that error occurs.
 // Since this language is pretty functional right now, tail recursion is a must.
 
+#[derive(Debug, Diagnostic, Error)]
+#[error("{reason}")]
+pub struct Errors<Related: Diagnostic> {
+    #[source_code]
+    pub code: NamedSource,
+    pub reason: &'static str,
+
+    #[related]
+    pub errors: Vec<Related>,
+}
+
+impl<Related: Diagnostic> Errors<Related> {
+    fn print_report(&self) {
+        let mut buf = String::with_capacity(1024);
+        GraphicalReportHandler::new()
+            .render_report(&mut buf, self)
+            .unwrap();
+
+        println!("{buf}");
+    }
+}
+
 fn main() {
-    let input: &str = programs::FIB;
+    curse_interner::init();
 
-    let ast_arena = parse::Arena::default();
-    let program = match parse::parse_program(&ast_arena, input) {
-        Ok(program) => program,
-        Err(errors) => {
-            let error = parse::SourceErrors {
-                code: NamedSource::new("input", input.to_string()),
-                errors,
-            };
+    let input: &str = programs::BINARY_TREE;
 
-            let mut buf = String::with_capacity(1024);
-            GraphicalReportHandler::new()
-                .render_report(&mut buf, &error)
-                .unwrap();
+    let ast_arena = Box::default();
+    let mut parser = curse_parse::Parser::new(&ast_arena);
+    let ast_program = parser.parse_program(input);
 
-            println!("{buf}");
-            return;
+    if !parser.errors.is_empty() {
+        Errors {
+            code: NamedSource::new("input", input.to_string()),
+            reason: "A parsing error occurred",
+            errors: parser.errors,
         }
-    };
+        .print_report();
 
-    //
+        return;
+    }
+
+    let hir_arena = Box::default();
+    let mut lowerer = curse_ast_lowering::Lowerer::new(&hir_arena);
+    let hir_program = lowerer.lower_program(&ast_program);
+
+    if !lowerer.errors.is_empty() {
+        Errors {
+            code: NamedSource::new("input", input.to_string()),
+            reason: "A lowering error occurred",
+            errors: lowerer.errors,
+        }
+        .print_report();
+
+        return;
+    }
+
+    println!("{hir_program:#?}");
+
     // // println!("{:#?}", program.choice_defs);
     //
     // let global_ctx = ctx::Global::default();
@@ -51,17 +81,17 @@ fn main() {
     // let mut typeck_ctx = ctx::Typeck::with_global(&global_ctx);
     //
     // // Once we have custom types, we'll need to add them here
-    // let type_scope: HashMap<hir::TypeSymbol, hir::Type<'_>> = HashMap::new();
+    // let type_scope: HashMap<mir::TypeSymbol, mir::Type<'_>> = HashMap::new();
     //
     // // program.struct_defs
     // // program.choice_defs
     //
     // let mut function_to_typescope: HashMap<
-    //     hir::ValueSymbol,
-    //     HashMap<hir::TypeSymbol, hir::Type<'_>>,
+    //     mir::ValueSymbol,
+    //     HashMap<mir::TypeSymbol, mir::Type<'_>>,
     // > = HashMap::new();
     //
-    // let globals: HashMap<hir::ValueSymbol, hir::TypeTemplate> = typeck_ctx
+    // let globals: HashMap<mir::ValueSymbol, mir::TypeTemplate> = typeck_ctx
     //     .default_globals()
     //     .chain(program.fn_defs.iter().map(|fn_def| {
     //         // Since items (i.e. functions for now) can be generic over types,
@@ -83,8 +113,8 @@ fn main() {
     //             typevars.push(var);
     //             inner_type_scope.insert(
     //                 typeck_ctx.global.get_or_intern_type_ident(generic).symbol,
-    //                 hir::Type {
-    //                     kind: hir::TypeKind::Var(var),
+    //                 mir::Type {
+    //                     kind: mir::TypeKind::Var(var),
     //                     span: generic.span(),
     //                 },
     //             );
@@ -101,26 +131,26 @@ fn main() {
     //             .symbol;
     //
     //         function_to_typescope.insert(fn_name, inner_type_scope);
-    //         (fn_name, hir::TypeTemplate { typevars, ty })
+    //         (fn_name, mir::TypeTemplate { typevars, ty })
     //     }))
     //     .collect();
     //
-    // let mut locals: Vec<(hir::ValueIdent, hir::Type<'_>)> = Vec::with_capacity(16);
-    // let mut errors: Vec<hir::LowerError<'_>> = Vec::with_capacity(0);
+    // let mut locals: Vec<(mir::ValueIdent, mir::Type<'_>)> = Vec::with_capacity(16);
+    // let mut errors: Vec<mir::LowerError<'_>> = Vec::with_capacity(0);
     //
     // let lowered_items: Result<
-    //     HashMap<hir::ValueSymbol, (hir::TypeTemplate, hir::Expr<'_>)>,
-    //     hir::PushedErrors,
+    //     HashMap<mir::ValueSymbol, (mir::TypeTemplate, mir::Expr<'_>)>,
+    //     mir::PushedErrors,
     // > = program
     //     .fn_defs
     //     .iter()
     //     .map(|item| {
-    //         let item_name: hir::ValueSymbol = typeck_ctx
+    //         let item_name: mir::ValueSymbol = typeck_ctx
     //             .global
     //             .get_or_intern_value_ident(&item.name)
     //             .symbol;
     //
-    //         let mut scope = hir::Scope::new(
+    //         let mut scope = mir::Scope::new(
     //             &mut typeck_ctx,
     //             &function_to_typescope[&item_name],
     //             &mut errors,
@@ -135,7 +165,7 @@ fn main() {
     //         let ty = scope.ctx.monomorphize(&polytype);
     //         scope.unify(expr.ty(), ty);
     //         if scope.had_errors() {
-    //             return Err(hir::PushedErrors);
+    //             return Err(mir::PushedErrors);
     //         }
     //         Ok((item_name, (polytype, expr)))
     //     })
@@ -144,7 +174,7 @@ fn main() {
     // // Lowering and type errors
     // let Ok(lowered_items) = lowered_items else {
     //     assert!(!errors.is_empty());
-    //     let errors = hir::LowerErrors {
+    //     let errors = mir::LowerErrors {
     //         code: NamedSource::new("input", input.to_string()),
     //         errors,
     //     };
@@ -159,12 +189,12 @@ fn main() {
     // assert!(errors.is_empty());
     //
     // let usefulness_errors =
-    //     hir::usefulness::check(lowered_items.values().map(|(_, expr)| expr), &typeck_ctx);
+    //     mir::usefulness::check(lowered_items.values().map(|(_, expr)| expr), &typeck_ctx);
     //
     // if usefulness_errors.is_empty() {
     //     println!("all matches are exhaustive and useful");
     // } else {
-    //     let errors = hir::usefulness::UsefulnessErrors {
+    //     let errors = mir::usefulness::UsefulnessErrors {
     //         code: NamedSource::new("input", input.to_string()),
     //         errors: usefulness_errors,
     //     };
