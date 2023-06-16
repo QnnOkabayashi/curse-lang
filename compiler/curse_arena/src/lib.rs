@@ -1,5 +1,7 @@
 use core::{mem::MaybeUninit, slice};
 
+pub mod new;
+
 /// An arena built with eagerly allocating contiguous slices in mind.
 ///
 /// Since this is a wrapper around [`typed_arena::Arena<MaybeUninit<T>>`], this arena
