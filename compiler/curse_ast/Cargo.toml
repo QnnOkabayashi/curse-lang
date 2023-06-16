@@ -1,7 +1,9 @@
 [package]
 name = "curse_ast"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 
 [dependencies]
 displaydoc = "0.2.3"
+smallvec = "1.10.0"
+curse_span = { path = "../curse_span" }

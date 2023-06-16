@@ -1,7 +1,11 @@
-use crate::{lexer::*, Ast, Error};
-use curse_ast::*;
+use crate::{lexer::*, Parser};
+use curse_ast::{
+    tok, Appl, Arm, ChoiceDef, Closure, Constructor, ExplicitTypes, Expr, Field, FunctionDef,
+    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Pat, Program, Record, StructDef,
+    Symbol, Type, VariantDef, Variants,
+};
 
-grammar<'ast, 'input>(ast: &'ast Ast<'ast, 'input>, errors: &mut Vec<Error>);
+grammar<'ast, 'input>(parser: &mut Parser<'ast, 'input>);
 
 extern {
     type Location = usize;
@@ -16,7 +20,7 @@ extern {
         // give us the rhs.
         "ident literal" => Token::Ident(<tok::Ident<'input>>),
         "integer literal" => Token::Integer(<tok::Integer<'input>>),
-        "named type literal" => Token::NamedType(<tok::NamedType<'input>>),
+        "named type literal" => Token::TypeIdent(<tok::TypeIdent<'input>>),
         ":" => Token::Colon(<tok::Colon>),
         "," => Token::Comma(<tok::Comma>),
         "(" => Token::LParen(<tok::LParen>),
@@ -54,161 +58,188 @@ Ident: tok::Ident<'input> = "ident literal";
 
 Integer: tok::Integer<'input> = "integer literal";
 
-NamedType: tok::NamedType<'input> = "named type literal";
+TypeIdent: tok::TypeIdent<'input> = "named type literal";
 
 
 /// === Program ===
 
-pub Program: Res<Program<'ast, 'input>> = {
-    FnDef => <>.map(|def| Program::new().with_fn_def(def)),
-    ChoiceDef => <>.map(|def| Program::new().with_choice_def(def)),
+pub Program: Program<'ast, 'input> = {
+    FunctionDef => Program::default().with_function_def(<>),
+    ChoiceDef => Program::default().with_choice_def(<>),
+    StructDef => Program::default().with_struct_def(<>),
 
-    Program FnDef => match (<>) {
-        (Ok(program), Ok(def)) => Ok(program.with_fn_def(def)),
-        _ => Err(ParseError),
-    },
-    Program ChoiceDef => match (<>) {
-        (Ok(program), Ok(def)) => Ok(program.with_choice_def(def)),
-        _ => Err(ParseError),
-    },
-};
+    Program FunctionDef => Program::with_function_def(<>),
+    Program ChoiceDef => Program::with_choice_def(<>),
+    Program StructDef => Program::with_struct_def(<>),
 
-
-/// === Function Definitions ===
-
-FnDef: Res<FnDef<'ast, 'input>> = "fn" Ident TypeSig? Closure => FnDef::from_grammar(<>);
-
-TypeSig: Res<TypeSig<'ast, 'input>> = NamedType* ":" Type "=" => TypeSig::from_grammar(<>);
-    
-
-/// === Type Defs ===
-
-// TODO(quinn): rename this so it's specific to types, and not e.g. exprs
-NamedField: Res<NamedField<'ast, 'input>> = Ident ":" Type => NamedField::from_grammar(<>);
-
-FieldKind: Res<FieldKind<'ast, 'input>> = {
-    Type => FieldKind::newtype_from_grammar(<>),
-    "{" (NamedField ",")* NamedField? "}" => FieldKind::record_from_grammar(<>),
-};
-
-StructDef: Res<StructDef<'ast, 'input>> = {
-    "struct" NamedType (NamedType)* FieldKind => StructDef::from_grammar(<>),
-};
-
-ChoiceDef: Res<ChoiceDef<'ast, 'input>> = {
-    "choice" NamedType (NamedType)* "{" (VariantDef ",")* VariantDef? "}" => ChoiceDef::from_grammar(<>),
-};
-    
-VariantDef: Res<VariantDef<'ast, 'input>> = NamedType FieldKind => VariantDef::from_grammar(<>);
-
-
-/// === Chaos ===
-
-StartType: Res<&'ast Type<'ast, 'input>> = {
-    NamedType => Ok(ast.ty(Type::named_from_grammar(<>))),
-    Tuple<Type> => ast.try_ty(Type::tuple_from_grammar(<>)),
-    "(" <Type> ")",
     ! => {
-        errors.push(<>.error.into());
-        Err(ParseError)
+        parser.errors.push(<>.error.into());
+        Program::default()
     }
 };
 
-Type = {
-    StartType StartType "->" Type => ast.try_ty(Type::function_from_grammar(<>)),
-    StartType,
+/// === Definitions ===
+
+GenericParams: GenericParams<'input> = {
+    TypeIdent => GenericParams::Single(<>),
+    "(" (TypeIdent "*")* TypeIdent ")" => GenericParams::CartesianProduct(<>),
 };
 
-Pat: &'ast ExprPat<'ast, 'input> = {
-    Lit => ast.pat(ExprPat::Lit(<>)),
-    Tuple<Pat> => ast.pat(ExprPat::Tuple(<>)),
+ExplicitTypes: ExplicitTypes<'ast, 'input> = {
+    GenericParams? ":" Ref<Type> => ExplicitTypes::new(<>),
+}
+
+FunctionDef: FunctionDef<'ast, 'input> = {
+    "fn" Ident ExplicitTypes? "=" Closure => FunctionDef::new(<>),
 };
 
-Tuple<T>: PatTuple<T> = {
-    "(" ")" => PatTuple::unit_from_grammar(<>),
-    "(" T "," (T ",")* T? ")" => PatTuple::nonempty_from_grammar(<>),
+StructDef: StructDef<'ast, 'input> = {
+    "struct" TypeIdent GenericParams? "=" Ref<Type> => StructDef::new(<>),
 };
 
-Symbol: ExprSymbol = {
-    "+" => ExprSymbol::Plus(<>),
-    "-" => ExprSymbol::Minus(<>),
-    "*" => ExprSymbol::Star(<>),
-    "." => ExprSymbol::Dot(<>),
-    ".." => ExprSymbol::DotDot(<>),
-    ";" => ExprSymbol::Semi(<>),
-    "%" => ExprSymbol::Percent(<>),
-    "/" => ExprSymbol::Slash(<>),
-    "=" => ExprSymbol::Eq(<>),
-    "<" => ExprSymbol::Lt(<>),
-    ">" => ExprSymbol::Gt(<>),
-    "<=" => ExprSymbol::Le(<>),
-    ">=" => ExprSymbol::Ge(<>),
+ChoiceDef: ChoiceDef<'ast, 'input> = {
+    "choice" TypeIdent GenericParams? "=" Variants => ChoiceDef::new(<>),
 };
 
-Lit: ExprLit<'input> = {
-    Integer => ExprLit::Integer(<>),
-    Ident => ExprLit::Ident(<>),
-    "true" => ExprLit::True(<>),
-    "false" => ExprLit::False(<>),
+Variants: Variants<'ast, 'input> = {
+    "|" => Variants::Never(<>),
+    "|"? (VariantDef "|")* VariantDef => Variants::Variants(<>),
+}
+
+VariantDef: VariantDef<'ast, 'input> = {
+    TypeIdent Ref<Type> => VariantDef::new(<>),
 };
 
-NonpiecewiseClosure: Res<ExprClosure<'ast, 'input>> = Arm => ExprClosure::nonpiecewise_from_grammar(<>);
 
-PiecewiseClosure: Res<ExprClosure<'ast, 'input>> = "{" Arm ("," Arm)* ","? "}" => ExprClosure::piecewise_from_grammar(<>);
+/// === Record ===
+
+Record<T>: Record<'input, T> = {
+    "{" (Field<T> ",")* Field<T>? "}" => Record::new(<>),
+};
+
+Field<T>: Field<'input, T> = {
+    Ident (":" T)? => Field::new(<>),
+};
+
+// Get an arena-allocated reference
+Ref<T>: &'ast T = {
+    T => &*parser.arena.alloc(<>),
+}
+
+/// === Types ===
+
+Type: Type<'ast, 'input> = {
+    NamedType => Type::Named(<>),
+    Record<Ref<Type>> => Type::Record(<>),
+    ! => {
+        parser.errors.push(<>.error.into());
+        Type::Error
+    }
+};
+
+GenericArgs: GenericArgs<'ast, 'input> = {
+    Ref<Type> => GenericArgs::Single(<>),
+    "(" (Type "*")* Ref<Type> ")" => GenericArgs::CartesianProduct(<>),
+};
+
+NamedType: NamedType<'ast, 'input> = {
+    TypeIdent GenericArgs? => NamedType::new(<>),
+};
+
+
+/// === Patterns ===
+
+Pat: Pat<'ast, 'input> = {
+    Lit => Pat::Lit(<>),
+    Record<Ref<Pat>> => Pat::Record(<>),
+    TypeIdent Ref<Pat> => Pat::Struct(<>),
+    // TODO(quinn): add choice pats and qpaths
+};
+
+
+/// === Expressions ===
+
+Symbol: Symbol = {
+    "+" => Symbol::Plus(<>),
+    "-" => Symbol::Minus(<>),
+    "*" => Symbol::Star(<>),
+    "." => Symbol::Dot(<>),
+    ".." => Symbol::DotDot(<>),
+    ";" => Symbol::Semi(<>),
+    "%" => Symbol::Percent(<>),
+    "/" => Symbol::Slash(<>),
+    "=" => Symbol::Eq(<>),
+    "<" => Symbol::Lt(<>),
+    ">" => Symbol::Gt(<>),
+    "<=" => Symbol::Le(<>),
+    ">=" => Symbol::Ge(<>),
+};
+
+Lit: Lit<'input> = {
+    Integer => Lit::Integer(<>),
+    Ident => Lit::Ident(<>),
+    "true" => Lit::True(<>),
+    "false" => Lit::False(<>),
+};
+
+ClosureNonpiecewise: Closure<'ast, 'input> = {
+    Arm => Closure::NonPiecewise(<>),
+};
+
+ClosurePiecewise: Closure<'ast, 'input> = {
+    "(" ")" => Closure::Empty(<>),
+    "(" (Arm ",")+ Arm? ")" => Closure::Piecewise(<>),
+};
 
 Closure = {
-    NonpiecewiseClosure,
-    PiecewiseClosure,
+    ClosureNonpiecewise,
+    ClosurePiecewise,
 };
 
-Arm: Res<ExprArm<'ast, 'input>> = "|" (Param ",")* Param? "|" EndExpr => ExprArm::from_grammar(<>);
+Arm: Arm<'ast, 'input> = {
+    "|" (Param ",")* Param? "|" Ref<EndExpr> => Arm::new(<>),
+};
 
-Param: Res<ExprParam<'ast, 'input>> = Pat (":" Type)? => ExprParam::from_grammar(<>);
+Param: Param<'ast, 'input> = {
+    Ref<Pat> (":" Ref<Type>)? => Param::new(<>),
+};
 
-Appl<Rhs>: Res<ExprAppl<'ast, 'input>> = Expr Term Rhs => ExprAppl::from_grammar(<>);
+Constructor: Constructor<'ast, 'input> = {
+    TypeIdent Ref<EndExpr> => Constructor::new(<>),
+};
 
-ConstructorNewtype: Res<ExprConstructor<'ast, 'input>> = NamedType EndExpr => ExprConstructor::newtype_from_grammar(<>);
+Appl<Rhs>: Appl<'ast, 'input> = {
+    Ref<Expr> Ref<Term> Ref<Rhs> => Appl::new(<>),
+};
 
-ConstructorRecord: Res<ExprConstructor<'ast, 'input>> = NamedType "{" (ExprNamedField ",")* ExprNamedField? "}" => ExprConstructor::record_from_grammar(<>);
+Paren: Paren<'ast, 'input> = {
+    "(" Ref<EndExpr> ")" => Paren::new(<>),
+};
 
-ExprNamedField: Res<ExprNamedField<'ast, 'input>> = Ident ":" EndExpr => ExprNamedField::from_grammar(<>);
-
-Term: Res<&'ast Expr<'ast, 'input>> = {
-    "(" EndExpr ")" => ast.try_expr(Expr::paren_from_grammar(<>)),
-    Symbol => Ok(ast.expr(Expr::Symbol(<>))),
-    Lit => Ok(ast.expr(Expr::Lit(<>))),
-    Tuple<EndExpr> => ast.try_expr(Expr::tuple_from_grammar(<>)),
-    PiecewiseClosure => ast.try_expr(Expr::closure_from_grammar(<>)),
-    ConstructorRecord => ast.try_expr(Expr::constructor_from_grammar(<>)),
+Term: Expr<'ast, 'input> = {
+    Paren => Expr::Paren(<>),
+    Symbol => Expr::Symbol(<>),
+    Lit => Expr::Lit(<>),
+    Record<Ref<EndExpr>> => Expr::Record(<>),
+    ClosurePiecewise => Expr::Closure(<>),
     ! => {
-        errors.push(<>.error.into());
-        Err(ParseError)
-    },
+        parser.errors.push(<>.error.into());
+        Expr::Error
+    }
 };
 
 EndTerm = {
     Term,
-    ConstructorNewtype => ast.try_expr(Expr::constructor_from_grammar(<>)),
-    NonpiecewiseClosure => ast.try_expr(Expr::closure_from_grammar(<>)),
+    Constructor => Expr::Constructor(<>),
+    ClosureNonpiecewise => Expr::Closure(<>),
 };
 
 Expr = {
     Term,
-    Appl<Term> => ast.try_expr(Expr::appl_from_grammar(<>)),
+    Appl<Term> => Expr::Appl(<>),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => ast.try_expr(Expr::appl_from_grammar(<>)),
-
-    // For nice diagnostics
-    Expr Closure => match (<>) {
-        (Ok(_expr), Ok(closure)) => {
-            errors.push(Error::ClosureApplMissingRhs {
-                location: closure.span().0,
-            });
-            Err(ParseError)
-        }
-        _ => Err(ParseError),
-    },
-}
+    Appl<EndTerm> => Expr::Appl(<>),
+};

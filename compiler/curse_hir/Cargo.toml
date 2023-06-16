@@ -1,16 +1,14 @@
 [package]
 name = "curse_hir"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 
 [dependencies]
 curse_ast = { path = "../curse_ast" }
-displaydoc = "0.2.3"
-miette = "5.7.0"
-petgraph = "0.6.3"
-smallvec = "1.10.0"
-thiserror = "1.0.40"
+curse_arena = { path = "../curse_arena" }
+curse_interner = { path = "../curse_interner" }
+curse_span = { path = "../curse_span" }
 typed-arena = "2.0.2"
+miette = "5.*"
+thiserror = "1.*"
 
-[dev-dependencies]
-curse_parse = { path = "../curse_parse" }

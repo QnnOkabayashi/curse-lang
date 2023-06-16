@@ -4,15 +4,15 @@ use petgraph::graph::{DiGraph, NodeIndex};
 
 /// A node on the inference graph.
 #[derive(Copy, Clone, Debug)]
-pub enum Node<'hir, 'input> {
+pub enum Node<'cx> {
     // #[displaydoc("{0} ≡ {1}")]
-    Equiv(Type<'hir, 'input>, Type<'hir, 'input>),
+    Equiv(Type<'cx>, Type<'cx>),
     // #[displaydoc("{0} ≢ {1}")]
-    NotEquiv(Type<'hir, 'input>, Type<'hir, 'input>),
+    NotEquiv(Type<'cx>, Type<'cx>),
     // #[displaydoc("{var} := {definition}")]
     Binding {
         var: Var,
-        definition: Type<'hir, 'input>,
+        definition: Type<'cx>,
     },
 }
 
@@ -33,18 +33,18 @@ pub enum Edge {
 }
 
 #[derive(Default)]
-pub struct Equations<'hir, 'input> {
-    pub graph: DiGraph<Node<'hir, 'input>, Edge>,
+pub struct Equations<'cx> {
+    pub graph: DiGraph<Node<'cx>, Edge>,
 }
 
-impl<'hir, 'input> Equations<'hir, 'input> {
+impl<'cx> Equations<'cx> {
     pub fn new() -> Self {
         Equations {
             graph: DiGraph::new(),
         }
     }
 
-    pub fn add_rule(&mut self, rule: Node<'hir, 'input>) -> NodeIndex {
+    pub fn add_rule(&mut self, rule: Node<'cx>) -> NodeIndex {
         self.graph.add_node(rule)
     }
 

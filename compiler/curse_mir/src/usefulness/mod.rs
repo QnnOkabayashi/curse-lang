@@ -3,7 +3,7 @@
 //!
 //! Algorithm:
 //! https://doc.rust-lang.org/nightly/nightly-rustc/rustc_mir_build/thir/pattern/usefulness/index.html
-use crate::{Expr, ExprArm, ExprKind, Hir, Pat, PatKind, Ty, Type, TypeKind};
+use crate::{ctx, Expr, ExprArm, ExprFields, ExprKind, Pat, PatKind, Ty, Type, TypeKind};
 use smallvec::SmallVec;
 use std::{convert::TryInto, fmt};
 
@@ -29,25 +29,25 @@ enum Constructor {
 use Constructor::*;
 
 #[derive(Copy, Clone, Debug)]
-enum Pattern<'hir, 'input> {
-    Pat(&'hir Pat<'hir, 'input>),
+enum Pattern<'cx> {
+    Pat(&'cx Pat<'cx>),
     /// Automatically match on everything
-    Wildcard(Type<'hir, 'input>),
+    Wildcard(Type<'cx>),
 }
 
 #[derive(Debug)]
-struct Specialization<'hir, 'input> {
+struct Specialization<'cx> {
     stack_id: usize,
     original_len: usize,
-    specialization: Option<Pattern<'hir, 'input>>,
+    specialization: Option<Pattern<'cx>>,
 }
 
-struct Matrix<'q, 'hir, 'input> {
+struct Matrix<'q, 'cx> {
     /// Indices into the pattern stacks that we care about
-    specializations: Vec<Specialization<'hir, 'input>>,
-    q: Specialization<'hir, 'input>,
+    specializations: Vec<Specialization<'cx>>,
+    q: Specialization<'cx>,
     /// Vector of all pattern stacks
-    patstacks: &'q mut [Vec<Pattern<'hir, 'input>>],
+    patstacks: &'q mut [Vec<Pattern<'cx>>],
 }
 
 #[derive(Debug)]
@@ -65,31 +65,31 @@ impl Usefulness {
 }
 
 /// Push wildcards to the stack for a given type so that it will always match
-fn push_wildcard_fields_for_type<'hir, 'input>(
-    kind: &TypeKind<'hir, 'input>,
-    stack: &mut Vec<Pattern<'hir, 'input>>,
-    hir: &Hir<'hir, 'input>,
+fn push_wildcard_fields_for_type<'cx>(
+    kind: &TypeKind<'cx>,
+    stack: &mut Vec<Pattern<'cx>>,
+    ctx: &ctx::Typeck<'cx>,
 ) {
     match kind {
         TypeKind::Var(var) => push_wildcard_fields_for_type(
-            &hir[*var].binding().expect("unbound type var").kind,
+            &ctx[*var].binding().expect("unbound type var").kind,
             stack,
-            hir,
+            ctx,
         ),
         TypeKind::Choice(_choice) => {
             todo!("push_wildcard_fields_for_type for choice types- may need to rewrite this fn")
         }
-        TypeKind::Tuple(types) => stack.extend(types.iter().copied().map(Pattern::Wildcard)),
+        TypeKind::Record(types) => stack.extend(types.iter().copied().map(Pattern::Wildcard)),
         _ => {}
     }
 }
 
-impl<'hir, 'input> Pattern<'hir, 'input> {
+impl<'cx> Pattern<'cx> {
     /// Used on q to visit q's ctors, where `is_ctor_useful` will
     /// determine if that ctor is useful w.r.t. all other p's.
     fn visit_ctors(
         &self,
-        hir: &Hir<'hir, 'input>,
+        hir: &ctx::Typeck<'cx>,
         mut is_ctor_useful: impl FnMut(Constructor) -> Usefulness,
     ) -> Usefulness {
         match self.ctor() {
@@ -100,8 +100,8 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
 
     /// Only used in `Pattern::visit_ctors`.
     fn visit_ctors_for_type(
-        kind: &TypeKind<'hir, 'input>,
-        hir: &Hir<'hir, 'input>,
+        kind: &TypeKind<'cx>,
+        ctx: &ctx::Typeck<'cx>,
         mut is_ctor_useful: impl FnMut(Constructor) -> Usefulness,
     ) -> Usefulness {
         match kind {
@@ -115,11 +115,11 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
                 }
             }
             TypeKind::Var(var) => Self::visit_ctors_for_type(
-                &hir[*var].binding().expect("unbound var").kind,
-                hir,
+                &ctx[*var].binding().expect("unbound var").kind,
+                ctx,
                 is_ctor_useful,
             ),
-            TypeKind::Tuple(_) => is_ctor_useful(Single),
+            TypeKind::Record(_) => is_ctor_useful(Single),
             TypeKind::Choice(choice) => {
                 let last_index = choice
                     .variants
@@ -141,7 +141,7 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
         }
     }
 
-    fn ty_kind(&self) -> TypeKind<'hir, 'input> {
+    fn ty_kind(&self) -> TypeKind<'cx> {
         match self {
             Pattern::Pat(pat) => pat.ty().kind,
             Pattern::Wildcard(ty) => ty.kind,
@@ -167,30 +167,30 @@ impl<'hir, 'input> Pattern<'hir, 'input> {
     /// For example, pushing the fields of a tuple to the pat stack.
     /// [(a, b)]
     /// [a, b]
-    fn push_fields(&self, stack: &mut Vec<Pattern<'hir, 'input>>, hir: &Hir<'hir, 'input>) {
+    fn push_fields(&self, stack: &mut Vec<Pattern<'cx>>, ctx: &ctx::Typeck<'cx>) {
         match self {
-            Pattern::Pat(pat) => pat_kind_push_fields(&pat.kind, stack, hir),
-            Pattern::Wildcard(ty) => push_wildcard_fields_for_type(&ty.kind, stack, hir),
+            Pattern::Pat(pat) => pat_kind_push_fields(&pat.kind, stack, ctx),
+            Pattern::Wildcard(ty) => push_wildcard_fields_for_type(&ty.kind, stack, ctx),
         }
     }
 }
 
-fn pat_kind_push_fields<'hir, 'input>(
-    kind: &PatKind<'hir, 'input>,
-    stack: &mut Vec<Pattern<'hir, 'input>>,
-    hir: &Hir<'hir, 'input>,
+fn pat_kind_push_fields<'cx>(
+    kind: &PatKind<'cx>,
+    stack: &mut Vec<Pattern<'cx>>,
+    ctx: &ctx::Typeck<'cx>,
 ) {
     match kind {
         PatKind::Tuple { pats, .. } => stack.extend(pats.iter().map(Pattern::Pat)),
-        PatKind::Ident { ty, .. } => push_wildcard_fields_for_type(ty, stack, hir),
+        PatKind::Ident { ty, .. } => push_wildcard_fields_for_type(ty, stack, ctx),
         PatKind::Choice {
             payload: Some(pat), ..
-        } => pat_kind_push_fields(&pat.kind, stack, hir),
+        } => pat_kind_push_fields(&pat.kind, stack, ctx),
         _ => {}
     }
 }
 
-impl<'hir, 'input> Specialization<'hir, 'input> {
+impl<'cx> Specialization<'cx> {
     fn new(id: usize) -> Self {
         Specialization {
             stack_id: id,
@@ -202,8 +202,8 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
     /// Takes a pattern off the stack
     fn specialize(
         &self,
-        stacks: &mut [Vec<Pattern<'hir, 'input>>],
-    ) -> Option<(Specialization<'hir, 'input>, Pattern<'hir, 'input>)> {
+        stacks: &mut [Vec<Pattern<'cx>>],
+    ) -> Option<(Specialization<'cx>, Pattern<'cx>)> {
         let stack = &mut stacks[self.stack_id];
         let popped = stack.pop()?;
         let original_len = stack.len();
@@ -221,16 +221,16 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
     fn specialize_if_matching(
         &mut self,
         ctor: Constructor,
-        stacks: &mut [Vec<Pattern<'hir, 'input>>],
-        hir: &Hir<'hir, 'input>,
-    ) -> Option<Specialization<'hir, 'input>> {
+        stacks: &mut [Vec<Pattern<'cx>>],
+        ctx: &ctx::Typeck<'cx>,
+    ) -> Option<Specialization<'cx>> {
         let (patstack, self_pat) = self
             .specialize(stacks)
             .expect("we only call specialize on PatternStacks with an element in them");
 
         let did_expand: bool = match (ctor, self_pat.ctor()) {
             (Single, Single) => {
-                self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
+                self_pat.push_fields(&mut stacks[patstack.stack_id], ctx);
                 true
             }
             (Bool(a), Bool(b)) => a == b,
@@ -250,7 +250,7 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
                     //
                     // This issue is also impacted by the case below where
                     // `ctor` is a wildcard and `self_pat.ctor()` isn't...
-                    self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
+                    self_pat.push_fields(&mut stacks[patstack.stack_id], ctx);
                     true
                 } else {
                     false
@@ -279,7 +279,7 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
                 // Then we would do the _ and the 4, showing that the second branch isn't useful.
                 // Can't short circuit because there might be other elements in the patstack
                 // that aren't wildcarded.
-                self_pat.push_fields(&mut stacks[patstack.stack_id], hir);
+                self_pat.push_fields(&mut stacks[patstack.stack_id], ctx);
                 true
             }
             _ => unreachable!("different type patterns, this shouldn't be possible after typeck"),
@@ -295,7 +295,7 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
         }
     }
 
-    fn cleanup(self, stacks: &mut [Vec<Pattern<'hir, 'input>>]) {
+    fn cleanup(self, stacks: &mut [Vec<Pattern<'cx>>]) {
         let stack = &mut stacks[self.stack_id];
         stack.truncate(self.original_len);
         if let Some(pat) = self.specialization {
@@ -304,7 +304,7 @@ impl<'hir, 'input> Specialization<'hir, 'input> {
     }
 }
 
-impl fmt::Debug for Matrix<'_, '_, '_> {
+impl fmt::Debug for Matrix<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug = f.debug_struct("Matrix");
         for (i, spec) in self.specializations.iter().enumerate() {
@@ -314,7 +314,7 @@ impl fmt::Debug for Matrix<'_, '_, '_> {
     }
 }
 
-impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
+impl<'cx> Matrix<'_, 'cx> {
     fn sanity_check(&self, msg: &str) {
         let len = self.patstacks[self.q.stack_id].len();
         for spec in self.specializations.iter() {
@@ -325,13 +325,13 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
         }
     }
 
-    fn update_q(&mut self, q: Specialization<'hir, 'input>) {
+    fn update_q(&mut self, q: Specialization<'cx>) {
         let p_n = std::mem::replace(&mut self.q, q);
         self.specializations.push(p_n);
     }
 
     /// Returns the usefulness of `self.q` w.r.t. the other patterns.
-    fn run(&mut self, hir: &Hir<'hir, 'input>) -> Usefulness {
+    fn run(&mut self, hir: &ctx::Typeck<'cx>) -> Usefulness {
         self.sanity_check("start of run");
         let Some((q_prime_generalized, q_pat)) = self.q.specialize(self.patstacks) else {
             // Nothing left to specialize on, are we unique?
@@ -385,10 +385,10 @@ impl<'hir, 'input> Matrix<'_, 'hir, 'input> {
     }
 }
 
-fn check_usefulness<'hir, 'input>(
-    arms: &'hir [ExprArm<'hir, 'input>],
-    hir: &Hir<'hir, 'input>,
-) -> Result<(), UsefulnessError<'hir, 'input>> {
+fn check_usefulness<'cx>(
+    arms: &'cx [ExprArm<'cx>],
+    ctx: &ctx::Typeck<'cx>,
+) -> Result<(), UsefulnessError<'cx>> {
     debug_assert!(arms.len() >= 1, "closures must have at least 1 arm");
     let mut stacks = arms
         .iter()
@@ -411,7 +411,7 @@ fn check_usefulness<'hir, 'input>(
     let mut redundent_arms = Vec::with_capacity(0);
 
     for (arm, id) in arms.iter().zip(1..) {
-        if let Usefulness::Not(indices_of_coverers) = m.run(hir) {
+        if let Usefulness::Not(indices_of_coverers) = m.run(ctx) {
             redundent_arms.push(RedundentArmError {
                 coverers: indices_of_coverers.iter().map(|&idx| &arms[idx]).collect(),
                 redundent_arm: arm,
@@ -425,7 +425,7 @@ fn check_usefulness<'hir, 'input>(
         }
     }
 
-    let dummy_wildcard_is_useful = m.run(hir).is_useful();
+    let dummy_wildcard_is_useful = m.run(ctx).is_useful();
 
     if redundent_arms.is_empty() && !dummy_wildcard_is_useful {
         Ok(())
@@ -437,38 +437,42 @@ fn check_usefulness<'hir, 'input>(
     }
 }
 
-fn check_matches_in_expr<'hir, 'input>(
-    expr: &Expr<'hir, 'input>,
-    hir: &Hir<'hir, 'input>,
-    errors: &mut Vec<UsefulnessError<'hir, 'input>>,
+fn check_matches_in_expr<'cx>(
+    expr: &Expr<'cx>,
+    ctx: &ctx::Typeck<'cx>,
+    errors: &mut Vec<UsefulnessError<'cx>>,
 ) {
     match expr.kind {
         ExprKind::Builtin(_) | ExprKind::I32(_) | ExprKind::Bool(_) | ExprKind::Ident { .. } => {}
-        ExprKind::Tuple { exprs, .. } => {
-            for e in exprs.iter() {
-                check_matches_in_expr(e, hir, errors);
-            }
-        }
+        ExprKind::Record { exprs, .. } => exprs
+            .iter()
+            .for_each(|expr| check_matches_in_expr(expr, ctx, errors)),
+        ExprKind::Constructor { fields, .. } => match fields {
+            ExprFields::Newtype(expr) => check_matches_in_expr(expr, ctx, errors),
+            ExprFields::Record(fields) => fields
+                .iter()
+                .for_each(|field| check_matches_in_expr(field, ctx, errors)),
+        },
         ExprKind::Closure { arms, .. } => {
-            if let Err(report) = check_usefulness(arms, hir) {
+            if let Err(report) = check_usefulness(arms, ctx) {
                 errors.push(report);
             }
         }
         ExprKind::Appl { appl, .. } => {
-            check_matches_in_expr(&appl.lhs, hir, errors);
-            check_matches_in_expr(&appl.rhs, hir, errors);
-            check_matches_in_expr(&appl.function, hir, errors);
+            check_matches_in_expr(&appl.lhs, ctx, errors);
+            check_matches_in_expr(&appl.rhs, ctx, errors);
+            check_matches_in_expr(&appl.function, ctx, errors);
         }
     }
 }
 
-pub fn check<'a, 'hir: 'a, 'input: 'a>(
-    exprs: impl Iterator<Item = &'a Expr<'hir, 'input>>,
-    hir: &Hir<'hir, 'input>,
-) -> Vec<UsefulnessError<'hir, 'input>> {
+pub fn check<'cx>(
+    exprs: impl Iterator<Item = &'cx Expr<'cx>>,
+    ctx: &ctx::Typeck<'cx>,
+) -> Vec<UsefulnessError<'cx>> {
     let mut errors = Vec::with_capacity(0);
     for expr in exprs {
-        check_matches_in_expr(expr, hir, &mut errors);
+        check_matches_in_expr(expr, ctx, &mut errors);
     }
     errors
 }

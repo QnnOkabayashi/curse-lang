@@ -1,88 +1,66 @@
-mod defs;
+mod def;
 mod expr;
-mod function;
 mod pat;
+mod record;
 pub mod tok;
 mod ty;
+mod program {
+    use crate::{ChoiceDef, FunctionDef, StructDef};
 
-pub use defs::*;
-pub use expr::*;
-pub use function::*;
-pub use pat::*;
-pub use ty::*;
-
-/// 0 or more `T`s separated by `Sep`, with an optional trailing `Sep`.
-#[derive(Clone, Debug)]
-pub struct Punct<T, Sep> {
-    pub elements: Vec<(T, Sep)>,
-    pub trailing: Option<T>,
-}
-
-impl<T, Sep> Punct<T, Sep> {
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.elements
-            .iter()
-            .map(|(t, _sep)| t)
-            .chain(self.trailing.as_ref())
+    #[derive(Clone, Debug, Default)]
+    pub struct Program<'ast, 'input> {
+        pub function_defs: Vec<FunctionDef<'ast, 'input>>,
+        pub struct_defs: Vec<StructDef<'ast, 'input>>,
+        pub choice_defs: Vec<ChoiceDef<'ast, 'input>>,
     }
-}
 
-pub struct ParseError;
+    impl<'ast, 'input> Program<'ast, 'input> {
+        pub fn with_function_def(mut self, function_def: FunctionDef<'ast, 'input>) -> Self {
+            self.function_defs.push(function_def);
+            self
+        }
 
-pub type Res<T> = Result<T, ParseError>;
+        pub fn with_struct_def(mut self, struct_def: StructDef<'ast, 'input>) -> Self {
+            self.struct_defs.push(struct_def);
+            self
+        }
 
-pub trait Span {
-    fn span(&self) -> (usize, usize);
-
-    fn span_between(&self, other: impl Span) -> (usize, usize) {
-        let (start1, len1) = self.span();
-        let (start2, len2) = other.span();
-        let start = std::cmp::min(start1, start2);
-        let end = std::cmp::max(start1 + len1, start2 + len2);
-        (start, end - start)
-    }
-}
-
-impl<T: Span> Span for &T {
-    fn span(&self) -> (usize, usize) {
-        (*self).span()
-    }
-}
-
-impl Span for (usize, usize) {
-    fn span(&self) -> (usize, usize) {
-        *self
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Program<'ast, 'input> {
-    pub fn_defs: Vec<FnDef<'ast, 'input>>,
-    pub struct_defs: Vec<StructDef<'ast, 'input>>,
-    pub choice_defs: Vec<ChoiceDef<'ast, 'input>>,
-}
-
-impl<'ast, 'input> Program<'ast, 'input> {
-    pub fn new() -> Self {
-        Program {
-            fn_defs: vec![],
-            struct_defs: vec![],
-            choice_defs: vec![],
+        pub fn with_choice_def(mut self, choice_def: ChoiceDef<'ast, 'input>) -> Self {
+            self.choice_defs.push(choice_def);
+            self
         }
     }
+}
 
-    pub fn with_fn_def(mut self, fn_def: FnDef<'ast, 'input>) -> Self {
-        self.fn_defs.push(fn_def);
-        self
-    }
+pub use def::{
+    ChoiceDef, ExplicitTypes, FunctionDef, GenericParams, StructDef, VariantDef, Variants,
+};
+pub use expr::{Appl, Arm, Closure, Constructor, Expr, Lit, Param, Paren, Symbol};
+pub use pat::Pat;
+pub use program::Program;
+pub use record::{Field, Record};
+pub use ty::{GenericArgs, NamedType, Type};
 
-    pub fn with_struct_def(mut self, struct_def: StructDef<'ast, 'input>) -> Self {
-        self.struct_defs.push(struct_def);
-        self
-    }
+/// Macro to automatically derive a `new` constructor.
+#[macro_export]
+macro_rules! ast_struct {
+    (
+        $(#[$attrs:meta])*
+        $vis:vis struct $name:ident <$($generics:tt),*> {
+            $($field_vis:vis $field:ident : $ty:ty,)*
+        }
+    ) => {
+        $(#[$attrs])*
+        $vis struct $name <$($generics),*> {
+            $($field_vis $field : $ty,)*
+        }
 
-    pub fn with_choice_def(mut self, choice_def: ChoiceDef<'ast, 'input>) -> Self {
-        self.choice_defs.push(choice_def);
-        self
-    }
+        impl<$($generics),*> $name <$($generics),*> {
+            pub fn new($($field : $ty),*) -> $name <$($generics),*> {
+                $name {
+                    $($field),*
+                }
+            }
+        }
+    };
 }

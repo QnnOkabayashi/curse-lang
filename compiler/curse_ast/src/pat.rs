@@ -1,27 +1,39 @@
-use crate::{tok, ExprLit};
-
-mod tuple;
-pub use tuple::*;
+use crate::{tok, Lit, Record};
+use curse_span::{HasSpan, Span};
 
 #[derive(Clone, Debug)]
 pub enum Pat<'ast, 'input> {
-    Lit(ExprLit<'input>),
-    Choice(PatChoice<'ast, 'input>),
-    Tuple(PatTuple<&'ast Pat<'ast, 'input>>),
+    Lit(Lit<'input>),
+    Record(Record<'input, &'ast Pat<'ast, 'input>>),
+    Struct(tok::TypeIdent<'input>, &'ast Pat<'ast, 'input>),
+    // TODO(quinn): add support for struct and choice patterns
 }
 
-#[derive(Clone, Debug)]
-pub struct PatChoice<'ast, 'input> {
-    pub name: tok::NamedType<'input>,
-    pub payload: Option<&'ast Pat<'ast, 'input>>,
-}
+impl HasSpan for Pat<'_, '_> {
+    fn start(&self) -> u32 {
+        match self {
+            Pat::Lit(lit) => lit.start(),
+            Pat::Record(record) => record.start(),
+            Pat::Struct(ident, _) => ident.start(),
+        }
+    }
 
-// impl<Lit> Span for PatChoice<'_, '_, Lit> {
-//     fn span(&self) -> (usize, usize) {
-//         if let Some(value) = self.payload {
-//             self.apostrophe.span_between(value)
-//         } else {
-//             self.apostrophe.span_between(self.tag)
-//         }
-//     }
-// }
+    fn end(&self) -> u32 {
+        match self {
+            Pat::Lit(lit) => lit.end(),
+            Pat::Record(record) => record.end(),
+            Pat::Struct(_, inner) => inner.end(),
+        }
+    }
+
+    fn span(&self) -> Span {
+        match self {
+            Pat::Lit(lit) => lit.span(),
+            Pat::Record(record) => record.span(),
+            Pat::Struct(ident, inner) => Span {
+                start: ident.start(),
+                end: inner.end(),
+            },
+        }
+    }
+}

@@ -1,7 +1,8 @@
-let fib : i32 () -> i32 =
-    |0| 0 else
-    |1| 1 else
-    |n| n - 1 fib () + (n - 2 fib ())
+fn fib: I32 () -> I32 = {
+    |0| 0,
+    |1| 1,
+    |n| n - 1 in fib + (n - 2 in fib),
+}
 
-let main : () () -> () = ||
-    10 fib () print ()
+fn main |io|
+    10 in fib print io

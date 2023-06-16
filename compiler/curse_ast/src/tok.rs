@@ -1,15 +1,25 @@
-use crate::Span;
+use curse_span::HasSpan;
 use std::fmt;
 
 #[derive(Copy, Clone)]
 pub struct Ident<'input> {
-    pub location: usize,
+    pub location: u32,
     pub literal: &'input str,
 }
 
-impl Span for Ident<'_> {
-    fn span(&self) -> (usize, usize) {
-        (self.location, self.literal.len())
+impl AsRef<str> for Ident<'_> {
+    fn as_ref(&self) -> &str {
+        self.literal
+    }
+}
+
+impl HasSpan for Ident<'_> {
+    fn start(&self) -> u32 {
+        self.location
+    }
+
+    fn end(&self) -> u32 {
+        self.location + self.literal.len() as u32
     }
 }
 
@@ -27,13 +37,17 @@ impl fmt::Debug for Ident<'_> {
 
 #[derive(Copy, Clone)]
 pub struct Integer<'input> {
-    pub location: usize,
+    pub location: u32,
     pub literal: &'input str,
 }
 
-impl Span for Integer<'_> {
-    fn span(&self) -> (usize, usize) {
-        (self.location, self.literal.len())
+impl HasSpan for Integer<'_> {
+    fn start(&self) -> u32 {
+        self.location
+    }
+
+    fn end(&self) -> u32 {
+        self.location + self.literal.len() as u32
     }
 }
 
@@ -49,26 +63,36 @@ impl fmt::Debug for Integer<'_> {
     }
 }
 
-/// NamedTypes are like idents, but PascalCase.
+/// TypeIdents are like idents, but pascal case.
 #[derive(Copy, Clone)]
-pub struct NamedType<'input> {
-    pub location: usize,
+pub struct TypeIdent<'input> {
+    pub location: u32,
     pub literal: &'input str,
 }
 
-impl Span for NamedType<'_> {
-    fn span(&self) -> (usize, usize) {
-        (self.location, self.literal.len())
+impl AsRef<str> for TypeIdent<'_> {
+    fn as_ref(&self) -> &str {
+        self.literal
     }
 }
 
-impl fmt::Display for NamedType<'_> {
+impl HasSpan for TypeIdent<'_> {
+    fn start(&self) -> u32 {
+        self.location
+    }
+
+    fn end(&self) -> u32 {
+        self.location + self.literal.len() as u32
+    }
+}
+
+impl fmt::Display for TypeIdent<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self.literal, f)
     }
 }
 
-impl fmt::Debug for NamedType<'_> {
+impl fmt::Debug for TypeIdent<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.literal, f)
     }
@@ -80,12 +104,16 @@ macro_rules! declare_tokens {
             $(#[$attr])*
             #[derive(Copy, Clone, Default)]
             pub struct $name {
-                pub location: usize,
+                pub location: u32,
             }
 
-            impl Span for $name {
-                fn span(&self) -> (usize, usize) {
-                    (self.location, $tok.len())
+            impl HasSpan for $name {
+                fn start(&self) -> u32 {
+                    self.location
+                }
+
+                fn end(&self) -> u32 {
+                    self.location + $tok.len() as u32
                 }
             }
 

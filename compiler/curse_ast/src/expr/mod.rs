@@ -1,100 +1,32 @@
-use crate::{pat, tok, ParseError, Res, Span};
+use crate::{ast_struct, tok, Record};
+use curse_span::{HasSpan, Span};
 
 mod closure;
 pub use closure::*;
 
-mod constructor;
-pub use constructor::*;
-
-pub type ExprPat<'ast, 'input> = pat::Pat<'ast, 'input>;
-pub type ExprTuple<'ast, 'input> = pat::PatTuple<&'ast Expr<'ast, 'input>>;
-
 #[derive(Clone, Debug)]
 pub enum Expr<'ast, 'input> {
-    Paren(ExprParen<'ast, 'input>),
-    Symbol(ExprSymbol),
-    Lit(ExprLit<'input>),
-    Tuple(ExprTuple<'ast, 'input>),
-    Constructor(ExprConstructor<'ast, 'input>),
-    Closure(ExprClosure<'ast, 'input>),
-    Appl(ExprAppl<'ast, 'input>),
+    Paren(Paren<'ast, 'input>),
+    Symbol(Symbol),
+    Lit(Lit<'input>),
+    Record(Record<'input, &'ast Expr<'ast, 'input>>),
+    Constructor(Constructor<'ast, 'input>),
+    Closure(Closure<'ast, 'input>),
+    Appl(Appl<'ast, 'input>),
+    Error,
 }
 
-impl<'ast, 'input> Expr<'ast, 'input> {
-    pub fn paren_from_grammar(
-        lparen: tok::LParen,
-        res_expr: Res<&'ast Expr<'ast, 'input>>,
-        rparen: tok::RParen,
-    ) -> Res<Self> {
-        res_expr.map(|expr| {
-            Expr::Paren(ExprParen {
-                lparen,
-                expr,
-                rparen,
-            })
-        })
-    }
-
-    pub fn tuple_from_grammar(tuple: pat::PatTuple<Res<&'ast Expr<'ast, 'input>>>) -> Res<Self> {
-        Ok(Expr::Tuple(pat::PatTuple {
-            lparen: tuple.lparen,
-            kind: tuple.kind.map(pat::TupleNonempty::transpose).transpose()?,
-            rparen: tuple.rparen,
-        }))
-    }
-
-    pub fn closure_from_grammar(res_closure: Res<ExprClosure<'ast, 'input>>) -> Res<Self> {
-        res_closure.map(Expr::Closure)
-    }
-
-    pub fn appl_from_grammar(res_appl: Res<ExprAppl<'ast, 'input>>) -> Res<Self> {
-        res_appl.map(Expr::Appl)
-    }
-
-    pub fn constructor_from_grammar(res_ctor: Res<ExprConstructor<'ast, 'input>>) -> Res<Self> {
-        res_ctor.map(Expr::Constructor)
-    }
-}
-
-impl Span for Expr<'_, '_> {
-    fn span(&self) -> (usize, usize) {
-        match self {
-            Expr::Paren(paren) => paren.span(),
-            Expr::Symbol(symbol) => symbol.span(),
-            Expr::Lit(lit) => lit.span(),
-            Expr::Tuple(tuple) => tuple.span(),
-            Expr::Closure(closure) => closure.span(),
-            Expr::Appl(appl) => appl.span(),
-            Expr::Constructor(ctor) => ctor.span(),
-        }
+ast_struct! {
+    #[derive(Clone, Debug)]
+    pub struct Paren<'ast, 'input> {
+        pub lparen: tok::LParen,
+        pub expr: &'ast Expr<'ast, 'input>,
+        pub rparen: tok::RParen,
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct ExprParen<'ast, 'input> {
-    pub lparen: tok::LParen,
-    pub expr: &'ast Expr<'ast, 'input>,
-    pub rparen: tok::RParen,
-}
-
-impl<'ast, 'input> ExprParen<'ast, 'input> {
-    pub fn new(lparen: tok::LParen, expr: &'ast Expr<'ast, 'input>, rparen: tok::RParen) -> Self {
-        ExprParen {
-            lparen,
-            expr,
-            rparen,
-        }
-    }
-}
-
-impl Span for ExprParen<'_, '_> {
-    fn span(&self) -> (usize, usize) {
-        self.lparen.span_between(self.rparen)
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum ExprSymbol {
+pub enum Symbol {
     Plus(tok::Plus),
     Minus(tok::Minus),
     Star(tok::Star),
@@ -110,67 +42,185 @@ pub enum ExprSymbol {
     Ge(tok::Ge),
 }
 
-impl Span for ExprSymbol {
-    fn span(&self) -> (usize, usize) {
-        match self {
-            ExprSymbol::Plus(plus) => plus.span(),
-            ExprSymbol::Minus(minus) => minus.span(),
-            ExprSymbol::Star(star) => star.span(),
-            ExprSymbol::Dot(dot) => dot.span(),
-            ExprSymbol::DotDot(dotdot) => dotdot.span(),
-            ExprSymbol::Semi(semi) => semi.span(),
-            ExprSymbol::Percent(percent) => percent.span(),
-            ExprSymbol::Slash(slash) => slash.span(),
-            ExprSymbol::Eq(equal) => equal.span(),
-            ExprSymbol::Lt(less) => less.span(),
-            ExprSymbol::Gt(greater) => greater.span(),
-            ExprSymbol::Le(less_equal) => less_equal.span(),
-            ExprSymbol::Ge(greater_equal) => greater_equal.span(),
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
-pub enum ExprLit<'input> {
+pub enum Lit<'input> {
     Integer(tok::Integer<'input>),
     Ident(tok::Ident<'input>),
     True(tok::True),
     False(tok::False),
 }
 
-impl Span for ExprLit<'_> {
-    fn span(&self) -> (usize, usize) {
+ast_struct! {
+    #[derive(Clone, Debug)]
+    pub struct Constructor<'ast, 'input> {
+        pub ident: tok::TypeIdent<'input>,
+        pub inner: &'ast Expr<'ast, 'input>,
+    }
+}
+
+ast_struct! {
+    #[derive(Clone, Debug)]
+    pub struct Appl<'ast, 'input> {
+        pub lhs: &'ast Expr<'ast, 'input>,
+        pub fun: &'ast Expr<'ast, 'input>,
+        pub rhs: &'ast Expr<'ast, 'input>,
+    }
+}
+
+// === impl Span ===
+
+impl HasSpan for Expr<'_, '_> {
+    fn start(&self) -> u32 {
         match self {
-            ExprLit::Integer(integer) => integer.span(),
-            ExprLit::Ident(ident) => ident.span(),
-            ExprLit::True(tru) => tru.span(),
-            ExprLit::False(fals) => fals.span(),
+            Expr::Paren(paren) => paren.start(),
+            Expr::Symbol(symbol) => symbol.start(),
+            Expr::Lit(lit) => lit.start(),
+            Expr::Record(record) => record.start(),
+            Expr::Constructor(constructor) => constructor.start(),
+            Expr::Closure(closure) => closure.start(),
+            Expr::Appl(appl) => appl.start(),
+            Expr::Error => todo!(),
+        }
+    }
+
+    fn end(&self) -> u32 {
+        match self {
+            Expr::Paren(paren) => paren.end(),
+            Expr::Symbol(symbol) => symbol.end(),
+            Expr::Lit(lit) => lit.end(),
+            Expr::Record(record) => record.end(),
+            Expr::Constructor(constructor) => constructor.end(),
+            Expr::Closure(closure) => closure.end(),
+            Expr::Appl(appl) => appl.end(),
+            Expr::Error => todo!(),
+        }
+    }
+
+    fn span(&self) -> Span {
+        match self {
+            Expr::Paren(paren) => paren.span(),
+            Expr::Symbol(symbol) => symbol.span(),
+            Expr::Lit(lit) => lit.span(),
+            Expr::Record(record) => record.span(),
+            Expr::Constructor(constructor) => constructor.span(),
+            Expr::Closure(closure) => closure.span(),
+            Expr::Appl(appl) => appl.span(),
+            Expr::Error => todo!(),
         }
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct ExprAppl<'ast, 'input> {
-    pub lhs: &'ast Expr<'ast, 'input>,
-    pub function: &'ast Expr<'ast, 'input>,
-    pub rhs: &'ast Expr<'ast, 'input>,
+impl HasSpan for Paren<'_, '_> {
+    fn start(&self) -> u32 {
+        self.lparen.start()
+    }
+
+    fn end(&self) -> u32 {
+        self.rparen.end()
+    }
 }
 
-impl<'ast, 'input> ExprAppl<'ast, 'input> {
-    pub fn from_grammar(
-        res_lhs: Res<&'ast Expr<'ast, 'input>>,
-        res_function: Res<&'ast Expr<'ast, 'input>>,
-        res_rhs: Res<&'ast Expr<'ast, 'input>>,
-    ) -> Res<Self> {
-        match (res_lhs, res_function, res_rhs) {
-            (Ok(lhs), Ok(function), Ok(rhs)) => Ok(ExprAppl { lhs, function, rhs }),
-            _ => Err(ParseError),
+impl HasSpan for Symbol {
+    fn start(&self) -> u32 {
+        match self {
+            Symbol::Plus(plus) => plus.start(),
+            Symbol::Minus(minus) => minus.start(),
+            Symbol::Star(star) => star.start(),
+            Symbol::Dot(dot) => dot.start(),
+            Symbol::DotDot(dotdot) => dotdot.start(),
+            Symbol::Semi(semi) => semi.start(),
+            Symbol::Percent(percent) => percent.start(),
+            Symbol::Slash(slash) => slash.start(),
+            Symbol::Eq(eq) => eq.start(),
+            Symbol::Lt(lt) => lt.start(),
+            Symbol::Gt(gt) => gt.start(),
+            Symbol::Le(le) => le.start(),
+            Symbol::Ge(ge) => ge.start(),
+        }
+    }
+
+    fn end(&self) -> u32 {
+        match self {
+            Symbol::Plus(plus) => plus.end(),
+            Symbol::Minus(minus) => minus.end(),
+            Symbol::Star(star) => star.end(),
+            Symbol::Dot(dot) => dot.end(),
+            Symbol::DotDot(dotdot) => dotdot.end(),
+            Symbol::Semi(semi) => semi.end(),
+            Symbol::Percent(percent) => percent.end(),
+            Symbol::Slash(slash) => slash.end(),
+            Symbol::Eq(eq) => eq.end(),
+            Symbol::Lt(lt) => lt.end(),
+            Symbol::Gt(gt) => gt.end(),
+            Symbol::Le(le) => le.end(),
+            Symbol::Ge(ge) => ge.end(),
+        }
+    }
+
+    fn span(&self) -> Span {
+        match self {
+            Symbol::Plus(plus) => plus.span(),
+            Symbol::Minus(minus) => minus.span(),
+            Symbol::Star(star) => star.span(),
+            Symbol::Dot(dot) => dot.span(),
+            Symbol::DotDot(dotdot) => dotdot.span(),
+            Symbol::Semi(semi) => semi.span(),
+            Symbol::Percent(percent) => percent.span(),
+            Symbol::Slash(slash) => slash.span(),
+            Symbol::Eq(eq) => eq.span(),
+            Symbol::Lt(lt) => lt.span(),
+            Symbol::Gt(gt) => gt.span(),
+            Symbol::Le(le) => le.span(),
+            Symbol::Ge(ge) => ge.span(),
         }
     }
 }
 
-impl Span for ExprAppl<'_, '_> {
-    fn span(&self) -> (usize, usize) {
-        self.lhs.span_between(self.rhs)
+impl HasSpan for Lit<'_> {
+    fn start(&self) -> u32 {
+        match self {
+            Lit::Integer(integer) => integer.start(),
+            Lit::Ident(ident) => ident.start(),
+            Lit::True(true_lit) => true_lit.start(),
+            Lit::False(false_lit) => false_lit.start(),
+        }
+    }
+
+    fn end(&self) -> u32 {
+        match self {
+            Lit::Integer(integer) => integer.end(),
+            Lit::Ident(ident) => ident.end(),
+            Lit::True(true_lit) => true_lit.end(),
+            Lit::False(false_lit) => false_lit.end(),
+        }
+    }
+
+    fn span(&self) -> Span {
+        match self {
+            Lit::Integer(integer) => integer.span(),
+            Lit::Ident(ident) => ident.span(),
+            Lit::True(true_lit) => true_lit.span(),
+            Lit::False(false_lit) => false_lit.span(),
+        }
+    }
+}
+
+impl HasSpan for Constructor<'_, '_> {
+    fn start(&self) -> u32 {
+        self.ident.start()
+    }
+
+    fn end(&self) -> u32 {
+        self.inner.end()
+    }
+}
+
+impl HasSpan for Appl<'_, '_> {
+    fn start(&self) -> u32 {
+        self.lhs.start()
+    }
+
+    fn end(&self) -> u32 {
+        self.rhs.end()
     }
 }

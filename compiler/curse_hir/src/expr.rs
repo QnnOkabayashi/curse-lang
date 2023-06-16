@@ -1,96 +1,43 @@
-use crate::{Spanned, Type, TypeChoice, TypeFunction, TypeKind};
-use curse_ast::{tok, Span};
+use crate::{Map, PatRef, TypeRef};
+use curse_interner::Ident;
+use curse_span::{HasSpan, Span};
 use std::fmt;
 
-pub trait Ty<'hir, 'input> {
-    fn ty(&self) -> Type<'hir, 'input>;
+#[derive(Clone)]
+pub struct Expr<'hir> {
+    pub kind: ExprKind<'hir>,
+    pub span: Span,
 }
 
-pub type Expr<'hir, 'input> = Spanned<ExprKind<'hir, 'input>>;
+pub type ExprRef<'hir> = &'hir Expr<'hir>;
 
-/// A cheap `Copy` enum representing an expression.
-#[derive(Copy, Clone, Debug)]
-pub enum ExprKind<'hir, 'input> {
-    Builtin(Builtin),
-    I32(i32),
-    Bool(bool),
-    Ident {
-        ty: TypeKind<'hir, 'input>,
-        literal: &'input str,
-    },
-    Tuple {
-        ty: TypeKind<'hir, 'input>,
-        exprs: &'hir [Expr<'hir, 'input>],
-    },
-    Closure {
-        ty: TypeKind<'hir, 'input>,
-        arms: &'hir [ExprArm<'hir, 'input>],
-    },
-    Appl {
-        ty: TypeKind<'hir, 'input>,
-        appl: &'hir ExprAppl<'hir, 'input>,
-    },
-}
-
-impl Default for ExprKind<'_, '_> {
-    fn default() -> Self {
-        ExprKind::Tuple {
-            ty: TypeKind::Tuple(&[]),
-            exprs: &[],
-        }
-    }
-}
-
-#[derive(Debug)]
-// #[displaydoc("{lhs} {function} {rhs}")]
-pub struct ExprAppl<'hir, 'input> {
-    pub lhs: Expr<'hir, 'input>,
-    pub function: Expr<'hir, 'input>,
-    pub rhs: Expr<'hir, 'input>,
-}
-
-impl<'hir, 'input> Ty<'hir, 'input> for Expr<'hir, 'input> {
-    fn ty(&self) -> Type<'hir, 'input> {
-        match self.kind {
-            ExprKind::Builtin(builtin) => Type {
-                kind: builtin.type_kind(),
-                span: self.span,
-            },
-            ExprKind::I32(_) => Type {
-                kind: TypeKind::I32,
-                span: self.span,
-            },
-            ExprKind::Bool(_) => Type {
-                kind: TypeKind::Bool,
-                span: self.span,
-            },
-            ExprKind::Ident { ty, .. } => Type {
-                kind: ty,
-                span: self.span,
-            },
-            ExprKind::Tuple { ty, .. } => Type {
-                kind: ty,
-                span: self.span,
-            },
-            ExprKind::Closure { ty, .. } => Type {
-                kind: ty,
-                span: self.span,
-            },
-            ExprKind::Appl { ty, .. } => Type {
-                kind: ty,
-                span: self.span,
-            },
-        }
+impl fmt::Debug for Expr<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.kind, f)
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Builtin {
-    Add,
-    Sub,
-    Mul,
-    Rem,
-    Div,
+pub enum ExprKind<'hir> {
+    Symbol(Symbol),
+    Lit(Lit),
+    Record(Map<'hir, Ident, Option<ExprRef<'hir>>>),
+    Constructor(Ident, ExprRef<'hir>),
+    Closure(&'hir [Arm<'hir>]),
+    Appl(Appl<'hir>),
+    Error,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Symbol {
+    Plus,
+    Minus,
+    Star,
+    Dot,
+    DotDot,
+    Semi,
+    Percent,
+    Slash,
     Eq,
     Lt,
     Gt,
@@ -98,127 +45,64 @@ pub enum Builtin {
     Ge,
 }
 
-impl Builtin {
-    pub fn as_str(&self) -> &'static str {
-        use Builtin::*;
-        match self {
-            Add => "+",
-            Sub => "-",
-            Mul => "*",
-            Rem => "%",
-            Div => "/",
-            Eq => "=",
-            Lt => "<",
-            Gt => ">",
-            Le => "<=",
-            Ge => ">=",
-        }
-    }
-
-    pub fn type_kind(&self) -> TypeKind<'static, 'static> {
-        use Builtin::*;
-        match self {
-            Add | Sub | Mul | Rem => TypeKind::Function(&TypeFunction {
-                lhs: Type {
-                    kind: TypeKind::I32,
-                    span: (0, 0),
-                },
-                rhs: Type {
-                    kind: TypeKind::I32,
-                    span: (0, 0),
-                },
-                output: Type {
-                    kind: TypeKind::I32,
-                    span: (0, 0),
-                },
-            }),
-            Div => todo!("Type of div"),
-            Eq | Lt | Gt | Le | Ge => TypeKind::Function(&TypeFunction {
-                lhs: Type {
-                    kind: TypeKind::I32,
-                    span: (0, 0),
-                },
-                rhs: Type {
-                    kind: TypeKind::I32,
-                    span: (0, 0),
-                },
-                output: Type {
-                    kind: TypeKind::I32,
-                    span: (0, 0),
-                },
-            }),
-        }
-    }
+#[derive(Copy, Clone, Debug)]
+pub enum Lit {
+    Integer(u32),
+    Ident(Ident),
+    Bool(bool),
 }
 
-impl fmt::Display for Builtin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
+#[derive(Clone, Debug)]
+pub struct Arm<'hir> {
+    pub params: &'hir [Param<'hir>],
+    pub body: ExprRef<'hir>,
 }
-
-#[derive(Copy, Clone, Debug, Default)]
-// #[displaydoc("|{lhs}, {rhs}| {body}")]
-pub struct ExprArm<'hir, 'input> {
-    pub open: tok::Pipe,
-    pub lhs: Pat<'hir, 'input>,
-    pub rhs: Pat<'hir, 'input>,
-    pub close: tok::Pipe,
-    pub body: Expr<'hir, 'input>,
-}
-
-impl Span for ExprArm<'_, '_> {
-    fn span(&self) -> (usize, usize) {
-        self.open.span_between(self.close)
-    }
-}
-
-pub type Pat<'hir, 'input> = Spanned<PatKind<'hir, 'input>>;
 
 #[derive(Copy, Clone, Debug)]
-pub enum PatKind<'hir, 'input> {
-    Bool(bool),
-    I32(i32),
-    Ident {
-        ty: TypeKind<'hir, 'input>,
-        literal: &'input str,
-    },
-    Tuple {
-        ty: &'hir [Type<'hir, 'input>],
-        pats: &'hir [Pat<'hir, 'input>],
-    },
-    Choice {
-        ty: &'hir TypeChoice<'hir, 'input>,
-        variant: u32,
-        payload: Option<&'hir Pat<'hir, 'input>>,
-    },
+pub struct Param<'hir> {
+    pub pat: PatRef<'hir>,
+    pub ascription: Option<TypeRef<'hir>>,
 }
 
-impl<'hir, 'input> PatKind<'hir, 'input> {
-    pub fn unit() -> Self {
-        PatKind::Tuple { ty: &[], pats: &[] }
+impl HasSpan for Param<'_> {
+    fn start(&self) -> u32 {
+        self.pat.start()
     }
-}
 
-impl Default for PatKind<'_, '_> {
-    fn default() -> Self {
-        PatKind::unit()
-    }
-}
-
-impl<'hir, 'input> Ty<'hir, 'input> for Pat<'hir, 'input> {
-    fn ty(&self) -> Type<'hir, 'input> {
-        let kind = match self.kind {
-            PatKind::Bool(_) => TypeKind::Bool,
-            PatKind::I32(_) => TypeKind::I32,
-            PatKind::Ident { ty, .. } => ty,
-            PatKind::Tuple { ty, .. } => TypeKind::Tuple(ty),
-            PatKind::Choice { ty, .. } => TypeKind::Choice(ty),
-        };
-
-        Type {
-            kind,
-            span: self.span,
+    fn end(&self) -> u32 {
+        if let Some(ty) = self.ascription {
+            ty.end()
+        } else {
+            self.pat.end()
         }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct Appl<'hir> {
+    pub parts: &'hir [Expr<'hir>; 3],
+}
+
+impl<'hir> Appl<'hir> {
+    pub fn lhs(&self) -> &'hir Expr<'hir> {
+        &self.parts[0]
+    }
+
+    pub fn fun(&self) -> &'hir Expr<'hir> {
+        &self.parts[1]
+    }
+
+    pub fn rhs(&self) -> &'hir Expr<'hir> {
+        &self.parts[2]
+    }
+}
+
+impl fmt::Debug for Appl<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Appl")
+            .field("lhs", self.lhs())
+            .field("fun", self.fun())
+            .field("rhs", self.rhs())
+            .finish()
     }
 }
