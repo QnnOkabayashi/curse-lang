@@ -3,10 +3,11 @@ name = "curse_interpreter"
 version = "0.1.0"
 edition = "2021"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
-clap = { version = "4.1.8", features = ["derive"] }
-miette = { version = "5.5.0", features = ["fancy"] }
-rustyline = "11.0.0"
-curse_parse = { path = "../curse_parse" }
-curse_ast = { path = "../curse_ast" }
-thiserror = "1.0.39"
+curse_hir = { path = "../curse_hir" }
+curse_interner = { path = "../curse_interner" }
+curse_span = { path = "../curse_span" }
+miette = "5.7.0"
+thiserror = "1.0.40"
