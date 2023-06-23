@@ -10,5 +10,7 @@ members = [
 
     "compiler/curse_arena",
     "compiler/curse_interner",
-    "compiler/curse_span"
+    "compiler/curse_span",
+
+    "compiler/curse_interpreter",
 ]

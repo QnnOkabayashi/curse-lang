@@ -1,41 +1,44 @@
-use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr::{self, NonNull};
-use std::{cell::Cell, fmt, slice};
+use std::{cell::Cell, fmt, marker::PhantomData, mem::ManuallyDrop, slice};
 
-/// A homogeneous arena type that doesn't drop its values and does not reallocate.
+/// A homogeneous arena type that doesn't drop its values and does not
+/// reallocate.
 ///
-/// The benefit is that it can preallocate slices and return them to the user wrapped in a `SliceGuard<'_, T>`, which can then be pushed to (or panic if past capacity). Once the user is done pushing values, they can retrieve access to the underlying `&'arena mut [T]` using `.into_inner()`.
+/// The benefit is that it can preallocate slices and return them to the user
+/// wrapped in a `SliceGuard<'_, T>`, which can then be pushed to (or panic if
+/// past capacity). Once the user is done pushing values, they can retrieve
+/// access to the underlying `&'arena mut [T]` using `.into_inner()`.
 ///
-/// This allows for easy allocation of recursive `Copy` types that may want to be placed in a slice.
+/// This allows for easy allocation of recursive `Copy` types that may want to
+/// be placed in a slice.
 pub struct Arena<T> {
     entries: Cell<usize>,
-    storage: NonNull<[MaybeUninit<T>]>,
+    capacity: usize,
+    ptr: NonNull<T>,
+    _marker: PhantomData<T>,
 }
 
 pub struct SliceGuard<'arena, T> {
     entries: usize,
-    slice: &'arena mut [MaybeUninit<T>],
-}
-
-#[derive(Debug)]
-pub struct PreallocError {
-    pub remaining_cap: usize,
-    pub requested_cap: usize,
+    capacity: usize,
+    ptr: NonNull<T>,
+    _marker: PhantomData<&'arena T>,
 }
 
 impl<T> Arena<T> {
     /// Create a new [`Arena`] with a fixed capacity.
-    pub fn with_capacity(cap: usize) -> Self {
-        let mut me = ManuallyDrop::new(Vec::with_capacity(cap));
+    pub fn with_capacity(capacity: usize) -> Self {
+        let mut me = ManuallyDrop::new(Vec::with_capacity(capacity));
 
-        // SAFETY: The memory is initialized because it's elements, `MaybeUninit<T>`,
-        // are considered initialized even on uninitialized memory.
-        let slice: &mut [MaybeUninit<T>] =
-            unsafe { slice::from_raw_parts_mut(me.as_mut_ptr(), cap) };
+        // SAFETY: `Vec` points to a valid allocation or is dangling, neither
+        // of which can ever be null.
+        let ptr = unsafe { NonNull::new_unchecked(me.as_mut_ptr()) };
 
         Arena {
             entries: Cell::new(0),
-            storage: NonNull::from(slice),
+            capacity,
+            ptr,
+            _marker: PhantomData,
         }
     }
 
@@ -43,24 +46,23 @@ impl<T> Arena<T> {
     pub fn remaining(&self) -> usize {
         // we use wrapping_sub because it emits less instructions,
         // and it should never wrap since `next` is always <= `storage.len()`
-        self.storage.len().wrapping_sub(self.entries.get())
+        self.capacity.wrapping_sub(self.entries.get())
     }
 
     /// Allocates a value in the arena, or returns the value if there's no remaining capacity.
     pub fn try_alloc(&self, value: T) -> Result<&mut T, T> {
-        let next = self.entries.get();
+        let index = self.entries.get();
 
-        if next == self.storage.len() {
+        if index == self.capacity {
             return Err(value);
         }
 
         unsafe {
-            // SAFETY: just checked that index is in range of the allocation
-            let ptr = self.storage.cast::<T>().as_ptr().add(next);
+            let ptr = self.ptr.as_ptr().add(index);
 
             ptr::write(ptr, value);
 
-            self.entries.set(next + 1);
+            self.entries.set(self.entries.get().wrapping_add(1));
 
             // SAFETY: each spot in the array is only aliased on creation here,
             // which means this is the only unique reference.
@@ -68,29 +70,28 @@ impl<T> Arena<T> {
         }
     }
 
-    pub fn try_prealloc_slice(&self, cap: usize) -> Result<SliceGuard<'_, T>, PreallocError> {
-        // this will never wrap, but allows us to omit overflow checking.
+    pub fn try_prealloc_slice(&self, capacity: usize) -> Result<SliceGuard<'_, T>, ()> {
         let remaining = self.remaining();
-        if cap > remaining {
-            return Err(PreallocError {
-                remaining_cap: remaining,
-                requested_cap: cap,
-            });
+
+        if capacity > remaining {
+            return Err(());
         }
 
-        let next = self.entries.get();
+        let index = self.entries.get();
 
-        // SAFETY: each spot in the slice is only aliased on creation here,
-        // which means this is the only unique reference.
-        let slice = unsafe {
-            let ptr = self.storage.cast::<MaybeUninit<_>>().as_ptr().add(next);
-            slice::from_raw_parts_mut(ptr, cap)
+        let ptr = unsafe {
+            let ptr = self.ptr.as_ptr().add(index);
+            NonNull::new_unchecked(ptr)
         };
 
-        // use wrapping for the same reason as in `Arena::remaining`
-        self.entries.set(next.wrapping_add(cap));
+        self.entries.set(index.wrapping_add(capacity));
 
-        Ok(SliceGuard { slice, entries: 0 })
+        Ok(SliceGuard {
+            entries: 0,
+            capacity,
+            ptr,
+            _marker: PhantomData,
+        })
     }
 }
 
@@ -103,14 +104,12 @@ impl<T> fmt::Debug for Arena<T> {
 }
 
 impl<T> Drop for Arena<T> {
-    /// the `Drop` impl just frees the allocated memory without running destructors
-    /// on the allocated values.
+    /// the `Drop` impl just frees the allocated memory without running
+    /// destructors on the allocated values. We do this because not all the
+    /// allocated values are necessarily initialized.
     fn drop(&mut self) {
-        let capacity = self.storage.len();
-        let ptr = self.storage.cast::<MaybeUninit<T>>().as_ptr();
-
         unsafe {
-            let _: Vec<MaybeUninit<T>> = Vec::from_raw_parts(ptr, 0, capacity);
+            let _: Vec<T> = Vec::from_raw_parts(self.ptr.as_ptr(), 0, self.capacity);
         }
     }
 }
@@ -126,11 +125,15 @@ impl<'arena, T> SliceGuard<'arena, T> {
     }
 
     pub fn try_push(&mut self, value: T) -> Result<(), T> {
-        let Some(end) = self.slice.get_mut(self.entries) else {
+        if self.entries == self.capacity {
             return Err(value);
+        }
+
+        unsafe {
+            let ptr = self.ptr.as_ptr().add(self.entries);
+            ptr::write(ptr, value);
         };
 
-        *end = MaybeUninit::new(value);
         self.entries += 1;
         Ok(())
     }
@@ -140,35 +143,30 @@ impl<'arena, T> SliceGuard<'arena, T> {
             self.push(value);
         }
 
-        self.into_inner()
+        self.into_slice()
     }
 
-    pub fn into_inner(self) -> &'arena mut [T] {
-        unsafe {
-            slice::from_raw_parts_mut(self.slice as *mut [MaybeUninit<T>] as *mut T, self.entries)
-        }
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.entries) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr(), self.entries) }
+    }
+
+    pub fn into_slice(self) -> &'arena mut [T] {
+        unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr(), self.entries) }
     }
 }
 
-impl<T> fmt::Debug for SliceGuard<'_, T> {
+impl<T: fmt::Debug> fmt::Debug for SliceGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SliceGuard")
-            .field("entries", &self.entries)
-            .finish_non_exhaustive()
+        fmt::Debug::fmt(self.as_slice(), f)
     }
 }
 
-impl fmt::Display for PreallocError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "requested capacity for {} values, but the remaining capacity was {}",
-            self.requested_cap, self.remaining_cap
-        )
-    }
-}
-
-impl std::error::Error for PreallocError {}
+unsafe impl<T: Send> Send for SliceGuard<'_, T> {}
+unsafe impl<T: Sync> Sync for SliceGuard<'_, T> {}
 
 #[test]
 fn test_safety() {
