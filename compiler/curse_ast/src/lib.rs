@@ -1,4 +1,14 @@
 mod def;
+mod path {
+    use crate::{ast_struct, tok};
+
+    ast_struct! {
+        pub struct Path<'input, T> {
+            pub items: Vec<(tok::Ident<'input>, tok::Colon)>,
+            pub value: T,
+        }
+    }
+}
 mod expr;
 mod pat;
 mod record;
@@ -37,6 +47,7 @@ pub use def::{
 };
 pub use expr::{Appl, Arm, Closure, Constructor, Expr, Lit, Param, Paren, Symbol};
 pub use pat::Pat;
+pub use path::Path;
 pub use program::Program;
 pub use record::{Field, Record};
 pub use ty::{GenericArgs, NamedType, Type};

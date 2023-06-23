@@ -143,6 +143,7 @@ macro_rules! declare_tokens {
 // - curse_ast/src/tok.rs
 declare_tokens! {
     ":" => Colon,
+    "::" => ColonColon,
     "," => Comma,
     "(" => LParen,
     ")" => RParen,

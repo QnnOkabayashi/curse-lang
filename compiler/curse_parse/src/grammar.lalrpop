@@ -1,7 +1,7 @@
 use crate::{lexer::*, Parser};
 use curse_ast::{
     tok, Appl, Arm, ChoiceDef, Closure, Constructor, ExplicitTypes, Expr, Field, FunctionDef,
-    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Pat, Program, Record, StructDef,
+    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef,
     Symbol, Type, VariantDef, Variants,
 };
 
@@ -22,6 +22,7 @@ extern {
         "integer literal" => Token::Integer(<tok::Integer<'input>>),
         "named type literal" => Token::TypeIdent(<tok::TypeIdent<'input>>),
         ":" => Token::Colon(<tok::Colon>),
+        "::" => Token::ColonColon(<tok::ColonColon>),
         "," => Token::Comma(<tok::Comma>),
         "(" => Token::LParen(<tok::LParen>),
         ")" => Token::RParen(<tok::RParen>),
@@ -126,6 +127,16 @@ Ref<T>: &'ast T = {
     T => &*parser.arena.alloc(<>),
 }
 
+/// === Path ===
+
+Path<T>: Path<'input, T> = {
+    (Ident "::")* T => Path::new(<>),
+};
+
+// TypePath;
+// ConstructorPath;
+// ValuePath;
+
 /// === Types ===
 
 Type: Type<'ast, 'input> = {
@@ -143,7 +154,7 @@ GenericArgs: GenericArgs<'ast, 'input> = {
 };
 
 NamedType: NamedType<'ast, 'input> = {
-    TypeIdent GenericArgs? => NamedType::new(<>),
+    Path<TypeIdent> GenericArgs? => NamedType::new(<>),
 };
 
 
@@ -152,8 +163,7 @@ NamedType: NamedType<'ast, 'input> = {
 Pat: Pat<'ast, 'input> = {
     Lit => Pat::Lit(<>),
     Record<Ref<Pat>> => Pat::Record(<>),
-    TypeIdent Ref<Pat> => Pat::Struct(<>),
-    // TODO(quinn): add choice pats and qpaths
+    Path<TypeIdent> Ref<Pat> => Pat::Constructor(<>),
 };
 
 
@@ -205,7 +215,7 @@ Param: Param<'ast, 'input> = {
 };
 
 Constructor: Constructor<'ast, 'input> = {
-    TypeIdent Ref<EndExpr> => Constructor::new(<>),
+    Path<TypeIdent> Ref<EndExpr> => Constructor::new(<>),
 };
 
 Appl<Rhs>: Appl<'ast, 'input> = {

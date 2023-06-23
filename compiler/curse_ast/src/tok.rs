@@ -138,6 +138,7 @@ macro_rules! declare_tokens {
 // - curse_parse/src/grammar.lalrpop
 declare_tokens! {
     ":" => Colon,
+    "::" => ColonColon,
     "," => Comma,
     "(" => LParen,
     ")" => RParen,
