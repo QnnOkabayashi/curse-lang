@@ -1,32 +1,25 @@
 #![allow(dead_code)]
 
-// TODO(quinn): make HIR types have a little more resolution,
-// such as knowing if a type struct/choice refers to a generic.
-
 pub const TEST_ERR: &str = r#"
 fn add = |x|
     4_294_967_295 in |東京|
     x + 東京
 
-struct Wraps T = T (I32 * I32)
+type Wraps T: T (I32 * I32)
 
-struct I32 = {}
+type List I32: I32
 
-struct List I32 = I32
+type TGeneric T: T Bool
 
-struct Bool = {}
+type PrimParametric: I32 I32
 
-struct TGeneric T = T Bool
+type Untyped: { name, age }
 
-struct PrimParametric = I32 I32
-
-struct Untyped = { name, age }
-
-struct X = {
+type X: {
     age: I32,
 }
 
-struct X = {
+type X: {
     hot: Bool,
 }
 "#;
@@ -35,12 +28,14 @@ pub const SURPRISINGLY_OK: &str = r#"
 struct X I32 = I32
 
 struct I32 = Bool
+
+choice Option T = Some T | None {}
+
+struct LinearMap (K * V) = Vec { key: K, value: V }
 "#;
 
 pub const BINARY_TREE: &str = r#"
-choice Option T =
-    | Some T
-    | None {}
+choice Option T = Some T | None {}
 
 choice Never = |
 
@@ -74,9 +69,7 @@ fn else = (
     |None {}, x| x
 )
 
-choice Result (T * E) =
-    | Ok T
-    | Err E
+choice Result (T * E) = Ok T | Err E
 
 choice Tree T =
     | Node {
@@ -88,7 +81,7 @@ choice Tree T =
     }
     | Empty {}
 
-fn insert = (
+fn insert = |n| n in (
     |Empty {}, { k, v }|
         Node { key: k, value: v, left: Empty {}, right: Empty {} },
     |Node { key, value, left, right }, { k, v }|
@@ -123,7 +116,7 @@ fn get = (
 // let _ = (fix factabs) 5
 
 // Y-combinator (works in strict languages)
-fn rec = |x, f| f of (|x| x fix f) of x
+fn rec = |x, f| f of (|x| x rec f) of x
 
 // Tail-recursive factorial function
 fn fact = |n|
@@ -146,7 +139,9 @@ fn of = |f, x| x f {}
 "#;
 
 pub const FIB: &str = r#"
-choice Option T = Some T | None {}
+type Option T
+    | Some: T
+    | None: {}
 
 fn fib = (
     |0| 0,
@@ -255,10 +250,10 @@ fn main: () () -> () = ||
 "#;
 
 pub const MATH: &str = r#"
-fn main: () () -> () = ||
+fn main = ||
     5 in |x|
     4 in |y|
-    x + y print ()
+    x + y print {}
 "#;
 
 pub const CLOSURE_MISMATCH_ARM_TYPES: &str = r#"

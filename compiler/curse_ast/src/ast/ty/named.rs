@@ -1,10 +1,11 @@
-use crate::{ast_struct, tok, Type};
+use crate::ast::{tok, Path, Type};
+use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
 ast_struct! {
     #[derive(Clone, Debug)]
     pub struct NamedType<'ast, 'input> {
-        pub ident: tok::TypeIdent<'input>,
+        pub path: Path<'input>,
         pub generic_args: Option<GenericArgs<'ast, 'input>>,
     }
 }
@@ -24,14 +25,14 @@ pub enum GenericArgs<'ast, 'input> {
 
 impl HasSpan for NamedType<'_, '_> {
     fn start(&self) -> u32 {
-        self.ident.start()
+        self.path.start()
     }
 
     fn end(&self) -> u32 {
         if let Some(generic_args) = self.generic_args.as_ref() {
             generic_args.end()
         } else {
-            self.ident.end()
+            self.path.end()
         }
     }
 }

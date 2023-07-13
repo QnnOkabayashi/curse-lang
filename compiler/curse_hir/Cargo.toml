@@ -4,7 +4,6 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-curse_ast = { path = "../curse_ast" }
 curse_arena = { path = "../curse_arena" }
 curse_interner = { path = "../curse_interner" }
 curse_span = { path = "../curse_span" }

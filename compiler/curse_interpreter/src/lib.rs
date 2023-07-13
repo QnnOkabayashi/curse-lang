@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use curse_hir::{ExprRef, Lit, Program};
+use curse_hir::hir::{ExprRef, Lit, Program, ExprKind};
 use curse_interner::{Ident, InternedString};
 use error::EvalError;
 use value::Value;
@@ -35,9 +35,9 @@ fn eval_expr<'hir>(
     local_state: &mut Bindings<'hir>,
 ) -> Result<Value<'hir>, EvalError> {
     match expr.kind {
-        curse_hir::ExprKind::Symbol(_) => todo!(),
-        curse_hir::ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
-        curse_hir::ExprKind::Lit(Lit::Ident(ident)) => local_state
+        ExprKind::Symbol(_) => todo!(),
+        ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
+        ExprKind::Lit(Lit::Ident(ident)) => local_state
             .get(&ident)
             .or(global_state.functions.get(&ident.string))
             .ok_or(EvalError::UnboundVariable {
@@ -45,12 +45,12 @@ fn eval_expr<'hir>(
                 span: ident.span,
             })
             .cloned(),
-        curse_hir::ExprKind::Lit(Lit::Bool(bool)) => Ok(Value::Bool(bool)),
-        curse_hir::ExprKind::Record(_) => todo!(),
-        curse_hir::ExprKind::Constructor(_, _) => todo!(),
-        curse_hir::ExprKind::Closure(_) => todo!(),
-        curse_hir::ExprKind::Appl(_) => todo!(),
-        curse_hir::ExprKind::Error => todo!(),
+        ExprKind::Lit(Lit::Bool(bool)) => Ok(Value::Bool(bool)),
+        ExprKind::Record(_) => todo!(),
+        ExprKind::Constructor(_) => todo!(),
+        ExprKind::Closure(_) => todo!(),
+        ExprKind::Appl(_) => todo!(),
+        ExprKind::Error => todo!(),
     }
 }
 
@@ -92,7 +92,7 @@ pub fn execute_program(program: &Program) -> Result<(), EvalError> {
         &Value::default(),
         &global_state,
         &mut local_state,
-    );
+    )?;
 
     Ok(())
 }

@@ -1,9 +1,10 @@
-use crate::{Arena, LoweringError, UnexpectedTypeArgs};
-use curse_arena::DroplessArena;
-use curse_ast as ast;
-use curse_hir::{
-    Appl, Arm, ChoiceDef, Expr, ExprKind, ExprRef, FunctionDef, Lit, Map, Param, Pat, PatKind,
-    PatRef, Program, StructDef, Symbol, Type, TypeKind, TypeRef,
+use crate::{arena_alloc::ArenaAlloc, LoweringError, UnexpectedTypeArgs};
+use curse_arena::new::SliceGuard;
+use curse_ast::ast;
+use curse_hir::arena::HirArena;
+use curse_hir::hir::{
+    Appl, Arm, ChoiceDef, Constructor, Expr, ExprKind, ExprRef, FunctionDef, Lit, Map, Param, Pat,
+    PatKind, PatRef, Program, StructDef, Symbol, Type, TypeKind, TypeRef,
 };
 use curse_interner::{Ident, InternedString};
 use curse_span::HasSpan;
@@ -26,14 +27,20 @@ impl LowerToFieldValue for &ast::Type<'_, '_> {
     type Lowered<'hir> = TypeRef<'hir>;
 }
 
+pub trait Lower<'hir> {
+    type Lowered;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered;
+}
+
 pub struct Lowerer<'hir> {
-    arena: &'hir Arena<'hir>,
+    arena: &'hir HirArena<'hir>,
     in_scope_generic_params: Option<&'hir [Ident]>,
     pub errors: Vec<LoweringError>,
 }
 
 impl<'hir> Lowerer<'hir> {
-    pub fn new(arena: &'hir Arena<'hir>) -> Self {
+    pub fn new(arena: &'hir HirArena<'hir>) -> Self {
         Lowerer {
             arena,
             in_scope_generic_params: None,
@@ -56,7 +63,39 @@ impl<'hir> Lowerer<'hir> {
         res
     }
 
-    pub fn lower_program(&mut self, ast_program: &ast::Program<'_, '_>) -> Program<'hir> {
+    pub fn alloc<T: ArenaAlloc<'hir>>(&self, value: T) -> &'hir T {
+        T::get_arena(self.arena).alloc(value)
+    }
+
+    pub fn prealloc_slice<T: ArenaAlloc<'hir>>(&self, capacity: usize) -> SliceGuard<'hir, T> {
+        T::get_arena(self.arena).prealloc_slice(capacity)
+    }
+
+    fn lower_record<T: LowerToFieldValue, F>(
+        &mut self,
+        record: &ast::Record<'_, T>,
+        lower_field_fn: F,
+    ) -> &'hir [(Ident, T::Lowered<'hir>)]
+    where
+        F: Fn(&ast::Field<'_, T>, Ident, &mut Lowerer<'hir>) -> T::Lowered<'hir>,
+        (Ident, T::Lowered<'hir>): ArenaAlloc<'hir>,
+    {
+        let fields = self
+            .prealloc_slice(record.len())
+            .extend(record.fields().map(|field| {
+                let ident = Ident::from(field.ident);
+                (ident, lower_field_fn(field, ident, self))
+            }));
+
+        fields.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        fields
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::Program<'_, '_> {
+    type Lowered = Program<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
         use std::collections::hash_map::Entry;
 
         /// Inserts the lowered def into the map if the name is unique,
@@ -82,51 +121,112 @@ impl<'hir> Lowerer<'hir> {
         }
 
         let mut program = Program {
-            function_defs: HashMap::with_capacity(ast_program.function_defs.len()),
-            struct_defs: HashMap::with_capacity(ast_program.struct_defs.len()),
-            choice_defs: HashMap::with_capacity(ast_program.choice_defs.len()),
+            function_defs: HashMap::with_capacity(self.function_defs.len()),
+            struct_defs: HashMap::with_capacity(self.struct_defs.len()),
+            choice_defs: HashMap::with_capacity(self.choice_defs.len()),
         };
 
-        for ast_def in ast_program.function_defs.iter() {
-            let def = self.lower_function_def(ast_def);
+        for ast_def in self.function_defs.iter() {
+            let def = ast_def.lower(lowerer);
             insert_or_push_err(
                 program.function_defs.entry(def.ident.string),
                 def,
-                &mut self.errors,
+                &mut lowerer.errors,
             );
         }
 
-        for ast_def in ast_program.struct_defs.iter() {
-            let def = self.lower_struct_def(ast_def);
+        for def in self.struct_defs.iter() {
+            let def = def.lower(lowerer);
             insert_or_push_err(
                 program.struct_defs.entry(def.ident.string),
                 def,
-                &mut self.errors,
-            );
+                &mut lowerer.errors,
+            )
         }
 
-        for ast_def in ast_program.choice_defs.iter() {
-            let def = self.lower_choice_def(ast_def);
+        for def in self.choice_defs.iter() {
+            let def = def.lower(lowerer);
             insert_or_push_err(
                 program.choice_defs.entry(def.ident.string),
                 def,
-                &mut self.errors,
-            );
+                &mut lowerer.errors,
+            )
         }
 
         program
     }
+}
 
-    pub fn lower_generic_params(
-        &mut self,
-        generic_params: Option<&ast::GenericParams<'_>>,
-    ) -> &'hir [Ident] {
-        match generic_params {
-            Some(ast::GenericParams::Single(ident)) => {
-                slice::from_ref(self.arena.idents.alloc(Ident::from(ident)))
+impl<'hir> Lower<'hir> for ast::StructDef<'_, '_> {
+    type Lowered = StructDef<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let generic_params = self
+            .generic_params
+            .as_ref()
+            .map(|generic_params| generic_params.lower(lowerer))
+            .unwrap_or_default();
+
+        let ty = lowerer.with_generic_params(generic_params, |lowerer| self.ty.lower(lowerer));
+        let ty = lowerer.alloc(ty);
+
+        StructDef {
+            ident: self.ident.into(),
+            generic_params,
+            ty,
+            span: self.span(),
+        }
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::ChoiceDef<'_, '_> {
+    type Lowered = ChoiceDef<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let generic_params = self
+            .generic_params
+            .as_ref()
+            .map(|generic_params| generic_params.lower(lowerer))
+            .unwrap_or_default();
+
+        let variants = match &self.variants {
+            ast::Variants::Never(_) => Map::default(),
+            ast::Variants::Variants(_, variants, last) => {
+                Map::new(lowerer.with_generic_params(generic_params, |lowerer| {
+                    lowerer.prealloc_slice(variants.len() + 1).extend(
+                        variants
+                            .iter()
+                            .map(|(variant, _pipe)| variant)
+                            .chain(Some(last))
+                            .map(|variant| {
+                                let ty = variant.ty.lower(lowerer);
+                                let ty = lowerer.alloc(ty);
+                                (variant.ident.into(), ty)
+                            }),
+                    )
+                }))
             }
-            Some(ast::GenericParams::CartesianProduct(_, ref types, ref last, _)) => {
-                self.arena.idents.alloc_slice(types.len() + 1).extend(
+        };
+
+        ChoiceDef {
+            ident: self.ident.into(),
+            generic_params,
+            variants,
+            span: self.span(),
+        }
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::GenericParams<'_> {
+    type Lowered = &'hir [Ident];
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        match self {
+            ast::GenericParams::Single(ident) => {
+                slice::from_ref(lowerer.arena.idents.alloc(Ident::from(ident)))
+            }
+            ast::GenericParams::CartesianProduct(_, ref types, ref last, _) => {
+                lowerer.prealloc_slice(types.len() + 1).extend(
                     types
                         .iter()
                         .map(|(ident, _star)| ident)
@@ -134,151 +234,113 @@ impl<'hir> Lowerer<'hir> {
                         .map(Ident::from),
                 )
             }
-            None => &[],
         }
     }
+}
 
-    pub fn lower_function_def(&mut self, def: &ast::FunctionDef<'_, '_>) -> FunctionDef<'hir> {
-        let ident = Ident::from(def.ident);
+impl<'hir> Lower<'hir> for ast::FunctionDef<'_, '_> {
+    type Lowered = FunctionDef<'hir>;
 
-        let (generic_params, ty) = def
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let (generic_params, ty) = self
             .explicit_types
             .as_ref()
             .map(|explicit_types| {
-                let generic_params =
-                    self.lower_generic_params(explicit_types.generic_params.as_ref());
+                let generic_params = explicit_types
+                    .generic_params
+                    .as_ref()
+                    .map(|x| x.lower(lowerer))
+                    .unwrap_or_default();
 
-                let ty = self.lower_type(explicit_types.ty);
-                let ty = Some(&*self.arena.types.alloc(ty));
+                let ty = explicit_types.ty.lower(lowerer);
+                let ty = Some(&*lowerer.arena.types.alloc(ty));
 
                 (generic_params, ty)
             })
             .unwrap_or_default();
 
         let function =
-            self.with_generic_params(generic_params, |this| this.lower_closure(&def.function));
+            lowerer.with_generic_params(generic_params, |lowerer| self.function.lower(lowerer));
 
         FunctionDef {
-            ident,
+            ident: self.ident.into(),
             generic_params,
             ty,
             function,
-            span: def.span(),
+            span: self.span(),
         }
     }
+}
 
-    pub fn lower_struct_def(&mut self, def: &ast::StructDef<'_, '_>) -> StructDef<'hir> {
-        let ident = Ident::from(def.ident);
-        let generic_params = self.lower_generic_params(def.generic_params.as_ref());
+impl<'hir> Lower<'hir> for ast::Expr<'_, '_> {
+    type Lowered = Expr<'hir>;
 
-        let ty = self.with_generic_params(generic_params, |this| this.lower_type(def.inner));
-        let ty = &*self.arena.types.alloc(ty);
-
-        StructDef {
-            ident,
-            generic_params,
-            ty,
-            span: def.span(),
-        }
-    }
-
-    pub fn lower_choice_def(&mut self, def: &ast::ChoiceDef<'_, '_>) -> ChoiceDef<'hir> {
-        let ident = Ident::from(def.ident);
-        let generic_params = self.lower_generic_params(def.generic_params.as_ref());
-
-        let variants = self.with_generic_params(generic_params, |this| match &def.variants {
-            ast::Variants::Never(_) => Map { entries: &[] },
-            ast::Variants::Variants(_, variants, last) => Map {
-                entries: this
-                    .arena
-                    .variant_defs
-                    .alloc_slice(variants.len() + 1)
-                    .extend(
-                        variants
-                            .iter()
-                            .map(|(variant_def, _pipe)| variant_def)
-                            .chain(Some(last))
-                            .map(|variant_def| {
-                                let ident = Ident::from(variant_def.ident);
-                                let ty = this.lower_type(variant_def.inner);
-                                let ty = &*this.arena.types.alloc(ty);
-                                (ident, ty)
-                            }),
-                    ),
-            },
-        });
-
-        ChoiceDef {
-            ident,
-            generic_params,
-            variants,
-            span: def.span(),
-        }
-    }
-
-    pub fn lower_expr(&mut self, expr: &ast::Expr<'_, '_>) -> Expr<'hir> {
-        let kind = match expr {
-            ast::Expr::Paren(paren) => return self.lower_expr(paren.expr),
-            ast::Expr::Symbol(symbol) => ExprKind::Symbol(Self::lower_symbol(symbol)),
-            ast::Expr::Lit(lit) => match self.lower_lit(lit) {
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let kind = match self {
+            ast::Expr::Paren(paren) => return paren.expr.lower(lowerer),
+            ast::Expr::Symbol(symbol) => ExprKind::Symbol(match symbol {
+                ast::Symbol::Plus(_) => Symbol::Plus,
+                ast::Symbol::Minus(_) => Symbol::Minus,
+                ast::Symbol::Star(_) => Symbol::Star,
+                ast::Symbol::Dot(_) => Symbol::Dot,
+                ast::Symbol::DotDot(_) => Symbol::DotDot,
+                ast::Symbol::Semi(_) => Symbol::Semi,
+                ast::Symbol::Percent(_) => Symbol::Percent,
+                ast::Symbol::Slash(_) => Symbol::Slash,
+                ast::Symbol::Eq(_) => Symbol::Eq,
+                ast::Symbol::Lt(_) => Symbol::Lt,
+                ast::Symbol::Gt(_) => Symbol::Gt,
+                ast::Symbol::Le(_) => Symbol::Le,
+                ast::Symbol::Ge(_) => Symbol::Ge,
+            }),
+            ast::Expr::Lit(lit) => match lit.lower(lowerer) {
                 Ok(lit) => ExprKind::Lit(lit),
                 Err(()) => ExprKind::Error,
             },
             ast::Expr::Record(record) => ExprKind::Record(Map {
-                entries: self.lower_record(record, &self.arena.expr_fields, |field, _, lowerer| {
+                entries: lowerer.lower_record(record, |field, _, lowerer| {
                     field.value.map(|(_colon, expr)| {
-                        let expr = lowerer.lower_expr(expr);
-                        &*lowerer.arena.exprs.alloc(expr)
+                        let expr = expr.lower(lowerer);
+                        lowerer.alloc(expr)
                     })
                 }),
             }),
             ast::Expr::Constructor(constructor) => {
-                let (name, inner) = self.lower_constructor(constructor);
-                ExprKind::Constructor(name, inner)
+                ExprKind::Constructor(constructor.lower(lowerer))
             }
-            ast::Expr::Closure(closure) => ExprKind::Closure(self.lower_closure(closure)),
-            ast::Expr::Appl(appl) => ExprKind::Appl(self.lower_appl(appl)),
+            ast::Expr::Closure(closure) => ExprKind::Closure(closure.lower(lowerer)),
+            ast::Expr::Appl(appl) => ExprKind::Appl(appl.lower(lowerer)),
             ast::Expr::Error => todo!(),
         };
 
         Expr {
-            span: expr.span(),
+            span: self.span(),
             kind,
         }
     }
+}
 
-    fn lower_symbol(symbol: &ast::Symbol) -> Symbol {
-        match symbol {
-            ast::Symbol::Plus(_) => Symbol::Plus,
-            ast::Symbol::Minus(_) => Symbol::Minus,
-            ast::Symbol::Star(_) => Symbol::Star,
-            ast::Symbol::Dot(_) => Symbol::Dot,
-            ast::Symbol::DotDot(_) => Symbol::DotDot,
-            ast::Symbol::Semi(_) => Symbol::Semi,
-            ast::Symbol::Percent(_) => Symbol::Percent,
-            ast::Symbol::Slash(_) => Symbol::Slash,
-            ast::Symbol::Eq(_) => Symbol::Eq,
-            ast::Symbol::Lt(_) => Symbol::Lt,
-            ast::Symbol::Gt(_) => Symbol::Gt,
-            ast::Symbol::Le(_) => Symbol::Le,
-            ast::Symbol::Ge(_) => Symbol::Ge,
-        }
-    }
+impl<'hir> Lower<'hir> for ast::Lit<'_> {
+    type Lowered = Result<Lit, ()>;
 
-    fn lower_lit(&mut self, lit: &ast::Lit<'_>) -> Result<Lit, ()> {
-        match lit {
-            ast::Lit::Integer(integer) => self.lower_lit_int(integer).map(Lit::Integer),
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        match self {
+            ast::Lit::Integer(integer) => integer.lower(lowerer).map(Lit::Integer),
             ast::Lit::Ident(ident) => Ok(Lit::Ident(Ident::from(ident))),
             ast::Lit::True(_) => Ok(Lit::Bool(true)),
             ast::Lit::False(_) => Ok(Lit::Bool(false)),
         }
     }
+}
 
-    fn lower_lit_int(&mut self, integer: &ast::tok::Integer<'_>) -> Result<u32, ()> {
+impl<'hir> Lower<'hir> for ast::tok::Integer<'_> {
+    type Lowered = Result<u32, ()>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
         // Algorithm: https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
         let mut value: u32 = 0;
         let mut count = 0;
-        for byte in integer.literal.bytes().filter(|&b| b != b'_') {
+        for byte in self.literal.bytes().filter(|&b| b != b'_') {
             value = value.wrapping_mul(10);
             value = value.wrapping_add((byte - b'0') as u32);
             count += 1;
@@ -288,73 +350,120 @@ impl<'hir> Lowerer<'hir> {
         let min_value = 10u32.pow(max - 1);
 
         if count > max || (count == max && value < min_value) {
-            self.errors.push(LoweringError::IntegerLiteralOverflow {
-                literal: integer.to_string(),
-                span: integer.span(),
+            lowerer.errors.push(LoweringError::IntegerLiteralOverflow {
+                literal: self.to_string(),
+                span: self.span(),
             });
             Err(())
         } else {
             Ok(value)
         }
     }
+}
 
-    fn lower_record<T: LowerToFieldValue, F>(
-        &mut self,
-        record: &ast::Record<'_, T>,
-        field_arena: &'hir DroplessArena<(Ident, T::Lowered<'hir>)>,
-        lower_field_fn: F,
-    ) -> &'hir [(Ident, T::Lowered<'hir>)]
-    where
-        F: Fn(&ast::Field<'_, T>, Ident, &mut Lowerer<'hir>) -> T::Lowered<'hir>,
-    {
-        let fields = field_arena
-            .alloc_slice(record.fields().count())
-            .extend(record.fields().map(|field| {
-                let ident = Ident::from(field.ident);
-                (ident, lower_field_fn(field, ident, self))
-            }));
+impl<'hir> Lower<'hir> for ast::Path<'_> {
+    type Lowered = &'hir [Ident];
 
-        fields.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-        fields
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        lowerer.prealloc_slice(self.parts.len() + 1).extend(
+            self.parts
+                .iter()
+                .map(|(ident, _)| ident.into())
+                .chain(Some(self.ident.into())),
+        )
     }
+}
 
-    fn lower_constructor(
-        &mut self,
-        constructor: &ast::Constructor<'_, '_>,
-    ) -> (Ident, ExprRef<'hir>) {
-        let ident = Ident::from(constructor.ident);
-        let expr = self.lower_expr(constructor.inner);
-        let inner = self.arena.exprs.alloc(expr);
+impl<'hir, T> Lower<'hir> for ast::Constructor<'_, '_, T>
+where
+    T: Lower<'hir>,
+    T::Lowered: ArenaAlloc<'hir> + 'hir,
+{
+    type Lowered = Constructor<'hir, T::Lowered>;
 
-        (ident, inner)
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let path = self.path.lower(lowerer);
+        let inner = self.inner.lower(lowerer);
+        let inner = lowerer.alloc(inner);
+
+        Constructor { path, inner }
     }
+}
 
-    fn lower_closure(&mut self, closure: &ast::Closure<'_, '_>) -> &'hir [Arm<'hir>] {
-        match closure {
+impl<'hir> Lower<'hir> for ast::Closure<'_, '_> {
+    type Lowered = &'hir [Arm<'hir>];
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        match self {
             ast::Closure::NonPiecewise(arm) => {
-                let arm = self.lower_arm(arm);
-                slice::from_ref(self.arena.arms.alloc(arm))
+                let arm = arm.lower(lowerer);
+                slice::from_ref(lowerer.alloc(arm))
             }
-            ast::Closure::Piecewise(_, arms, last, _) => self
-                .arena
-                .arms
-                .alloc_slice(arms.len() + last.is_some() as usize)
+            ast::Closure::Piecewise(_, arms, last, _) => lowerer
+                .prealloc_slice(arms.len() + last.is_some() as usize)
                 .extend(
                     arms.iter()
                         .map(|(arm, _comma)| arm)
                         .chain(last.as_ref())
-                        .map(|arm| self.lower_arm(arm)),
+                        .map(|arm| arm.lower(lowerer)),
                 ),
             ast::Closure::Empty(_, _) => &[],
         }
     }
+}
 
-    fn lower_appl(&mut self, appl: &ast::Appl<'_, '_>) -> Appl<'hir> {
-        let mut slots = self.arena.exprs.alloc_slice(3);
+impl<'hir> Lower<'hir> for ast::Arm<'_, '_> {
+    type Lowered = Arm<'hir>;
 
-        slots.push(self.lower_expr(appl.lhs));
-        slots.push(self.lower_expr(appl.fun));
-        slots.push(self.lower_expr(appl.rhs));
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let params = lowerer
+            .prealloc_slice(self.params.len() + self.last.is_some() as usize)
+            .extend(
+                self.params
+                    .iter()
+                    .map(|(arm, _comma)| arm)
+                    .chain(self.last.as_ref())
+                    .map(|param| param.lower(lowerer)),
+            );
+
+        if params.len() > 2 {
+            lowerer.errors.push(LoweringError::TooManyClosureParams {
+                all_params: params.iter().map(HasSpan::span).collect(),
+            });
+        }
+
+        let body = self.body.lower(lowerer);
+        let body = lowerer.alloc(body);
+
+        Arm { params, body }
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::Param<'_, '_> {
+    type Lowered = Param<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let pat = self.pat.lower(lowerer);
+        let pat = lowerer.alloc(pat);
+
+        let ascription = self.ascription.map(|(_colon, ty)| {
+            let ty = ty.lower(lowerer);
+            lowerer.alloc(ty)
+        });
+
+        Param { pat, ascription }
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::Appl<'_, '_> {
+    type Lowered = Appl<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let mut slots = lowerer.prealloc_slice(3);
+
+        slots.push(self.lhs.lower(lowerer));
+        slots.push(self.fun.lower(lowerer));
+        slots.push(self.rhs.lower(lowerer));
 
         let parts = (slots.into_slice() as &'hir [Expr<'hir>])
             .try_into()
@@ -362,152 +471,128 @@ impl<'hir> Lowerer<'hir> {
 
         Appl { parts }
     }
+}
 
-    fn lower_arm(&mut self, arm: &ast::Arm<'_, '_>) -> Arm<'hir> {
-        let params = self
-            .arena
-            .params
-            .alloc_slice(arm.params.len() + arm.last.is_some() as usize)
-            .extend(
-                arm.params
-                    .iter()
-                    .map(|(arm, _comma)| arm)
-                    .chain(arm.last.as_ref())
-                    .map(|param| self.lower_param(param)),
-            );
+impl<'hir> Lower<'hir> for ast::Pat<'_, '_> {
+    type Lowered = Pat<'hir>;
 
-        if params.len() > 2 {
-            self.errors.push(LoweringError::TooManyClosureParams {
-                all_params: params.iter().map(HasSpan::span).collect(),
-            });
-        }
-
-        let body = self.lower_expr(arm.body);
-        let body = self.arena.exprs.alloc(body);
-
-        Arm { params, body }
-    }
-
-    fn lower_param(&mut self, param: &ast::Param<'_, '_>) -> Param<'hir> {
-        let pat = self.lower_pat(param.pat);
-        let pat = self.arena.pats.alloc(pat);
-
-        let ascription = param.ascription.map(|(_colon, ty)| {
-            let ty = self.lower_type(ty);
-            &*self.arena.types.alloc(ty)
-        });
-
-        Param { pat, ascription }
-    }
-
-    pub fn lower_pat(&mut self, pat: &ast::Pat<'_, '_>) -> Pat<'hir> {
-        let kind = match pat {
-            ast::Pat::Lit(lit) => match self.lower_lit(lit) {
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let kind = match self {
+            ast::Pat::Lit(lit) => match lit.lower(lowerer) {
                 Ok(lit) => PatKind::Lit(lit),
                 Err(()) => PatKind::Error,
             },
             ast::Pat::Record(record) => PatKind::Record(Map {
-                entries: self.lower_record(record, &self.arena.pat_fields, |field, _, lowerer| {
+                entries: lowerer.lower_record(record, |field, _, lowerer| {
                     field.value.map(|(_colon, pat)| {
-                        let pat = lowerer.lower_pat(pat);
+                        let pat = pat.lower(lowerer);
                         &*lowerer.arena.pats.alloc(pat)
                     })
                 }),
             }),
-            ast::Pat::Struct(ident, inner) => {
-                let ident = Ident::from(ident);
-                let inner = self.lower_pat(inner);
-                let inner = self.arena.pats.alloc(inner);
+            ast::Pat::Constructor(constructor) => {
+                let path = constructor.path.lower(lowerer);
+                let inner = constructor.inner.lower(lowerer);
+                let inner = lowerer.alloc(inner);
 
-                PatKind::Struct(ident, inner)
+                PatKind::Constructor(path, inner)
             }
         };
 
         Pat {
             kind,
-            span: pat.span(),
+            span: self.span(),
         }
     }
+}
 
-    pub fn lower_type(&mut self, ty: &ast::Type<'_, '_>) -> Type<'hir> {
-        let kind =
-            match ty {
-                ast::Type::Named(named) => self.lower_named_type(named),
-                ast::Type::Record(record) => {
-                    TypeKind::Record(Map {
-                        entries: self.lower_record(
-                            record,
-                            &self.arena.type_fields,
-                            |field, field_ident, lowerer| {
-                                if let Some((_colon, ty)) = field.value {
-                                    let ty = lowerer.lower_type(ty);
-                                    lowerer.arena.types.alloc(ty)
-                                } else {
-                                    lowerer.errors.push(
-                                        LoweringError::TypeRecordMissingFieldType { field_ident },
-                                    );
+impl<'hir> Lower<'hir> for ast::Type<'_, '_> {
+    type Lowered = Type<'hir>;
 
-                                    // TODO(quinn): allocating a unit variant feels silly...
-                                    &*lowerer.arena.types.alloc(Type {
-                                        kind: TypeKind::Error,
-                                        span: field.ident.span(),
-                                    })
-                                }
-                            },
-                        ),
-                    })
-                }
-                ast::Type::Error => todo!(),
-            };
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let kind = match self {
+            ast::Type::Named(named) => named.lower(lowerer),
+            ast::Type::Record(record) => TypeKind::Record(Map {
+                entries: lowerer.lower_record(record, |field, field_ident, lowerer| {
+                    if let Some((_colon, ty)) = field.value {
+                        let ty = ty.lower(lowerer);
+                        lowerer.alloc(ty)
+                    } else {
+                        lowerer
+                            .errors
+                            .push(LoweringError::TypeRecordMissingFieldType { field_ident });
+
+                        lowerer.alloc(Type {
+                            kind: TypeKind::Error,
+                            span: field.ident.span(),
+                        })
+                    }
+                }),
+            }),
+            ast::Type::Error => todo!(),
+        };
 
         Type {
             kind,
-            span: ty.span(),
+            span: self.span(),
         }
     }
+}
 
-    fn lower_generic_args(
-        &mut self,
-        generic_args: &ast::GenericArgs<'_, '_>,
-    ) -> &'hir [Type<'hir>] {
-        match generic_args {
+impl<'hir> Lower<'hir> for ast::GenericArgs<'_, '_> {
+    type Lowered = &'hir [Type<'hir>];
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        match self {
             ast::GenericArgs::Single(ty) => {
-                let ty = self.lower_type(ty);
-                slice::from_ref(self.arena.types.alloc(ty))
+                let ty = ty.lower(lowerer);
+                slice::from_ref(lowerer.alloc(ty))
             }
             ast::GenericArgs::CartesianProduct(_, types, last, _) => {
-                self.arena.types.alloc_slice(types.len() + 1).extend(
+                lowerer.prealloc_slice(types.len() + 1).extend(
                     types
                         .iter()
                         .map(|(ty, _star)| ty)
                         .chain(Some(*last))
-                        .map(|ty| self.lower_type(ty)),
+                        .map(|ty| ty.lower(lowerer)),
                 )
             }
         }
     }
+}
 
-    fn lower_named_type(&mut self, named: &ast::NamedType<'_, '_>) -> TypeKind<'hir> {
-        let generic_args = named
+impl<'hir> Lower<'hir> for ast::NamedType<'_, '_> {
+    type Lowered = TypeKind<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let generic_args = self
             .generic_args
             .as_ref()
-            .map(|args| self.lower_generic_args(args))
+            .map(|args| args.lower(lowerer))
             .unwrap_or_default();
 
-        let ident = Ident::from(named.ident);
+        let path = self.path.lower(lowerer);
 
-        // Now that the ident and args are lowered, do some light name resolution.
+        let [ident] = path else {
+            // More than 1 item in the path, can't be a generic or a primitive
+            // Note: cannot have 0 elements since `ast::Path` has 1 inlined.
+            return TypeKind::Named(path, generic_args);
+        };
+
+        // Now that the path and args are lowered, do some light name resolution.
 
         let err = |reason| LoweringError::UnexpectedTypeArgs {
             reason,
-            problem_type_span: named.ident.span(),
+            problem_type_span: self.path.span(),
             arg_spans: generic_args.iter().map(HasSpan::span).collect(),
         };
 
-        let maybe_found_generic = self.in_scope_generic_params.and_then(|generic_params| {
-            (0..).zip(generic_params).find_map(|(index, param)| {
-                (param.string == ident.string).then_some((index, *param))
-            })
+        let maybe_found_generic = lowerer.in_scope_generic_params.and_then(|generic_params| {
+            generic_params
+                .iter()
+                .copied()
+                .enumerate()
+                .find(|(_, param)| param.string == ident.string)
         });
 
         if let Some((def_index, def_ident)) = maybe_found_generic {
@@ -518,19 +603,22 @@ impl<'hir> Lowerer<'hir> {
             // `struct Wrap I32 = I32` and the `I32` on the right will refer
             // to the generic type and not the primitive.
             if !generic_args.is_empty() {
-                self.errors
+                lowerer
+                    .errors
                     .push(err(UnexpectedTypeArgs::GenericParam { def_ident }));
             }
 
-            TypeKind::Generic(ident, def_index)
-        } else if let Ok(prim) = named.ident.literal.parse() {
+            TypeKind::Generic(def_ident, def_index as u32)
+        } else if let Ok(prim) = self.path.ident.literal.parse() {
             if !generic_args.is_empty() {
-                self.errors.push(err(UnexpectedTypeArgs::Primitive(prim)));
+                lowerer
+                    .errors
+                    .push(err(UnexpectedTypeArgs::Primitive(prim)));
             }
 
             TypeKind::Primitive(prim)
         } else {
-            TypeKind::Named(ident, generic_args)
+            TypeKind::Named(path, generic_args)
         }
     }
 }

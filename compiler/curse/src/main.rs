@@ -17,16 +17,16 @@ mod programs;
 
 #[derive(Debug, Diagnostic, Error)]
 #[error("{reason}")]
-pub struct Errors<Related: Diagnostic> {
+pub struct Errors<E: Diagnostic> {
     #[source_code]
     pub code: NamedSource,
     pub reason: &'static str,
 
     #[related]
-    pub errors: Vec<Related>,
+    pub errors: Vec<E>,
 }
 
-impl<Related: Diagnostic> Errors<Related> {
+impl<E: Diagnostic> Errors<E> {
     fn print_report(&self) {
         let mut buf = String::with_capacity(1024);
         GraphicalReportHandler::new()
@@ -57,9 +57,9 @@ fn main() {
         return;
     }
 
-    let hir_arena = Box::default();
+    let hir_arena = Box::new(curse_ast_lowering::make_hir_arena(&ast_program));
     let mut lowerer = curse_ast_lowering::Lowerer::new(&hir_arena);
-    let hir_program = lowerer.lower_program(&ast_program);
+    let hir_program = curse_ast_lowering::Lower::lower(&ast_program, &mut lowerer);
 
     if !lowerer.errors.is_empty() {
         Errors {

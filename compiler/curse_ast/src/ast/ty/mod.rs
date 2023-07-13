@@ -1,4 +1,4 @@
-use crate::Record;
+use crate::ast::Record;
 use curse_span::{HasSpan, Span};
 
 mod named;
@@ -9,9 +9,11 @@ pub enum Type<'ast, 'input> {
     Named(NamedType<'ast, 'input>),
     // Failing to specify the type of a field in a record should be reported during ast lowering,
     // not during parsing, so we allow for a type to be omitted in this representation.
-    Record(Record<'input, &'ast Type<'ast, 'input>>),
+    Record(Record<'input, TypeRef<'ast, 'input>>),
     Error,
 }
+
+pub type TypeRef<'ast, 'input> = &'ast Type<'ast, 'input>;
 
 impl HasSpan for Type<'_, '_> {
     fn start(&self) -> u32 {

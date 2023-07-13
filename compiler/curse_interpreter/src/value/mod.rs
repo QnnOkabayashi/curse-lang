@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
-use std::{fmt::Display, rc::Rc};
-
-use curse_hir::{Arm, Map};
+use curse_hir::hir::{Arm, Map};
 use curse_interner::InternedString;
+use std::{fmt::Display, rc::Rc};
 
 // We'll probably want reference counting??? Maybe we can do more fancy garbage collection or
 // borrow checking or something later, not sure
@@ -17,7 +16,7 @@ pub enum Value<'hir> {
     String(&'hir str),
     Bool(bool),
     Function(&'hir [Arm<'hir>]),
-    Record(Map<'hir, InternedString, ValueRef<'hir>>),
+    Record(Map<'hir, ValueRef<'hir>>),
     Choice {
         tag: InternedString,
         value: ValueRef<'hir>,

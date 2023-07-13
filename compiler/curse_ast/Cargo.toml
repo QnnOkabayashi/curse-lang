@@ -4,6 +4,7 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
+typed-arena = "2.0.2"
 displaydoc = "0.2.3"
 smallvec = "1.10.0"
 curse_span = { path = "../curse_span" }

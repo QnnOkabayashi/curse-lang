@@ -44,9 +44,18 @@ impl<T> Arena<T> {
 
     /// Returns the remaining capacity.
     pub fn remaining(&self) -> usize {
-        // we use wrapping_sub because it emits less instructions,
-        // and it should never wrap since `next` is always <= `storage.len()`
-        self.capacity.wrapping_sub(self.entries.get())
+        // Could optimize using wrapping sub
+        // but does it make any noticable difference?
+        self.capacity - self.entries.get()
+    }
+
+    pub fn alloc(&self, value: T) -> &mut T {
+        self.try_alloc(value).unwrap_or_else(|_| {
+            panic!(
+                "ran out of capacity for arena of type `{}`",
+                std::any::type_name::<T>()
+            )
+        })
     }
 
     /// Allocates a value in the arena, or returns the value if there's no remaining capacity.
@@ -62,7 +71,7 @@ impl<T> Arena<T> {
 
             ptr::write(ptr, value);
 
-            self.entries.set(self.entries.get().wrapping_add(1));
+            self.entries.set(self.entries.get() + 1);
 
             // SAFETY: each spot in the array is only aliased on creation here,
             // which means this is the only unique reference.
@@ -70,11 +79,25 @@ impl<T> Arena<T> {
         }
     }
 
-    pub fn try_prealloc_slice(&self, capacity: usize) -> Result<SliceGuard<'_, T>, ()> {
+    pub fn prealloc_slice(&self, capacity: usize) -> SliceGuard<'_, T> {
+        self.try_prealloc_slice(capacity).unwrap_or_else(|oom| {
+            panic!(
+                "requested: {}, remaining: {}, for arena of type `{}`",
+                oom.requested,
+                oom.remaining,
+                std::any::type_name::<T>()
+            )
+        })
+    }
+
+    pub fn try_prealloc_slice(&self, capacity: usize) -> Result<SliceGuard<'_, T>, Oom> {
         let remaining = self.remaining();
 
         if capacity > remaining {
-            return Err(());
+            return Err(Oom {
+                requested: capacity,
+                remaining,
+            });
         }
 
         let index = self.entries.get();
@@ -93,6 +116,12 @@ impl<T> Arena<T> {
             _marker: PhantomData,
         })
     }
+}
+
+#[derive(Debug)]
+pub struct Oom {
+    pub requested: usize,
+    pub remaining: usize,
 }
 
 impl<T> fmt::Debug for Arena<T> {

@@ -1,4 +1,5 @@
-use crate::{ast_struct, tok, Expr, Pat, Type};
+use crate::ast::{tok, Expr, Pat, Type};
+use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
 #[derive(Clone, Debug)]
@@ -12,6 +13,18 @@ pub enum Closure<'ast, 'input> {
         tok::RParen,
     ),
     Empty(tok::LParen, tok::RParen),
+}
+
+impl<'ast, 'input> Closure<'ast, 'input> {
+    pub fn arms(&self) -> impl Iterator<Item = &Arm<'ast, 'input>> {
+        let (arms, last) = match self {
+            Closure::NonPiecewise(arm) => (&[] as &[_], Some(arm)),
+            Closure::Piecewise(_, arms, last, _) => (arms.as_slice(), last.as_ref()),
+            Closure::Empty(_, _) => (&[] as &[_], None),
+        };
+
+        arms.iter().map(|(arm, _comma)| arm).chain(last)
+    }
 }
 
 impl HasSpan for Closure<'_, '_> {
@@ -50,6 +63,12 @@ ast_struct! {
         pub last: Option<Param<'ast, 'input>>,
         pub close: tok::Pipe,
         pub body: &'ast Expr<'ast, 'input>,
+    }
+}
+
+impl<'ast, 'input> Arm<'ast, 'input> {
+    pub fn params_len(&self) -> usize {
+        self.params.len() + self.last.is_some() as usize
     }
 }
 

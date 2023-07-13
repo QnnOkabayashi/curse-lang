@@ -1,4 +1,4 @@
-use crate::{ast_struct, tok};
+use crate::{ast::tok, ast_struct};
 use curse_span::HasSpan;
 
 ast_struct! {
@@ -20,6 +20,10 @@ ast_struct! {
 }
 
 impl<'input, T> Record<'input, T> {
+    pub fn len(&self) -> usize {
+        self.fields.len() + self.trailing.is_some() as usize
+    }
+
     pub fn fields(&self) -> impl Iterator<Item = &Field<'input, T>> {
         self.fields
             .iter()

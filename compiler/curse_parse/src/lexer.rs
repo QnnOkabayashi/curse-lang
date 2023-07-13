@@ -1,4 +1,4 @@
-use curse_ast::tok;
+use curse_ast::ast::tok;
 use curse_span::{HasSpan, Span};
 use logos::Logos;
 use std::fmt;
@@ -14,7 +14,7 @@ enum Word {
 }
 
 // TODO(quinn): this function can definitely be improved
-fn word(lex: &logos::Lexer<'_, LogosToken>) -> Word {
+fn lex_word(lex: &logos::Lexer<'_, LogosToken>) -> Word {
     let mut chars = lex.slice().chars();
     let first = chars.next().expect("at least 1 because of `\\w+`");
 
@@ -42,7 +42,7 @@ macro_rules! declare_tokens {
         #[logos(skip r"\s+")] // Whitespace
         #[logos(skip r"//[^\r\n]*")] // Comments
         enum LogosToken {
-            #[regex("\\w+", word)]
+            #[regex("\\w+", lex_word)]
             Word(Word),
             $(
                 #[token($tok)]
@@ -53,8 +53,8 @@ macro_rules! declare_tokens {
         #[derive(Copy, Clone, Debug)]
         pub enum Token<'input> {
             Ident(tok::Ident<'input>),
+            TypeIdent(tok::Ident<'input>),
             Integer(tok::Integer<'input>),
-            TypeIdent(tok::TypeIdent<'input>),
             $(
                 $(#[$attr])*
                 $name(tok::$name),
@@ -65,8 +65,8 @@ macro_rules! declare_tokens {
             pub fn span(&self) -> Span {
                 match self {
                     Token::Ident(tok) => tok.span(),
-                    Token::Integer(tok) => tok.span(),
                     Token::TypeIdent(tok) => tok.span(),
+                    Token::Integer(tok) => tok.span(),
                     $(
                         Token::$name(tok) => tok.span(),
                     )*
@@ -78,8 +78,8 @@ macro_rules! declare_tokens {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self {
                     Token::Ident(tok) => f.write_str(tok.literal),
-                    Token::Integer(tok) => f.write_str(tok.literal),
                     Token::TypeIdent(tok) => f.write_str(tok.literal),
+                    Token::Integer(tok) => f.write_str(tok.literal),
                     $(
                         Token::$name(_) => f.write_str($tok),
                     )*
@@ -113,7 +113,7 @@ macro_rules! declare_tokens {
                             location: span.start,
                             literal: self.lex.slice(),
                         }),
-                        Word::TypeIdent => Token::TypeIdent(tok::TypeIdent {
+                        Word::TypeIdent => Token::TypeIdent(tok::Ident {
                             location: span.start,
                             literal: self.lex.slice(),
                         }),
@@ -157,8 +157,8 @@ declare_tokens! {
     "/" => Slash,
     "|" => Pipe,
     "fn" => Fn,
-    "struct" => Struct,
     "choice" => Choice,
+    "struct" => Struct,
     "{" => LBrace,
     "}" => RBrace,
     "->" => Arrow,

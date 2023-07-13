@@ -1,4 +1,5 @@
-use crate::{ast_struct, tok, Record};
+use crate::ast::{tok, Constructor, Lit, Record};
+use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
 mod closure;
@@ -9,12 +10,14 @@ pub enum Expr<'ast, 'input> {
     Paren(Paren<'ast, 'input>),
     Symbol(Symbol),
     Lit(Lit<'input>),
-    Record(Record<'input, &'ast Expr<'ast, 'input>>),
-    Constructor(Constructor<'ast, 'input>),
-    Closure(Closure<'ast, 'input>),
+    Record(Record<'input, ExprRef<'ast, 'input>>),
+    Constructor(Constructor<'ast, 'input, Self>),
+    Closure(&'ast Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
     Error,
 }
+
+pub type ExprRef<'ast, 'input> = &'ast Expr<'ast, 'input>;
 
 ast_struct! {
     #[derive(Clone, Debug)]
@@ -40,22 +43,6 @@ pub enum Symbol {
     Gt(tok::Gt),
     Le(tok::Le),
     Ge(tok::Ge),
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum Lit<'input> {
-    Integer(tok::Integer<'input>),
-    Ident(tok::Ident<'input>),
-    True(tok::True),
-    False(tok::False),
-}
-
-ast_struct! {
-    #[derive(Clone, Debug)]
-    pub struct Constructor<'ast, 'input> {
-        pub ident: tok::TypeIdent<'input>,
-        pub inner: &'ast Expr<'ast, 'input>,
-    }
 }
 
 ast_struct! {
@@ -173,45 +160,6 @@ impl HasSpan for Symbol {
             Symbol::Le(le) => le.span(),
             Symbol::Ge(ge) => ge.span(),
         }
-    }
-}
-
-impl HasSpan for Lit<'_> {
-    fn start(&self) -> u32 {
-        match self {
-            Lit::Integer(integer) => integer.start(),
-            Lit::Ident(ident) => ident.start(),
-            Lit::True(true_lit) => true_lit.start(),
-            Lit::False(false_lit) => false_lit.start(),
-        }
-    }
-
-    fn end(&self) -> u32 {
-        match self {
-            Lit::Integer(integer) => integer.end(),
-            Lit::Ident(ident) => ident.end(),
-            Lit::True(true_lit) => true_lit.end(),
-            Lit::False(false_lit) => false_lit.end(),
-        }
-    }
-
-    fn span(&self) -> Span {
-        match self {
-            Lit::Integer(integer) => integer.span(),
-            Lit::Ident(ident) => ident.span(),
-            Lit::True(true_lit) => true_lit.span(),
-            Lit::False(false_lit) => false_lit.span(),
-        }
-    }
-}
-
-impl HasSpan for Constructor<'_, '_> {
-    fn start(&self) -> u32 {
-        self.ident.start()
-    }
-
-    fn end(&self) -> u32 {
-        self.inner.end()
     }
 }
 

@@ -1,4 +1,4 @@
-use curse_hir::PrimitiveType;
+use curse_hir::hir::PrimitiveType;
 use curse_interner::{Ident, InternedString};
 use curse_span::{HasSpan, Span};
 use miette::{Diagnostic, LabeledSpan};
@@ -14,7 +14,7 @@ pub enum LoweringError {
         span: Span,
     },
     TooManyClosureParams {
-        // at least 3
+        /// at least 3
         all_params: Vec<Span>,
     },
     MultipleDefsWithSameName {

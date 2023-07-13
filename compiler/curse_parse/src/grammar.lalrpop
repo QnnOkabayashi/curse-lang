@@ -1,7 +1,7 @@
 use crate::{lexer::*, Parser};
-use curse_ast::{
+use curse_ast::ast::{
     tok, Appl, Arm, ChoiceDef, Closure, Constructor, ExplicitTypes, Expr, Field, FunctionDef,
-    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef,
+    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef, 
     Symbol, Type, VariantDef, Variants,
 };
 
@@ -19,8 +19,8 @@ extern {
         // it means that we're waiting for the lexer to
         // give us the rhs.
         "ident literal" => Token::Ident(<tok::Ident<'input>>),
+        "type ident literal" => Token::TypeIdent(<tok::Ident<'input>>),
         "integer literal" => Token::Integer(<tok::Integer<'input>>),
-        "named type literal" => Token::TypeIdent(<tok::TypeIdent<'input>>),
         ":" => Token::Colon(<tok::Colon>),
         "::" => Token::ColonColon(<tok::ColonColon>),
         "," => Token::Comma(<tok::Comma>),
@@ -36,8 +36,8 @@ extern {
         "/" => Token::Slash(<tok::Slash>),
         "|" => Token::Pipe(<tok::Pipe>),
         "fn" => Token::Fn(<tok::Fn>),
-        "struct" => Token::Struct(<tok::Struct>),
         "choice" => Token::Choice(<tok::Choice>),
+        "struct" => Token::Struct(<tok::Struct>),
         "{" => Token::LBrace(<tok::LBrace>),
         "}" => Token::RBrace(<tok::RBrace>),
         "->" => Token::Arrow(<tok::Arrow>),
@@ -56,10 +56,8 @@ extern {
 /// === Term Aliases ===
 
 Ident: tok::Ident<'input> = "ident literal";
-
+TypeIdent: tok::Ident<'input> = "type ident literal";
 Integer: tok::Integer<'input> = "integer literal";
-
-TypeIdent: tok::TypeIdent<'input> = "named type literal";
 
 
 /// === Program ===
@@ -124,18 +122,9 @@ Field<T>: Field<'input, T> = {
 
 // Get an arena-allocated reference
 Ref<T>: &'ast T = {
-    T => &*parser.arena.alloc(<>),
+    T => parser.alloc(<>),
 }
 
-/// === Path ===
-
-Path<T>: Path<'input, T> = {
-    (Ident "::")* T => Path::new(<>),
-};
-
-// TypePath;
-// ConstructorPath;
-// ValuePath;
 
 /// === Types ===
 
@@ -154,7 +143,7 @@ GenericArgs: GenericArgs<'ast, 'input> = {
 };
 
 NamedType: NamedType<'ast, 'input> = {
-    Path<TypeIdent> GenericArgs? => NamedType::new(<>),
+    TypePath GenericArgs? => NamedType::new(<>),
 };
 
 
@@ -163,7 +152,29 @@ NamedType: NamedType<'ast, 'input> = {
 Pat: Pat<'ast, 'input> = {
     Lit => Pat::Lit(<>),
     Record<Ref<Pat>> => Pat::Record(<>),
-    Path<TypeIdent> Ref<Pat> => Pat::Constructor(<>),
+    Constructor<Pat> => Pat::Constructor(<>),
+};
+
+
+/// === Shared ===
+
+Lit: Lit<'input> = {
+    Integer => Lit::Integer(<>),
+    Ident => Lit::Ident(<>),
+    "true" => Lit::True(<>),
+    "false" => Lit::False(<>),
+};
+
+Path: Path<'input> = {
+    (Ident "::")* Ident => Path::new(<>),
+};
+
+TypePath: Path<'input> = {
+    (Ident "::")* TypeIdent => Path::new(<>),
+};
+
+Constructor<T>: Constructor<'ast, 'input, T> = {
+    TypePath ("::" TypeIdent)? Ref<T> => Constructor::new(<>),
 };
 
 
@@ -183,13 +194,6 @@ Symbol: Symbol = {
     ">" => Symbol::Gt(<>),
     "<=" => Symbol::Le(<>),
     ">=" => Symbol::Ge(<>),
-};
-
-Lit: Lit<'input> = {
-    Integer => Lit::Integer(<>),
-    Ident => Lit::Ident(<>),
-    "true" => Lit::True(<>),
-    "false" => Lit::False(<>),
 };
 
 ClosureNonpiecewise: Closure<'ast, 'input> = {
@@ -214,10 +218,6 @@ Param: Param<'ast, 'input> = {
     Ref<Pat> (":" Ref<Type>)? => Param::new(<>),
 };
 
-Constructor: Constructor<'ast, 'input> = {
-    Path<TypeIdent> Ref<EndExpr> => Constructor::new(<>),
-};
-
 Appl<Rhs>: Appl<'ast, 'input> = {
     Ref<Expr> Ref<Term> Ref<Rhs> => Appl::new(<>),
 };
@@ -231,7 +231,7 @@ Term: Expr<'ast, 'input> = {
     Symbol => Expr::Symbol(<>),
     Lit => Expr::Lit(<>),
     Record<Ref<EndExpr>> => Expr::Record(<>),
-    ClosurePiecewise => Expr::Closure(<>),
+    Ref<ClosurePiecewise> => Expr::Closure(<>),
     ! => {
         parser.errors.push(<>.error.into());
         Expr::Error
@@ -240,8 +240,8 @@ Term: Expr<'ast, 'input> = {
 
 EndTerm = {
     Term,
-    Constructor => Expr::Constructor(<>),
-    ClosureNonpiecewise => Expr::Closure(<>),
+    Constructor<EndExpr> => Expr::Constructor(<>),
+    Ref<ClosureNonpiecewise> => Expr::Closure(<>),
 };
 
 Expr = {

@@ -63,41 +63,6 @@ impl fmt::Debug for Integer<'_> {
     }
 }
 
-/// TypeIdents are like idents, but pascal case.
-#[derive(Copy, Clone)]
-pub struct TypeIdent<'input> {
-    pub location: u32,
-    pub literal: &'input str,
-}
-
-impl AsRef<str> for TypeIdent<'_> {
-    fn as_ref(&self) -> &str {
-        self.literal
-    }
-}
-
-impl HasSpan for TypeIdent<'_> {
-    fn start(&self) -> u32 {
-        self.location
-    }
-
-    fn end(&self) -> u32 {
-        self.location + self.literal.len() as u32
-    }
-}
-
-impl fmt::Display for TypeIdent<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self.literal, f)
-    }
-}
-
-impl fmt::Debug for TypeIdent<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.literal, f)
-    }
-}
-
 macro_rules! declare_tokens {
     ($($(#[$attr:meta])* $tok:literal => $name:ident,)*) => {
         $(
@@ -152,8 +117,8 @@ declare_tokens! {
     "/" => Slash,
     "|" => Pipe,
     "fn" => Fn,
-    "struct" => Struct,
     "choice" => Choice,
+    "struct" => Struct,
     "{" => LBrace,
     "}" => RBrace,
     "->" => Arrow,
