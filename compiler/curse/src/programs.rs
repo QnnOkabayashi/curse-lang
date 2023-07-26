@@ -34,6 +34,19 @@ choice Option T = Some T | None {}
 struct LinearMap (K * V) = Vec { key: K, value: V }
 "#;
 
+pub const REGIONS: &str = r#"
+fn fib = |n|
+    0 in |a|
+    1 in |b|
+    (
+        unique |{ a, b }|
+        0 .. n for |_i|
+            update |{ a, b }|
+            { a: b, b: a + b }
+    ) in ||
+    b
+"#;
+
 pub const BINARY_TREE: &str = r#"
 choice Option T = Some T | None {}
 

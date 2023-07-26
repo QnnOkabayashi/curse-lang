@@ -6,7 +6,6 @@ pub enum Pat<'ast, 'input> {
     Lit(Lit<'input>),
     Record(Record<'input, PatRef<'ast, 'input>>),
     Constructor(Constructor<'ast, 'input, Self>),
-    // TODO(quinn): add support for struct and choice patterns
 }
 
 pub type PatRef<'ast, 'input> = &'ast Pat<'ast, 'input>;

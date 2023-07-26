@@ -12,7 +12,7 @@ mod ty;
 pub use def::{
     ChoiceDef, ExplicitTypes, FunctionDef, GenericParams, StructDef, VariantDef, Variants,
 };
-pub use expr::{Appl, Arm, Closure, Expr, ExprRef, Param, Paren, Symbol};
+pub use expr::{Appl, Arm, Closure, Expr, ExprRef, Param, Paren, Region, RegionKind, Symbol};
 pub use pat::{Pat, PatRef};
 pub use program::Program;
 pub use record::{Field, Record};

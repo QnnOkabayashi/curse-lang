@@ -1,4 +1,4 @@
-use crate::ast::{tok, Constructor, Lit, Record};
+use crate::ast::{tok, Constructor, Lit, PatRef, Record};
 use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
@@ -14,6 +14,7 @@ pub enum Expr<'ast, 'input> {
     Constructor(Constructor<'ast, 'input, Self>),
     Closure(&'ast Closure<'ast, 'input>),
     Appl(Appl<'ast, 'input>),
+    Region(Region<'ast, 'input>),
     Error,
 }
 
@@ -54,6 +55,27 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    #[derive(Clone, Debug)]
+    pub struct Region<'ast, 'input> {
+        pub kind: RegionKind,
+        pub open: tok::Pipe,
+        // Should only be an ident or a record of idents with no values, e.g. `{ a, b }`.
+        // Anything else will be caught at lowering.
+        pub pat: PatRef<'ast, 'input>,
+        pub close: tok::Pipe,
+        pub body: ExprRef<'ast, 'input>,
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum RegionKind {
+    Unique(tok::Unique),
+    Shared(tok::Shared),
+    Update(tok::Update),
+    UniqueUpdate(tok::Unique, tok::Update),
+}
+
 // === impl Span ===
 
 impl HasSpan for Expr<'_, '_> {
@@ -66,6 +88,7 @@ impl HasSpan for Expr<'_, '_> {
             Expr::Constructor(constructor) => constructor.start(),
             Expr::Closure(closure) => closure.start(),
             Expr::Appl(appl) => appl.start(),
+            Expr::Region(region) => region.start(),
             Expr::Error => todo!(),
         }
     }
@@ -79,6 +102,7 @@ impl HasSpan for Expr<'_, '_> {
             Expr::Constructor(constructor) => constructor.end(),
             Expr::Closure(closure) => closure.end(),
             Expr::Appl(appl) => appl.end(),
+            Expr::Region(region) => region.end(),
             Expr::Error => todo!(),
         }
     }
@@ -92,6 +116,7 @@ impl HasSpan for Expr<'_, '_> {
             Expr::Constructor(constructor) => constructor.span(),
             Expr::Closure(closure) => closure.span(),
             Expr::Appl(appl) => appl.span(),
+            Expr::Region(region) => region.span(),
             Expr::Error => todo!(),
         }
     }
@@ -170,5 +195,47 @@ impl HasSpan for Appl<'_, '_> {
 
     fn end(&self) -> u32 {
         self.rhs.end()
+    }
+}
+
+impl HasSpan for Region<'_, '_> {
+    fn start(&self) -> u32 {
+        self.kind.start()
+    }
+
+    fn end(&self) -> u32 {
+        self.body.end()
+    }
+}
+
+impl HasSpan for RegionKind {
+    fn start(&self) -> u32 {
+        match self {
+            RegionKind::Unique(unique) => unique.start(),
+            RegionKind::Shared(shared) => shared.start(),
+            RegionKind::Update(update) => update.start(),
+            RegionKind::UniqueUpdate(unique, _update) => unique.start(),
+        }
+    }
+
+    fn end(&self) -> u32 {
+        match self {
+            RegionKind::Unique(unique) => unique.end(),
+            RegionKind::Shared(shared) => shared.end(),
+            RegionKind::Update(update) => update.end(),
+            RegionKind::UniqueUpdate(_unique, update) => update.end(),
+        }
+    }
+
+    fn span(&self) -> Span {
+        match self {
+            RegionKind::Unique(unique) => unique.span(),
+            RegionKind::Shared(shared) => shared.span(),
+            RegionKind::Update(update) => update.span(),
+            RegionKind::UniqueUpdate(unique, update) => Span {
+                start: unique.start(),
+                end: update.end(),
+            },
+        }
     }
 }

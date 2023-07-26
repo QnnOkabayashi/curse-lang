@@ -1,4 +1,5 @@
 use crate::hir::{Constructor, Lit, Map, PatRef, TypeRef};
+use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::fmt;
 
@@ -24,6 +25,7 @@ pub enum ExprKind<'hir> {
     Constructor(Constructor<'hir, Expr<'hir>>),
     Closure(&'hir [Arm<'hir>]),
     Appl(Appl<'hir>),
+    Region(Region<'hir>),
     Error,
 }
 
@@ -97,4 +99,21 @@ impl fmt::Debug for Appl<'_> {
             .field("rhs", self.rhs())
             .finish()
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Region<'hir> {
+    pub kind: RegionKind,
+    // Don't want it to store an ident,
+    // want it to store some semantic reference to the variable.
+    pub shadows: &'hir [Ident],
+    pub body: ExprRef<'hir>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum RegionKind {
+    Unique,
+    Shared,
+    Update,
+    UniqueUpdate,
 }

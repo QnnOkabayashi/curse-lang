@@ -1,10 +1,11 @@
+use crate::error::RegionError;
 use crate::{arena_alloc::ArenaAlloc, LoweringError, UnexpectedTypeArgs};
 use curse_arena::new::SliceGuard;
 use curse_ast::ast;
 use curse_hir::arena::HirArena;
 use curse_hir::hir::{
     Appl, Arm, ChoiceDef, Constructor, Expr, ExprKind, ExprRef, FunctionDef, Lit, Map, Param, Pat,
-    PatKind, PatRef, Program, StructDef, Symbol, Type, TypeKind, TypeRef,
+    PatKind, PatRef, Program, Region, RegionKind, StructDef, Symbol, Type, TypeKind, TypeRef,
 };
 use curse_interner::{Ident, InternedString};
 use curse_span::HasSpan;
@@ -310,6 +311,7 @@ impl<'hir> Lower<'hir> for ast::Expr<'_, '_> {
             }
             ast::Expr::Closure(closure) => ExprKind::Closure(closure.lower(lowerer)),
             ast::Expr::Appl(appl) => ExprKind::Appl(appl.lower(lowerer)),
+            ast::Expr::Region(region) => ExprKind::Region(region.lower(lowerer)),
             ast::Expr::Error => todo!(),
         };
 
@@ -470,6 +472,58 @@ impl<'hir> Lower<'hir> for ast::Appl<'_, '_> {
             .expect("took 3, so slice has to be 3");
 
         Appl { parts }
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::Region<'_, '_> {
+    type Lowered = Region<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let kind = match self.kind {
+            ast::RegionKind::Unique(_) => RegionKind::Unique,
+            ast::RegionKind::Shared(_) => RegionKind::Shared,
+            ast::RegionKind::Update(_) => RegionKind::Update,
+            ast::RegionKind::UniqueUpdate(_, _) => RegionKind::UniqueUpdate,
+        };
+
+        let body = self.body.lower(lowerer);
+        let body = lowerer.alloc(body);
+
+        let shadows = match self.pat {
+            ast::Pat::Lit(lit) => match lit {
+                ast::Lit::Ident(ident) => Ok(slice::from_ref(lowerer.alloc(Ident::from(ident)))),
+                ast::Lit::Integer(int) => Err((RegionError::LiteralNumber, int.span())),
+                ast::Lit::True(tru) => Err((RegionError::LiteralTrue, tru.span())),
+                ast::Lit::False(fals) => Err((RegionError::LiteralFalse, fals.span())),
+            }
+            .unwrap_or_else(|(err, span)| {
+                lowerer.errors.push(LoweringError::Region(err, span));
+                &[]
+            }),
+            ast::Pat::Record(record) => {
+                lowerer
+                    .prealloc_slice(record.len())
+                    .extend(record.fields().filter_map(|field| {
+                        if field.value.is_some() {
+                            // filter map so we can later make this push an err and return none
+                            lowerer.errors.push(LoweringError::Region(
+                                RegionError::RecordWithValue,
+                                field.span(),
+                            ));
+                            None
+                        } else {
+                            Some(Ident::from(field.ident))
+                        }
+                    }))
+            }
+            ast::Pat::Constructor(_) => todo!("constructors in regions are current unsupported"),
+        };
+
+        Region {
+            kind,
+            shadows,
+            body,
+        }
     }
 }
 

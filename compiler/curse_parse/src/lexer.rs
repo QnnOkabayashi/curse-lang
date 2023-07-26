@@ -171,6 +171,9 @@ declare_tokens! {
 
     "true" => True,
     "false" => False,
+    "unique" => Unique,
+    "shared" => Shared,
+    "update" => Update,
 }
 
 #[derive(Copy, Clone, Debug)]

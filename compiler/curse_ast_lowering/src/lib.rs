@@ -58,6 +58,14 @@ mod counter {
             self.idents += generic_params.len();
         }
 
+        fn visit_region(&mut self, region: &ast::Region<'_, '_>) {
+            self.idents += match region.pat {
+                ast::Pat::Lit(_) => 1,
+                ast::Pat::Record(record) => record.len(),
+                ast::Pat::Constructor(_) => 0,
+            }
+        }
+
         fn visit_arm(&mut self, _arm: &ast::Arm<'_, '_>) {
             self.arms += 1;
         }

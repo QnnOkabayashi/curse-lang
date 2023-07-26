@@ -40,7 +40,7 @@ impl<E: Diagnostic> Errors<E> {
 fn main() {
     curse_interner::init();
 
-    let input: &str = programs::BINARY_TREE;
+    let input: &str = programs::REGIONS;
 
     let ast_arena = Box::default();
     let mut parser = curse_parse::Parser::new(&ast_arena);

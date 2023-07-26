@@ -164,6 +164,7 @@ dependencies = [
  "curse_interner",
  "curse_span",
  "miette",
+ "thiserror",
 ]
 
 [[package]]

@@ -20,6 +20,8 @@ pub mod visit {
 
         fn visit_appl(&mut self, _appl: &ast::Appl<'_, '_>) {}
 
+        fn visit_region(&mut self, _region: &ast::Region<'_, '_>) {}
+
         fn visit_arm(&mut self, _arm: &ast::Arm<'_, '_>) {}
 
         fn visit_closure(&mut self, _closure: &ast::Closure<'_, '_>) {}
@@ -144,6 +146,13 @@ pub mod visit {
             self.visit_expr(appl.rhs);
         }
 
+
+
+        fn visit_region(&mut self, region: &ast::Region<'_, '_>) {
+            self.visitor.visit_region(region);
+            self.visit_expr(region.body);
+        }
+
         fn visit_arm(&mut self, arm: &ast::Arm<'_, '_>) {
             self.visitor.visit_arm(arm);
             arm.params
@@ -171,6 +180,7 @@ pub mod visit {
                 ast::Expr::Constructor(constructor) => self.visit_expr_constructor(constructor),
                 ast::Expr::Closure(closure) => self.visit_closure(closure),
                 ast::Expr::Appl(appl) => self.visit_appl(appl),
+                ast::Expr::Region(region) => self.visit_region(region),
                 ast::Expr::Error => {}
             }
         }

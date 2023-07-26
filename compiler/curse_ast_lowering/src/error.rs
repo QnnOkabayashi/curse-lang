@@ -3,6 +3,7 @@ use curse_interner::{Ident, InternedString};
 use curse_span::{HasSpan, Span};
 use miette::{Diagnostic, LabeledSpan};
 use std::{fmt, iter};
+use thiserror::Error;
 
 #[derive(Debug)]
 pub enum LoweringError {
@@ -27,6 +28,19 @@ pub enum LoweringError {
         problem_type_span: Span,
         arg_spans: Vec<Span>,
     },
+    Region(RegionError, Span),
+}
+
+#[derive(Debug, Error)]
+pub enum RegionError {
+    #[error("cannot shadow boolean literal `true`")]
+    LiteralTrue,
+    #[error("cannot shadow boolean literal `false`")]
+    LiteralFalse,
+    #[error("cannot shadow number literal")]
+    LiteralNumber,
+    #[error("cannot shadow a record with fixed values")]
+    RecordWithValue,
 }
 
 #[derive(Debug)]
@@ -65,6 +79,7 @@ impl fmt::Display for LoweringError {
                     "type arguments are not allowed on primitive type `{prim:?}`"
                 ),
             },
+            LoweringError::Region(err, _) => fmt::Display::fmt(err, f),
         }
     }
 }
@@ -83,6 +98,9 @@ impl Diagnostic for LoweringError {
                 Some(Box::new(format!("use a name other than `{ident}`")))
             }
             LoweringError::UnexpectedTypeArgs { .. } => Some(Box::new("remove the type arguments")),
+            LoweringError::Region(_, _) => {
+                Some(Box::new("use an identifer, or a record of identifiers"))
+            }
         }
     }
 
@@ -152,6 +170,20 @@ impl Diagnostic for LoweringError {
                         .chain(arg_labels),
                     )),
                 }
+            }
+            LoweringError::Region(err, span) => {
+                Some(Box::new(iter::once(LabeledSpan::at(
+                    span.start_len(),
+                    match err {
+                        RegionError::LiteralTrue => "`true` not allowed here",
+                        RegionError::LiteralFalse => "`false` not allowed here",
+                        RegionError::LiteralNumber => "numberic literal not allowed here",
+                        RegionError::RecordWithValue => {
+                            "record patterns with fixed value now allowed here"
+                        }
+                    },
+                ))))
+                //
             }
         }
     }

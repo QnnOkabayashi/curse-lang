@@ -41,3 +41,17 @@ impl<T> HasSpan for Record<'_, T> {
         self.rbrace.end()
     }
 }
+
+impl<T: HasSpan> HasSpan for Field<'_, T> {
+    fn start(&self) -> u32 {
+        self.ident.start()
+    }
+
+    fn end(&self) -> u32 {
+        if let Some((_, value)) = self.value.as_ref() {
+            value.end()
+        } else {
+            self.ident.end()
+        }
+    }
+}

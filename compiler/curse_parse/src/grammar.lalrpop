@@ -3,6 +3,7 @@ use curse_ast::ast::{
     tok, Appl, Arm, ChoiceDef, Closure, Constructor, ExplicitTypes, Expr, Field, FunctionDef,
     GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef, 
     Symbol, Type, VariantDef, Variants,
+    Region, RegionKind,
 };
 
 grammar<'ast, 'input>(parser: &mut Parser<'ast, 'input>);
@@ -50,6 +51,9 @@ extern {
 
         "true" => Token::True(<tok::True>),
         "false" => Token::False(<tok::False>),
+        "unique" => Token::Unique(<tok::Unique>),
+        "shared" => Token::Shared(<tok::Shared>),
+        "update" => Token::Update(<tok::Update>),
     }
 }
 
@@ -222,6 +226,17 @@ Appl<Rhs>: Appl<'ast, 'input> = {
     Ref<Expr> Ref<Term> Ref<Rhs> => Appl::new(<>),
 };
 
+Region: Region<'ast, 'input> = {
+    RegionKind "|" Ref<Pat> "|" Ref<EndExpr> => Region::new(<>),
+};
+
+RegionKind: RegionKind = {
+    "unique" => RegionKind::Unique(<>),
+    "shared" => RegionKind::Shared(<>),
+    "update" => RegionKind::Update(<>),
+    "unique" "update" => RegionKind::UniqueUpdate(<>),
+}
+
 Paren: Paren<'ast, 'input> = {
     "(" Ref<EndExpr> ")" => Paren::new(<>),
 };
@@ -242,6 +257,7 @@ EndTerm = {
     Term,
     Constructor<EndExpr> => Expr::Constructor(<>),
     Ref<ClosureNonpiecewise> => Expr::Closure(<>),
+    Region => Expr::Region(<>),
 };
 
 Expr = {
