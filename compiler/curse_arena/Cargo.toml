@@ -1,7 +1,0 @@
-[package]
-name = "curse_arena"
-version = "0.0.0"
-edition = "2021"
-
-[dependencies]
-typed-arena = "2.0.2"

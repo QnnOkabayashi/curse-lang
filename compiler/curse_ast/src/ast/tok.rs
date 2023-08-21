@@ -2,18 +2,18 @@ use curse_span::HasSpan;
 use std::fmt;
 
 #[derive(Copy, Clone)]
-pub struct Ident<'input> {
+pub struct Literal<'ast> {
     pub location: u32,
-    pub literal: &'input str,
+    pub literal: &'ast str,
 }
 
-impl AsRef<str> for Ident<'_> {
+impl AsRef<str> for Literal<'_> {
     fn as_ref(&self) -> &str {
         self.literal
     }
 }
 
-impl HasSpan for Ident<'_> {
+impl HasSpan for Literal<'_> {
     fn start(&self) -> u32 {
         self.location
     }
@@ -23,41 +23,13 @@ impl HasSpan for Ident<'_> {
     }
 }
 
-impl fmt::Display for Ident<'_> {
+impl fmt::Display for Literal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self.literal, f)
     }
 }
 
-impl fmt::Debug for Ident<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.literal, f)
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct Integer<'input> {
-    pub location: u32,
-    pub literal: &'input str,
-}
-
-impl HasSpan for Integer<'_> {
-    fn start(&self) -> u32 {
-        self.location
-    }
-
-    fn end(&self) -> u32 {
-        self.location + self.literal.len() as u32
-    }
-}
-
-impl fmt::Display for Integer<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self.literal, f)
-    }
-}
-
-impl fmt::Debug for Integer<'_> {
+impl fmt::Debug for Literal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.literal, f)
     }
@@ -131,7 +103,6 @@ declare_tokens! {
 
     "true" => True,
     "false" => False,
-    "unique" => Unique,
-    "shared" => Shared,
-    "update" => Update,
+    "ref" => Ref,
+    "mut" => Mut,
 }

@@ -25,26 +25,74 @@ type X: {
 "#;
 
 pub const SURPRISINGLY_OK: &str = r#"
+// Just wraps any type
 struct X I32 = I32
 
+// Newtype called "I32" that wraps a boolean
 struct I32 = Bool
 
 choice Option T = Some T | None {}
 
-struct LinearMap (K * V) = Vec { key: K, value: V }
+struct LinearMap (K * V) {
+    data: Vec (K, V),
+} 
 "#;
 
 pub const REGIONS: &str = r#"
 fn fib = |n|
-    0 in |a|
-    1 in |b|
-    (
-        unique |{ a, b }|
-        0 .. n for |_i|
-            update |{ a, b }|
-            { a: b, b: a + b }
-    ) in ||
+    { a: 0, b: 1 } in |vals|
+    ref vals {
+        0 .. n for |_|
+        mut vals {
+            {
+                a: vals.b,
+                b: vals.a + vals.b,
+            }
+        } 
+    } in ||
+    vals in |{ a, b }|
     b
+"#;
+
+pub const MORE_REGIONS: &str = r#"
+struct Circle T {
+    x: T,
+    y: T,
+    radius: T,
+}
+
+// Doesn't touch `circle_ref.radius`, so it's allowed
+// to be held as a reference (and even mutated!)
+// somewhere else.
+fn move = |
+    circle_ref: Circle { mut x, mut y, .. },
+    d: I32,
+|
+    // Regions are now just "ref" and "mut".
+    // Can be combined to modify value in place.
+    // Syntax is "<REF|MUT|REF MUT> <PAT> { <EXPR> }"
+    mut (circle_ref.x, circle_ref.y) {
+        (circle_ref.x + d, circle_ref.y + d)
+    }
+
+fn main = ||
+    Circle { x: 0, y: 0, radius: 5 } in |circle|
+
+    ref circle {
+        ref circle.radius {
+            // In this block, `circle.radius` is borrowed,
+            // and the borrow is inferred as unique because it's mutated.
+            // But the other fields can be borrowed and even mutated!
+            mut circle.radius { circle.radius + 1 } in ||
+
+            circle move 2 in ||
+
+            mut circle.radius { circle.radius + 1 }
+        }
+    } in ||
+
+    circle assert_eq Circle { x: 2, y: 2, radius: 7 }
+
 "#;
 
 pub const BINARY_TREE: &str = r#"

@@ -1,4 +1,6 @@
-use curse_ast::arena::AstArena;
+#![forbid(unsafe_code)]
+
+use bumpalo::Bump;
 use curse_ast::ast;
 use lalrpop_util::lalrpop_mod;
 
@@ -13,60 +15,30 @@ lalrpop_mod!(
     grammar
 );
 
-pub struct Parser<'ast, 'input> {
-    pub arena: &'ast AstArena<'ast, 'input>,
+pub struct Parser<'ast> {
+    pub bump: &'ast Bump,
+    pub strings: &'ast Bump,
     pub errors: Vec<Error>,
 }
 
-impl<'ast, 'input> Parser<'ast, 'input> {
-    pub fn new(arena: &'ast AstArena<'ast, 'input>) -> Self {
+impl<'ast> Parser<'ast> {
+    pub fn new(bump: &'ast Bump, strings: &'ast Bump) -> Self {
         Parser {
-            arena,
+            bump,
+            strings,
             errors: Vec::with_capacity(0),
         }
     }
 
-    pub fn alloc<T: ArenaAlloc<'ast, 'input>>(&self, value: T) -> &'ast T {
-        value.alloc_in(self.arena)
-    }
-
-    pub fn parse_program(&mut self, input: &'input str) -> ast::Program<'ast, 'input> {
+    pub fn parse_program(&mut self, input: &str) -> ast::Program<'ast> {
         grammar::ProgramParser::new()
-            .parse(self, Lexer::new(input))
+            .parse(self, Lexer::new(self.strings, input))
             .expect("`Program` rule recovers from all errors")
     }
 
-    pub fn parse_expr(&mut self, input: &'input str) -> ast::Expr<'ast, 'input> {
+    pub fn parse_expr(&mut self, input: &str) -> ast::Expr<'ast> {
         grammar::EndExprParser::new()
-            .parse(self, Lexer::new(input))
+            .parse(self, Lexer::new(self.strings, input))
             .expect("`EndExpr` rule recovers from all errors")
-    }
-}
-
-pub trait ArenaAlloc<'ast, 'input>: Sized {
-    fn alloc_in(self, arena: &'ast AstArena<'ast, 'input>) -> &'ast Self;
-}
-
-impl<'ast, 'input> ArenaAlloc<'ast, 'input> for ast::Expr<'ast, 'input> {
-    fn alloc_in(self, arena: &'ast AstArena<'ast, 'input>) -> &'ast Self {
-        arena.exprs.alloc(self)
-    }
-}
-
-impl<'ast, 'input> ArenaAlloc<'ast, 'input> for ast::Closure<'ast, 'input> {
-    fn alloc_in(self, arena: &'ast AstArena<'ast, 'input>) -> &'ast Self {
-        arena.closures.alloc(self)
-    }
-}
-
-impl<'ast, 'input> ArenaAlloc<'ast, 'input> for ast::Pat<'ast, 'input> {
-    fn alloc_in(self, arena: &'ast AstArena<'ast, 'input>) -> &'ast Self {
-        arena.pats.alloc(self)
-    }
-}
-
-impl<'ast, 'input> ArenaAlloc<'ast, 'input> for ast::Type<'ast, 'input> {
-    fn alloc_in(self, arena: &'ast AstArena<'ast, 'input>) -> &'ast Self {
-        arena.types.alloc(self)
     }
 }

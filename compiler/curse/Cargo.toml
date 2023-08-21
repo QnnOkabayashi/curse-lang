@@ -11,8 +11,6 @@ curse_hir = { path = "../curse_hir" }
 curse_mir = { path = "../curse_mir" }
 curse_interner = { path = "../curse_interner" }
 miette = { version = "5.7.0", features = ["fancy"] }
-typed-arena = "2.0.2"
-smallvec = "1.10.0"
 thiserror = "1.0.40"
-
+bumpalo = "3.13.0"
 

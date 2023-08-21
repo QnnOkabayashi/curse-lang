@@ -45,7 +45,9 @@ pub enum RegionError {
 
 #[derive(Debug)]
 pub enum UnexpectedTypeArgs {
+    /// A generic param that unexpectedly had type arguments, e.g. `T I32`.
     GenericParam { def_ident: Ident },
+    /// A primitive that unexpectedly had type arguments, e.g. `I32 Bool`.
     Primitive(PrimitiveType),
 }
 

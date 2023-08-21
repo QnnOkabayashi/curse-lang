@@ -7,7 +7,7 @@ pub struct FunctionDef<'hir> {
     pub ident: Ident,
     pub generic_params: &'hir [Ident],
     pub ty: Option<TypeRef<'hir>>,
-    pub function: &'hir [Arm<'hir>],
+    pub arms: &'hir [Arm<'hir>],
     pub span: Span,
 }
 

@@ -56,7 +56,7 @@ pub enum Error {
     InvalidInteger(#[label("This isn't a valid integer")] SourceSpan),
 }
 
-type LalrParseError<'input> = ParseError<usize, Token<'input>, LexError>;
+type LalrParseError<'ast> = ParseError<usize, Token<'ast>, LexError>;
 
 impl From<LalrParseError<'_>> for Error {
     fn from(value: LalrParseError<'_>) -> Self {
@@ -66,7 +66,7 @@ impl From<LalrParseError<'_>> for Error {
             InvalidToken { location } => Error::InvalidToken {
                 location: location.into(),
             },
-            UnrecognizedEOF { location, .. } => Error::UnrecognizedEOF {
+            UnrecognizedEof { location, .. } => Error::UnrecognizedEOF {
                 location: location.into(),
             },
             UnrecognizedToken {

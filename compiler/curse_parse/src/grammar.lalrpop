@@ -6,7 +6,7 @@ use curse_ast::ast::{
     Region, RegionKind,
 };
 
-grammar<'ast, 'input>(parser: &mut Parser<'ast, 'input>);
+grammar<'ast>(parser: &mut Parser<'ast>);
 
 extern {
     type Location = usize;
@@ -15,13 +15,13 @@ extern {
     // Any changes here must also be reflected in:
     // - curse_parse/src/lexer.rs
     // - curse_ast/src/tok.rs
-    enum Token<'input> {
+    enum Token<'ast> {
         // In the grammar, if we specify the string on the lhs,
         // it means that we're waiting for the lexer to
         // give us the rhs.
-        "ident literal" => Token::Ident(<tok::Ident<'input>>),
-        "type ident literal" => Token::TypeIdent(<tok::Ident<'input>>),
-        "integer literal" => Token::Integer(<tok::Integer<'input>>),
+        "ident literal" => Token::Ident(<tok::Literal<'ast>>),
+        "type ident literal" => Token::TypeIdent(<tok::Literal<'ast>>),
+        "integer literal" => Token::Integer(<tok::Literal<'ast>>),
         ":" => Token::Colon(<tok::Colon>),
         "::" => Token::ColonColon(<tok::ColonColon>),
         "," => Token::Comma(<tok::Comma>),
@@ -51,22 +51,21 @@ extern {
 
         "true" => Token::True(<tok::True>),
         "false" => Token::False(<tok::False>),
-        "unique" => Token::Unique(<tok::Unique>),
-        "shared" => Token::Shared(<tok::Shared>),
-        "update" => Token::Update(<tok::Update>),
+        "ref" => Token::Ref(<tok::Ref>),
+        "mut" => Token::Mut(<tok::Mut>),
     }
 }
 
 /// === Term Aliases ===
 
-Ident: tok::Ident<'input> = "ident literal";
-TypeIdent: tok::Ident<'input> = "type ident literal";
-Integer: tok::Integer<'input> = "integer literal";
+Ident: tok::Literal<'ast> = "ident literal";
+TypeIdent: tok::Literal<'ast> = "type ident literal";
+Integer: tok::Literal<'ast> = "integer literal";
 
 
 /// === Program ===
 
-pub Program: Program<'ast, 'input> = {
+pub Program: Program<'ast> = {
     FunctionDef => Program::default().with_function_def(<>),
     ChoiceDef => Program::default().with_choice_def(<>),
     StructDef => Program::default().with_struct_def(<>),
@@ -83,56 +82,56 @@ pub Program: Program<'ast, 'input> = {
 
 /// === Definitions ===
 
-GenericParams: GenericParams<'input> = {
+GenericParams: GenericParams<'ast> = {
     TypeIdent => GenericParams::Single(<>),
     "(" (TypeIdent "*")* TypeIdent ")" => GenericParams::CartesianProduct(<>),
 };
 
-ExplicitTypes: ExplicitTypes<'ast, 'input> = {
+ExplicitTypes: ExplicitTypes<'ast> = {
     GenericParams? ":" Ref<Type> => ExplicitTypes::new(<>),
 }
 
-FunctionDef: FunctionDef<'ast, 'input> = {
+FunctionDef: FunctionDef<'ast> = {
     "fn" Ident ExplicitTypes? "=" Closure => FunctionDef::new(<>),
 };
 
-StructDef: StructDef<'ast, 'input> = {
+StructDef: StructDef<'ast> = {
     "struct" TypeIdent GenericParams? "=" Ref<Type> => StructDef::new(<>),
 };
 
-ChoiceDef: ChoiceDef<'ast, 'input> = {
+ChoiceDef: ChoiceDef<'ast> = {
     "choice" TypeIdent GenericParams? "=" Variants => ChoiceDef::new(<>),
 };
 
-Variants: Variants<'ast, 'input> = {
+Variants: Variants<'ast> = {
     "|" => Variants::Never(<>),
     "|"? (VariantDef "|")* VariantDef => Variants::Variants(<>),
 }
 
-VariantDef: VariantDef<'ast, 'input> = {
+VariantDef: VariantDef<'ast> = {
     TypeIdent Ref<Type> => VariantDef::new(<>),
 };
 
 
 /// === Record ===
 
-Record<T>: Record<'input, T> = {
+Record<T>: Record<'ast, T> = {
     "{" (Field<T> ",")* Field<T>? "}" => Record::new(<>),
 };
 
-Field<T>: Field<'input, T> = {
+Field<T>: Field<'ast, T> = {
     Ident (":" T)? => Field::new(<>),
 };
 
 // Get an arena-allocated reference
 Ref<T>: &'ast T = {
-    T => parser.alloc(<>),
+    T => parser.bump.alloc(<>),
 }
 
 
 /// === Types ===
 
-Type: Type<'ast, 'input> = {
+Type: Type<'ast> = {
     NamedType => Type::Named(<>),
     Record<Ref<Type>> => Type::Record(<>),
     ! => {
@@ -141,19 +140,19 @@ Type: Type<'ast, 'input> = {
     }
 };
 
-GenericArgs: GenericArgs<'ast, 'input> = {
+GenericArgs: GenericArgs<'ast> = {
     Ref<Type> => GenericArgs::Single(<>),
     "(" (Type "*")* Ref<Type> ")" => GenericArgs::CartesianProduct(<>),
 };
 
-NamedType: NamedType<'ast, 'input> = {
+NamedType: NamedType<'ast> = {
     TypePath GenericArgs? => NamedType::new(<>),
 };
 
 
 /// === Patterns ===
 
-Pat: Pat<'ast, 'input> = {
+Pat: Pat<'ast> = {
     Lit => Pat::Lit(<>),
     Record<Ref<Pat>> => Pat::Record(<>),
     Constructor<Pat> => Pat::Constructor(<>),
@@ -162,22 +161,22 @@ Pat: Pat<'ast, 'input> = {
 
 /// === Shared ===
 
-Lit: Lit<'input> = {
+Lit: Lit<'ast> = {
     Integer => Lit::Integer(<>),
     Ident => Lit::Ident(<>),
     "true" => Lit::True(<>),
     "false" => Lit::False(<>),
 };
 
-Path: Path<'input> = {
+Path: Path<'ast> = {
     (Ident "::")* Ident => Path::new(<>),
 };
 
-TypePath: Path<'input> = {
+TypePath: Path<'ast> = {
     (Ident "::")* TypeIdent => Path::new(<>),
 };
 
-Constructor<T>: Constructor<'ast, 'input, T> = {
+Constructor<T>: Constructor<'ast, T> = {
     TypePath ("::" TypeIdent)? Ref<T> => Constructor::new(<>),
 };
 
@@ -200,11 +199,11 @@ Symbol: Symbol = {
     ">=" => Symbol::Ge(<>),
 };
 
-ClosureNonpiecewise: Closure<'ast, 'input> = {
+ClosureNonpiecewise: Closure<'ast> = {
     Arm => Closure::NonPiecewise(<>),
 };
 
-ClosurePiecewise: Closure<'ast, 'input> = {
+ClosurePiecewise: Closure<'ast> = {
     "(" ")" => Closure::Empty(<>),
     "(" (Arm ",")+ Arm? ")" => Closure::Piecewise(<>),
 };
@@ -214,39 +213,39 @@ Closure = {
     ClosurePiecewise,
 };
 
-Arm: Arm<'ast, 'input> = {
+Arm: Arm<'ast> = {
     "|" (Param ",")* Param? "|" Ref<EndExpr> => Arm::new(<>),
 };
 
-Param: Param<'ast, 'input> = {
+Param: Param<'ast> = {
     Ref<Pat> (":" Ref<Type>)? => Param::new(<>),
 };
 
-Appl<Rhs>: Appl<'ast, 'input> = {
+Appl<Rhs>: Appl<'ast> = {
     Ref<Expr> Ref<Term> Ref<Rhs> => Appl::new(<>),
 };
 
-Region: Region<'ast, 'input> = {
-    RegionKind "|" Ref<Pat> "|" Ref<EndExpr> => Region::new(<>),
+Region: Region<'ast> = {
+    RegionKind Ref<Pat> "{" Ref<EndExpr> "}" => Region::new(<>),
 };
 
 RegionKind: RegionKind = {
-    "unique" => RegionKind::Unique(<>),
-    "shared" => RegionKind::Shared(<>),
-    "update" => RegionKind::Update(<>),
-    "unique" "update" => RegionKind::UniqueUpdate(<>),
+    "ref" => RegionKind::Ref(<>),
+    "mut" => RegionKind::Mut(<>),
+    "ref" "mut" => RegionKind::RefMut(<>),
 }
 
-Paren: Paren<'ast, 'input> = {
+Paren: Paren<'ast> = {
     "(" Ref<EndExpr> ")" => Paren::new(<>),
 };
 
-Term: Expr<'ast, 'input> = {
+Term: Expr<'ast> = {
     Paren => Expr::Paren(<>),
     Symbol => Expr::Symbol(<>),
     Lit => Expr::Lit(<>),
     Record<Ref<EndExpr>> => Expr::Record(<>),
     Ref<ClosurePiecewise> => Expr::Closure(<>),
+    Region => Expr::Region(<>),
     ! => {
         parser.errors.push(<>.error.into());
         Expr::Error
@@ -257,7 +256,6 @@ EndTerm = {
     Term,
     Constructor<EndExpr> => Expr::Constructor(<>),
     Ref<ClosureNonpiecewise> => Expr::Closure(<>),
-    Region => Expr::Region(<>),
 };
 
 Expr = {

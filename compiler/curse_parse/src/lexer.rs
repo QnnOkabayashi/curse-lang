@@ -1,3 +1,4 @@
+use bumpalo::Bump;
 use curse_ast::ast::tok;
 use curse_span::{HasSpan, Span};
 use logos::Logos;
@@ -51,10 +52,10 @@ macro_rules! declare_tokens {
         }
 
         #[derive(Copy, Clone, Debug)]
-        pub enum Token<'input> {
-            Ident(tok::Ident<'input>),
-            TypeIdent(tok::Ident<'input>),
-            Integer(tok::Integer<'input>),
+        pub enum Token<'ast> {
+            Ident(tok::Literal<'ast>),
+            TypeIdent(tok::Literal<'ast>),
+            Integer(tok::Literal<'ast>),
             $(
                 $(#[$attr])*
                 $name(tok::$name),
@@ -77,9 +78,9 @@ macro_rules! declare_tokens {
         impl fmt::Display for Token<'_> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self {
-                    Token::Ident(tok) => f.write_str(tok.literal),
-                    Token::TypeIdent(tok) => f.write_str(tok.literal),
-                    Token::Integer(tok) => f.write_str(tok.literal),
+                    Token::Ident(tok) => fmt::Display::fmt(tok, f),
+                    Token::TypeIdent(tok) => fmt::Display::fmt(tok, f),
+                    Token::Integer(tok) => fmt::Display::fmt(tok, f),
                     $(
                         Token::$name(_) => f.write_str($tok),
                     )*
@@ -88,20 +89,22 @@ macro_rules! declare_tokens {
         }
 
         #[derive(Clone, Debug)]
-        pub struct Lexer<'input> {
+        pub struct Lexer<'ast, 'input> {
             lex: logos::Lexer<'input, LogosToken>,
+            strings: &'ast Bump,
         }
 
-        impl<'input> Lexer<'input> {
-            pub fn new(input: &'input str) -> Self {
+        impl<'ast, 'input> Lexer<'ast, 'input> {
+            pub fn new(strings: &'ast Bump, input: &'input str) -> Self {
                 Lexer {
                     lex: Logos::lexer(input),
+                    strings,
                 }
             }
         }
 
-        impl<'input> Iterator for Lexer<'input> {
-            type Item = Result<(usize, Token<'input>, usize), LexError>;
+        impl<'ast, 'input> Iterator for Lexer<'ast, 'input> {
+            type Item = Result<(usize, Token<'ast>, usize), LexError>;
 
             fn next(&mut self) -> Option<Self::Item> {
                 let token = self.lex.next()?;
@@ -109,17 +112,17 @@ macro_rules! declare_tokens {
                 let span = Span { start: start as u32, end: end as u32 };
                 let token = match token {
                     Ok(LogosToken::Word(word)) => match word {
-                        Word::Ident => Token::Ident(tok::Ident {
+                        Word::Ident => Token::Ident(tok::Literal {
                             location: span.start,
-                            literal: self.lex.slice(),
+                            literal: self.strings.alloc_str(self.lex.slice()),
                         }),
-                        Word::TypeIdent => Token::TypeIdent(tok::Ident {
+                        Word::TypeIdent => Token::TypeIdent(tok::Literal {
                             location: span.start,
-                            literal: self.lex.slice(),
+                            literal: self.strings.alloc_str(self.lex.slice()),
                         }),
-                        Word::Integer => Token::Integer(tok::Integer {
+                        Word::Integer => Token::Integer(tok::Literal {
                             location: span.start,
-                            literal: self.lex.slice(),
+                            literal: self.strings.alloc_str(self.lex.slice()),
                         }),
                         Word::InvalidIdent => return Some(Err(LexError::InvalidIdent(span))),
                         Word::InvalidInteger => return Some(Err(LexError::InvalidInteger(span))),
@@ -171,9 +174,8 @@ declare_tokens! {
 
     "true" => True,
     "false" => False,
-    "unique" => Unique,
-    "shared" => Shared,
-    "update" => Update,
+    "ref" => Ref,
+    "mut" => Mut,
 }
 
 #[derive(Copy, Clone, Debug)]

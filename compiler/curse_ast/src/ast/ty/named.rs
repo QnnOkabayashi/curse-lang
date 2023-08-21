@@ -1,29 +1,41 @@
-use crate::ast::{tok, Path, Type};
+use crate::ast::{tok, Iter, Path, Type, TypeRef};
 use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
 ast_struct! {
+    /// A named type, e.g. `std::vec::Vec T`
     #[derive(Clone, Debug)]
-    pub struct NamedType<'ast, 'input> {
-        pub path: Path<'input>,
-        pub generic_args: Option<GenericArgs<'ast, 'input>>,
+    pub struct NamedType<'ast> {
+        pub path: Path<'ast>,
+        pub generic_args: Option<GenericArgs<'ast>>,
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum GenericArgs<'ast, 'input> {
+pub enum GenericArgs<'ast> {
     /// Example: `Vec I32`
-    Single(&'ast Type<'ast, 'input>),
+    Single(TypeRef<'ast>),
     /// Example: `Result (I32 * Error)`
     CartesianProduct(
         tok::LParen,
-        Vec<(Type<'ast, 'input>, tok::Star)>,
-        &'ast Type<'ast, 'input>,
+        Vec<(Type<'ast>, tok::Star)>,
+        TypeRef<'ast>,
         tok::RParen,
     ),
 }
 
-impl HasSpan for NamedType<'_, '_> {
+impl<'ast> GenericArgs<'ast> {
+    pub fn iter_args(&self) -> Iter<'_, Type<'ast>, tok::Star> {
+        let (slice, last) = match self {
+            GenericArgs::Single(last) => (&[] as _, Some(*last)),
+            GenericArgs::CartesianProduct(_, vec, last, _) => (vec.as_slice(), Some(*last)),
+        };
+
+        Iter::new(slice.iter(), last)
+    }
+}
+
+impl HasSpan for NamedType<'_> {
     fn start(&self) -> u32 {
         self.path.start()
     }
@@ -37,7 +49,7 @@ impl HasSpan for NamedType<'_, '_> {
     }
 }
 
-impl HasSpan for GenericArgs<'_, '_> {
+impl HasSpan for GenericArgs<'_> {
     fn start(&self) -> u32 {
         match self {
             GenericArgs::Single(ty) => ty.start(),

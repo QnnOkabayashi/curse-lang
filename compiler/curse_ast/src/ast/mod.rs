@@ -16,7 +16,7 @@ pub use expr::{Appl, Arm, Closure, Expr, ExprRef, Param, Paren, Region, RegionKi
 pub use pat::{Pat, PatRef};
 pub use program::Program;
 pub use record::{Field, Record};
-pub use shared::{Constructor, Lit, Path};
+pub use shared::{Constructor, Lit, Path, Iter};
 pub use ty::{GenericArgs, NamedType, Type, TypeRef};
 
 /// Macro to automatically derive a `new` constructor.

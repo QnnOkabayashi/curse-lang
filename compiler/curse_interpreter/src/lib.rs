@@ -39,7 +39,7 @@ fn eval_expr<'hir>(
         ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
         ExprKind::Lit(Lit::Ident(ident)) => local_state
             .get(&ident)
-            .or(global_state.functions.get(&ident.string))
+            .or(global_state.functions.get(&ident.symbol))
             .ok_or(EvalError::UnboundVariable {
                 literal: ident.to_string(),
                 span: ident.span,
@@ -73,12 +73,12 @@ pub fn execute_program(program: &Program) -> Result<(), EvalError> {
     for (name, def) in &program.function_defs {
         global_state
             .functions
-            .insert(*name, Value::Function(def.function));
+            .insert(*name, Value::Function(def.arms));
     }
 
     for (name, def) in &program.choice_defs {
         for (variant, _) in def.variants.entries {
-            global_state.constructors.insert(variant.string, *name);
+            global_state.constructors.insert(variant.symbol, *name);
         }
     }
 
@@ -88,7 +88,7 @@ pub fn execute_program(program: &Program) -> Result<(), EvalError> {
         &Value::default(),
         global_state
             .functions
-            .get(&InternedString::new("main"))
+            .get(&InternedString::get_or_intern("main"))
             .ok_or(EvalError::MissingMain)?,
         &Value::default(),
         &global_state,
