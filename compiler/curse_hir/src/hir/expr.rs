@@ -112,8 +112,7 @@ pub struct Region<'hir> {
 
 #[derive(Copy, Clone, Debug)]
 pub enum RegionKind {
-    Unique,
-    Shared,
-    Update,
-    UniqueUpdate,
+    Ref,
+    Mut,
+    RefMut,
 }

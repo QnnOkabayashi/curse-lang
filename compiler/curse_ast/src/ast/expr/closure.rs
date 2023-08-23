@@ -1,33 +1,33 @@
-use crate::ast::{tok, Expr, Pat, Type};
+use crate::ast::{tok, Expr, Pat, TypeRef, Iter};
 use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
 #[derive(Clone, Debug)]
-pub enum Closure<'ast, 'input> {
-    NonPiecewise(Arm<'ast, 'input>),
+pub enum Closure<'ast> {
+    NonPiecewise(Arm<'ast>),
     Piecewise(
         tok::LParen,
         // Parser will only produce vecs with len >= 1
-        Vec<(Arm<'ast, 'input>, tok::Comma)>,
-        Option<Arm<'ast, 'input>>,
+        Vec<(Arm<'ast>, tok::Comma)>,
+        Option<Arm<'ast>>,
         tok::RParen,
     ),
     Empty(tok::LParen, tok::RParen),
 }
 
-impl<'ast, 'input> Closure<'ast, 'input> {
-    pub fn arms(&self) -> impl Iterator<Item = &Arm<'ast, 'input>> {
+impl<'ast> Closure<'ast> {
+    pub fn iter_arms(&self) -> Iter<'_, Arm<'ast>, tok::Comma> {
         let (arms, last) = match self {
-            Closure::NonPiecewise(arm) => (&[] as &[_], Some(arm)),
+            Closure::NonPiecewise(arm) => (&[] as _, Some(arm)),
             Closure::Piecewise(_, arms, last, _) => (arms.as_slice(), last.as_ref()),
-            Closure::Empty(_, _) => (&[] as &[_], None),
+            Closure::Empty(_, _) => (&[] as _, None),
         };
 
-        arms.iter().map(|(arm, _comma)| arm).chain(last)
+        Iter::new(arms.iter(), last)
     }
 }
 
-impl HasSpan for Closure<'_, '_> {
+impl HasSpan for Closure<'_> {
     fn start(&self) -> u32 {
         match self {
             Closure::NonPiecewise(arm) => arm.start(),
@@ -55,24 +55,24 @@ impl HasSpan for Closure<'_, '_> {
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Arm<'ast, 'input> {
+    pub struct Arm<'ast> {
         pub open: tok::Pipe,
         // There should only be up to 2 params,
         // but more shouldn't make the parser fail.
-        pub params: Vec<(Param<'ast, 'input>, tok::Comma)>,
-        pub last: Option<Param<'ast, 'input>>,
+        pub params: Vec<(Param<'ast>, tok::Comma)>,
+        pub last: Option<Param<'ast>>,
         pub close: tok::Pipe,
-        pub body: &'ast Expr<'ast, 'input>,
+        pub body: &'ast Expr<'ast>,
     }
 }
 
-impl<'ast, 'input> Arm<'ast, 'input> {
-    pub fn params_len(&self) -> usize {
-        self.params.len() + self.last.is_some() as usize
+impl<'ast> Arm<'ast> {
+    pub fn iter_params(&self) -> Iter<'_, Param<'ast>, tok::Comma> {
+        Iter::new(self.params.iter(), self.last.as_ref())
     }
 }
 
-impl HasSpan for Arm<'_, '_> {
+impl HasSpan for Arm<'_> {
     fn start(&self) -> u32 {
         self.open.start()
     }
@@ -84,8 +84,8 @@ impl HasSpan for Arm<'_, '_> {
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Param<'ast, 'input> {
-        pub pat: &'ast Pat<'ast, 'input>,
-        pub ascription: Option<(tok::Colon, &'ast Type<'ast, 'input>)>,
+    pub struct Param<'ast> {
+        pub pat: &'ast Pat<'ast>,
+        pub ascription: Option<(tok::Colon, TypeRef<'ast>)>,
     }
 }

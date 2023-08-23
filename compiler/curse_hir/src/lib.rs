@@ -8,5 +8,6 @@
 //! Essentially, the HIR is a boiled down version of the AST, in the sense that it cuts away
 //! everything that's unnecessary for analysis, but doesn't actually do any analysis yet.
 
+#![forbid(unsafe_code)]
+
 pub mod hir;
-pub mod arena;

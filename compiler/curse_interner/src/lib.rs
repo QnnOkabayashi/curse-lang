@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use curse_span::{HasSpan, Span};
 use parking_lot::{RwLock, RwLockReadGuard};
 use std::{fmt, mem, ops};
@@ -17,14 +19,14 @@ pub fn init() -> Option<StringInterner> {
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ident {
-    pub string: InternedString,
+    pub symbol: InternedString,
     pub span: Span,
 }
 
 impl Ident {
     pub fn new(s: &str, span: Span) -> Self {
         Ident {
-            string: InternedString::new(s),
+            symbol: InternedString::get_or_intern(s),
             span,
         }
     }
@@ -38,13 +40,13 @@ impl<T: AsRef<str> + HasSpan> From<T> for Ident {
 
 impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.string, f)
+        fmt::Display::fmt(&self.symbol, f)
     }
 }
 
 impl fmt::Debug for Ident {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.string, f)
+        fmt::Debug::fmt(&self.symbol, f)
     }
 }
 
@@ -62,7 +64,7 @@ impl HasSpan for Ident {
 pub struct InternedString(string_interner::DefaultSymbol);
 
 impl InternedString {
-    pub fn new(s: &str) -> Self {
+    pub fn get_or_intern(s: &str) -> Self {
         InternedString(
             STRINGS
                 .write()
@@ -70,6 +72,14 @@ impl InternedString {
                 .expect("no string interner loaded")
                 .get_or_intern(s),
         )
+    }
+
+    pub fn get(s: &str) -> Option<Self> {
+        STRINGS
+            .read()
+            .as_ref()
+            .and_then(|interner| interner.get(s))
+            .map(Self)
     }
 
     pub fn string(&self) -> StringGuard<'_> {

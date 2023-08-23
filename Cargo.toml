@@ -8,7 +8,6 @@ members = [
 
     "compiler/curse_mir",
 
-    "compiler/curse_arena",
     "compiler/curse_interner",
     "compiler/curse_span",
 

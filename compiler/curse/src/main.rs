@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+
+use bumpalo::Bump;
 use miette::{Diagnostic, GraphicalReportHandler, NamedSource};
 use thiserror::Error;
 
@@ -42,8 +45,9 @@ fn main() {
 
     let input: &str = programs::REGIONS;
 
-    let ast_arena = Box::default();
-    let mut parser = curse_parse::Parser::new(&ast_arena);
+    let ast_arena = Bump::new();
+    let strings = Bump::new();
+    let mut parser = curse_parse::Parser::new(&ast_arena, &strings);
     let ast_program = parser.parse_program(input);
 
     if !parser.errors.is_empty() {
@@ -57,7 +61,7 @@ fn main() {
         return;
     }
 
-    let hir_arena = Box::new(curse_ast_lowering::make_hir_arena(&ast_program));
+    let hir_arena = Bump::new();
     let mut lowerer = curse_ast_lowering::Lowerer::new(&hir_arena);
     let hir_program = curse_ast_lowering::Lower::lower(&ast_program, &mut lowerer);
 

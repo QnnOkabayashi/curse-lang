@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use core::fmt;
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

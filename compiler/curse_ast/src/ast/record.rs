@@ -1,34 +1,28 @@
-use crate::{ast::tok, ast_struct};
+use crate::ast::{tok, Iter};
+use crate::ast_struct;
 use curse_span::HasSpan;
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Record<'input, T> {
+    pub struct Record<'ast, T> {
         pub lbrace: tok::LBrace,
-        pub fields: Vec<(Field<'input, T>, tok::Comma)>,
-        pub trailing: Option<Field<'input, T>>,
+        pub fields: Vec<(Field<'ast, T>, tok::Comma)>,
+        pub trailing: Option<Field<'ast, T>>,
         pub rbrace: tok::RBrace,
     }
 }
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Field<'input, T> {
-        pub ident: tok::Ident<'input>,
+    pub struct Field<'ast, T> {
+        pub ident: tok::Literal<'ast>,
         pub value: Option<(tok::Colon, T)>,
     }
 }
 
-impl<'input, T> Record<'input, T> {
-    pub fn len(&self) -> usize {
-        self.fields.len() + self.trailing.is_some() as usize
-    }
-
-    pub fn fields(&self) -> impl Iterator<Item = &Field<'input, T>> {
-        self.fields
-            .iter()
-            .map(|(field, _comma)| field)
-            .chain(self.trailing.as_ref())
+impl<'ast, T> Record<'ast, T> {
+    pub fn iter_fields(&self) -> Iter<'_, Field<'ast, T>, tok::Comma> {
+        Iter::new(self.fields.iter(), self.trailing.as_ref())
     }
 }
 

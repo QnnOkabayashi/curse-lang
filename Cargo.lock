@@ -104,6 +104,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bumpalo"
+version = "3.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3e2c3daef883ecc1b5d58c15adae93470a91d425f3532ba1695849656af3fc1"
+
+[[package]]
 name = "cc"
 version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -125,6 +131,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 name = "curse"
 version = "0.0.0"
 dependencies = [
+ "bumpalo",
  "curse_ast",
  "curse_ast_lowering",
  "curse_hir",
@@ -132,16 +139,7 @@ dependencies = [
  "curse_mir",
  "curse_parse",
  "miette",
- "smallvec",
  "thiserror",
- "typed-arena",
-]
-
-[[package]]
-name = "curse_arena"
-version = "0.0.0"
-dependencies = [
- "typed-arena",
 ]
 
 [[package]]
@@ -149,16 +147,13 @@ name = "curse_ast"
 version = "0.0.0"
 dependencies = [
  "curse_span",
- "displaydoc",
- "smallvec",
- "typed-arena",
 ]
 
 [[package]]
 name = "curse_ast_lowering"
 version = "0.0.0"
 dependencies = [
- "curse_arena",
+ "bumpalo",
  "curse_ast",
  "curse_hir",
  "curse_interner",
@@ -171,12 +166,10 @@ dependencies = [
 name = "curse_hir"
 version = "0.0.0"
 dependencies = [
- "curse_arena",
  "curse_interner",
  "curse_span",
  "miette",
  "thiserror",
- "typed-arena",
 ]
 
 [[package]]
@@ -218,6 +211,7 @@ dependencies = [
 name = "curse_parse"
 version = "0.0.0"
 dependencies = [
+ "bumpalo",
  "curse_ast",
  "curse_span",
  "lalrpop",
@@ -225,7 +219,6 @@ dependencies = [
  "logos",
  "miette",
  "thiserror",
- "typed-arena",
  "unicode-ident",
 ]
 
@@ -410,9 +403,9 @@ dependencies = [
 
 [[package]]
 name = "lalrpop"
-version = "0.19.12"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a1cbf952127589f2851ab2046af368fd20645491bb4b376f04b7f94d7a9837b"
+checksum = "da4081d44f4611b66c6dd725e6de3169f9f63905421e8626fcb86b6a898998b8"
 dependencies = [
  "ascii-canvas",
  "bit-set",
@@ -422,8 +415,9 @@ dependencies = [
  "itertools",
  "lalrpop-util",
  "petgraph",
+ "pico-args",
  "regex",
- "regex-syntax 0.6.29",
+ "regex-syntax 0.7.2",
  "string_cache",
  "term",
  "tiny-keccak",
@@ -432,9 +426,9 @@ dependencies = [
 
 [[package]]
 name = "lalrpop-util"
-version = "0.19.12"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3c48237b9604c5a4702de6b824e02006c3214327564636aef27c1028a8fa0ed"
+checksum = "3f35c735096c0293d313e8f2a641627472b83d01b937177fe76e5e2708d31e0d"
 dependencies = [
  "regex",
 ]
@@ -614,6 +608,12 @@ checksum = "b6796ad771acdc0123d2a88dc428b5e38ef24456743ddb1744ed628f9815c096"
 dependencies = [
  "siphasher",
 ]
+
+[[package]]
+name = "pico-args"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5be167a7af36ee22fe3115051bc51f6e6c7054c9348e28deb4f49bd6f705a315"
 
 [[package]]
 name = "precomputed-hash"

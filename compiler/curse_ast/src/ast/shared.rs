@@ -1,46 +1,79 @@
-use crate::ast::tok;
+use crate::{ast::tok, ast_struct};
 use curse_span::{HasSpan, Span};
 use std::mem;
 
+ast_struct! {
+    /// Hack to get around the fact that chaining a slice and
+    /// one last element is no longer `ExactSizeIterator`.
+    ///
+    /// https://doc.rust-lang.org/std/iter/trait.ExactSizeIterator.html#when-shouldnt-an-adapter-be-exactsizeiterator
+    #[derive(Debug)]
+    pub struct Iter<'a, T, D> {
+        parts: std::slice::Iter<'a, (T, D)>,
+        last: Option<&'a T>,
+    }
+}
+
+impl<'a, T, D> Iterator for Iter<'a, T, D> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.parts
+            .next()
+            .map(|(t, _d)| t)
+            .or_else(|| self.last.take())
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        if self.last.is_none() {
+            (0, Some(0))
+        } else {
+            let (lo, hi) = self.parts.size_hint();
+            // hi <= isize::MAX since it comes from a slice,
+            // which must point to an allocation, which cannot be
+            // > isize::MAX
+            // Therefore, it follows that hi + 1 < usize::MAX
+            (lo + 1, hi.map(|hi| hi + 1))
+        }
+    }
+}
+
+impl<'a, T, D> ExactSizeIterator for Iter<'a, T, D> {}
+
 #[derive(Copy, Clone, Debug)]
-pub enum Lit<'input> {
-    Integer(tok::Integer<'input>),
-    Ident(tok::Ident<'input>),
+pub enum Lit<'ast> {
+    Integer(tok::Literal<'ast>),
+    Ident(tok::Literal<'ast>),
     True(tok::True),
     False(tok::False),
 }
 
-/// A path, e.g. `std::collections::Vec`
-#[derive(Clone, Debug)]
-pub struct Path<'input> {
-    pub parts: Vec<(tok::Ident<'input>, tok::ColonColon)>,
-    pub ident: tok::Ident<'input>,
+ast_struct! {
+    /// A path, e.g. `std::collections::Vec`
+    #[derive(Clone, Debug)]
+    pub struct Path<'ast> {
+        pub parts: Vec<(tok::Literal<'ast>, tok::ColonColon)>,
+        pub ident: tok::Literal<'ast>,
+    }
 }
 
-impl<'input> Path<'input> {
-    pub fn new(
-        parts: Vec<(tok::Ident<'input>, tok::ColonColon)>,
-        ident: tok::Ident<'input>,
-    ) -> Self {
-        Path { parts, ident }
-    }
-
-    pub fn len(&self) -> usize {
-        self.parts.len() + 1
+impl<'ast> Path<'ast> {
+    pub fn iter_parts(&self) -> Iter<'_, tok::Literal<'ast>, tok::ColonColon> {
+        Iter::new(self.parts.iter(), Some(&self.ident))
     }
 }
 
 /// A constructor, e.g. `Option::None {}`
 #[derive(Clone, Debug)]
-pub struct Constructor<'ast, 'input, T> {
-    pub path: Path<'input>,
+pub struct Constructor<'ast, T> {
+    pub path: Path<'ast>,
     pub inner: &'ast T,
 }
 
-impl<'ast, 'input, T> Constructor<'ast, 'input, T> {
+impl<'ast, T> Constructor<'ast, T> {
     pub fn new(
-        mut path: Path<'input>,
-        variant: Option<(tok::ColonColon, tok::Ident<'input>)>,
+        mut path: Path<'ast>,
+        variant: Option<(tok::ColonColon, tok::Literal<'ast>)>,
         inner: &'ast T,
     ) -> Self {
         if let Some((colon_colon, variant)) = variant {
@@ -95,7 +128,7 @@ impl HasSpan for Path<'_> {
     }
 }
 
-impl<T: HasSpan> HasSpan for Constructor<'_, '_, T> {
+impl<T: HasSpan> HasSpan for Constructor<'_, T> {
     fn start(&self) -> u32 {
         self.path.start()
     }
