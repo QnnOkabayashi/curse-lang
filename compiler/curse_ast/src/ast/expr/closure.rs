@@ -1,4 +1,4 @@
-use crate::ast::{tok, Expr, Pat, TypeRef, Iter};
+use crate::ast::{tok, Expr, Iter, Pat, TypeRef};
 use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
