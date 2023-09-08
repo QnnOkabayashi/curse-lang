@@ -26,7 +26,7 @@ type X: {
 
 pub const SURPRISINGLY_OK: &str = r#"
 // Just wraps any type
-struct X I32 = I32
+struct X |I32| I32
 
 // Newtype called "I32" that wraps a boolean
 struct I32 = Bool
@@ -39,7 +39,20 @@ struct LinearMap (K * V) {
 "#;
 
 pub const REGIONS: &str = r#"
-fn fib = |n|
+struct Foo Vec Vec Option Result (I32 * Bool)
+
+struct Wrapper |T| T 
+
+struct Wrapper2 |T| {
+    data: T,
+}
+
+choice Option |T| {
+    Some T,
+    None {}
+}
+
+fn fib |n|
     { a: 0, b: 1 } in |vals|
     ref vals {
         0 .. n for |_|

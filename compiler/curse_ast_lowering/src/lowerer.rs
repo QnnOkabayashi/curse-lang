@@ -215,22 +215,25 @@ impl<'hir> Lower<'hir> for ast::FunctionDef<'_> {
     type Lowered = FunctionDef<'hir>;
 
     fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
-        let (generic_params, ty) = self
-            .explicit_types
-            .as_ref()
-            .map(|explicit_types| {
-                let generic_params = explicit_types
-                    .generic_params
-                    .as_ref()
-                    .map(|x| x.lower(lowerer))
-                    .unwrap_or_default();
+        // TODO(quinn): put this code back in once we have explicit types again
+        // let (generic_params, ty) = self
+        //     .explicit_types
+        //     .as_ref()
+        //     .map(|explicit_types| {
+        //         let generic_params = explicit_types
+        //             .generic_params
+        //             .as_ref()
+        //             .map(|x| x.lower(lowerer))
+        //             .unwrap_or_default();
+        //
+        //         let ty = explicit_types.ty.lower(lowerer);
+        //         let ty = Some(&*lowerer.bump.alloc(ty));
+        //
+        //         (generic_params, ty)
+        //     })
+        //     .unwrap_or_default();
 
-                let ty = explicit_types.ty.lower(lowerer);
-                let ty = Some(&*lowerer.bump.alloc(ty));
-
-                (generic_params, ty)
-            })
-            .unwrap_or_default();
+        let (generic_params, ty) = Default::default();
 
         let arms =
             lowerer.with_generic_params(generic_params, |lowerer| self.function.lower(lowerer));
@@ -573,7 +576,7 @@ impl<'hir> Lower<'hir> for ast::NamedType<'_> {
         let [ident] = path else {
             // More than 1 item in the path, can't be a generic or a primitive
             // Note: path cannot have 0 elements since `ast::Path` has 1 inlined.
-            return TypeKind::Named(path, generic_args);
+            return TypeKind::Named { path, generic_args };
         };
 
         // Now that the path and args are lowered, do some light name resolution.
@@ -607,7 +610,10 @@ impl<'hir> Lower<'hir> for ast::NamedType<'_> {
                     .push(err(UnexpectedTypeArgs::GenericParam { def_ident }));
             }
 
-            TypeKind::Generic(def_ident, def_index as u32)
+            TypeKind::Generic {
+                name: def_ident,
+                index: def_index as u32,
+            }
         } else if let Ok(prim) = self.path.ident.literal.parse() {
             // Primitives shouldn't take any generic arguments.
             if !generic_args.is_empty() {
@@ -618,7 +624,7 @@ impl<'hir> Lower<'hir> for ast::NamedType<'_> {
 
             TypeKind::Primitive(prim)
         } else {
-            TypeKind::Named(path, generic_args)
+            TypeKind::Named { path, generic_args }
         }
     }
 }
