@@ -1,11 +1,9 @@
-#![allow(dead_code)]
-
-use curse_hir::hir::{Arm, Map};
-use curse_interner::InternedString;
+use curse_hir::hir::Arm;
+use curse_interner::Ident;
 use std::{fmt::Display, rc::Rc};
 
-// We'll probably want reference counting??? Maybe we can do more fancy garbage collection or
-// borrow checking or something later, not sure
+use crate::error::EvalError;
+
 pub type ValueRef<'hir> = Rc<Value<'hir>>;
 
 // Type representing a value in curse. Subject to change as we potentially come up with better
@@ -13,14 +11,21 @@ pub type ValueRef<'hir> = Rc<Value<'hir>>;
 #[derive(Debug, Clone)]
 pub enum Value<'hir> {
     Integer(u32),
-    String(&'hir str),
+    // String(&'hir str),
     Bool(bool),
     Function(&'hir [Arm<'hir>]),
-    Record(Map<'hir, ValueRef<'hir>>),
-    Choice {
-        tag: InternedString,
-        value: ValueRef<'hir>,
-    },
+    Record(OwnedMap<ValueRef<'hir>>),
+    Choice { tag: &'hir [Ident], value: ValueRef<'hir> },
+    Builtin(Builtin<'hir>),
+}
+
+impl Value<'_> {
+    pub fn is_null(&self) -> bool {
+        match self {
+            Value::Record(map) => map.entries.is_empty(),
+            _ => false,
+        }
+    }
 }
 
 impl Display for Value<'_> {
@@ -28,17 +33,37 @@ impl Display for Value<'_> {
         use Value::*;
         match self {
             Integer(int) => write!(f, "{int}"),
-            String(string) => write!(f, "{string}"),
+            // String(string) => write!(f, "{string}"),
             Bool(bool) => write!(f, "{bool}"),
             Function(_) => write!(f, "<function>"),
+            Builtin(_) => write!(f, "<builtin>"),
             Record(map) => write!(f, "{map:?}"),
-            Choice { tag, value } => write!(f, "{tag} {value}"),
+            Choice { tag, value } => write!(f, "{tag:?} {value}"),
         }
     }
 }
 
 impl Default for Value<'_> {
     fn default() -> Self {
-        Self::Record(Map { entries: &[] })
+        Self::Record(OwnedMap::default())
+    }
+}
+
+pub type Builtin<'hir> = fn(ValueRef<'hir>, ValueRef<'hir>) -> Result<ValueRef<'hir>, EvalError>;
+
+#[derive(Clone, Debug)]
+pub struct OwnedMap<T> {
+    pub entries: Vec<(Ident, T)>,
+}
+
+impl<'hir, T> OwnedMap<T> {
+    pub fn new(entries: Vec<(Ident, T)>) -> Self {
+        OwnedMap { entries }
+    }
+}
+
+impl<T> Default for OwnedMap<T> {
+    fn default() -> Self {
+        OwnedMap::new(vec![])
     }
 }
