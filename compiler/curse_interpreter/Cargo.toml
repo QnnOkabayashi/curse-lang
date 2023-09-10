@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bumpalo = "3.13.0"
 curse_hir = { path = "../curse_hir" }
 curse_interner = { path = "../curse_interner" }
 curse_span = { path = "../curse_span" }
+curse_parse = { path = "../curse_parse" }
+curse_ast_lowering = { path = "../curse_ast_lowering" }
 miette = "5.7.0"
 thiserror = "1.0.40"

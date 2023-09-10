@@ -185,8 +185,11 @@ dependencies = [
 name = "curse_interpreter"
 version = "0.1.0"
 dependencies = [
+ "bumpalo",
+ "curse_ast_lowering",
  "curse_hir",
  "curse_interner",
+ "curse_parse",
  "curse_span",
  "miette",
  "thiserror",
