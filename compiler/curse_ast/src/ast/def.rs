@@ -91,6 +91,16 @@ ast_struct! {
     }
 }
 
+impl HasSpan for GenericParams<'_> {
+    fn start(&self) -> u32 {
+        self.open.start()
+    }
+
+    fn end(&self) -> u32 {
+        self.close.end()
+    }
+}
+
 impl HasSpan for FunctionDef<'_> {
     fn start(&self) -> u32 {
         self.fn_.start()
