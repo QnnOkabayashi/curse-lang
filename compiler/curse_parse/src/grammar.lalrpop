@@ -83,8 +83,7 @@ pub Program: Program<'ast> = {
 /// === Definitions ===
 
 GenericParams: GenericParams<'ast> = {
-    TypeIdent => GenericParams::Single(<>),
-    "(" (TypeIdent "*")* TypeIdent ")" => GenericParams::CartesianProduct(<>),
+    "|" (TypeIdent "*")* TypeIdent "|" => GenericParams::new(<>),
 };
 
 ExplicitTypes: ExplicitTypes<'ast> = {
@@ -92,20 +91,20 @@ ExplicitTypes: ExplicitTypes<'ast> = {
 }
 
 FunctionDef: FunctionDef<'ast> = {
-    "fn" Ident ExplicitTypes? "=" Closure => FunctionDef::new(<>),
+    "fn" Ident Closure => FunctionDef::new(<>),
+    // "fn" Ident ExplicitTypes? Closure => FunctionDef::new(<>),
 };
 
 StructDef: StructDef<'ast> = {
-    "struct" TypeIdent GenericParams? "=" Ref<Type> => StructDef::new(<>),
+    "struct" TypeIdent GenericParams? Ref<Type> => StructDef::new(<>),
 };
 
 ChoiceDef: ChoiceDef<'ast> = {
-    "choice" TypeIdent GenericParams? "=" Variants => ChoiceDef::new(<>),
+    "choice" TypeIdent GenericParams? Variants => ChoiceDef::new(<>),
 };
 
 Variants: Variants<'ast> = {
-    "|" => Variants::Never(<>),
-    "|"? (VariantDef "|")* VariantDef => Variants::Variants(<>),
+    "{" (VariantDef ",")* VariantDef? "}" => Variants::new(<>),
 }
 
 VariantDef: VariantDef<'ast> = {

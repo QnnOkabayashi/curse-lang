@@ -13,9 +13,15 @@ pub struct Type<'hir> {
 #[derive(Debug)]
 pub enum TypeKind<'hir> {
     /// The path and the type arguments, e.g. `std::result::Result (I32 * Error)`
-    Named(Path<'hir>, &'hir [Type<'hir>]),
+    Named {
+        path: Path<'hir>,
+        generic_args: &'hir [Type<'hir>],
+    },
     /// A generic type argument and the index, e.g. `T`
-    Generic(Ident, u32),
+    Generic {
+        name: Ident,
+        index: u32,
+    },
     /// A record type, e.g. `{ key: K, value: V }`
     Record(Map<'hir, TypeRef<'hir>>),
     /// A primitive type, e.g. `I32`
