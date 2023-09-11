@@ -3,11 +3,7 @@ use crate::ast_struct;
 use curse_span::HasSpan;
 
 ast_struct! {
-    /// Example: `(K * V)`
-    ///
-    /// We do this instead of having actual tuples because otherwise
-    /// `Collection (I32, I32)` would be ambiguous for `Collection<i32, i32>`
-    /// and `Collection<(i32, i32)>`.
+    /// Example: `|K * V|`
     #[derive(Clone, Debug)]
     pub struct GenericParams<'ast> {
         open: tok::Pipe,
