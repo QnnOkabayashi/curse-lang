@@ -1,42 +1,52 @@
 // these simple functions work pretty well except for some reason we need
 // parens in order for it to parse
-fn in = |x, f| (x f {})
-fn of = |f, x| (x f {})
-fn inc = |x| (x + 1)
+fn in |x, f| x f {}
+fn of |f, x| x f {}
+fn inc |x| x + 1
 
 // piecewise closures work
-fn fib = (
+fn fib (
     |0| 0,
     |1| 1,
-    |n| (n - 1) in fib + ((n - 2) in fib)
+    |n| (n - 1 in fib) + (n - 2 in fib)
 )
 
 // choice declarations work
-choice IntBool = Int I32 | Boolean Bool
+choice IntBool {
+    Int I32,
+    Boolean Bool,
+}
 
 // for some reason, this function parses as having empty arms
-fn calculate = (
+fn calculate (
     |IntBool::Int n| (IntBool::Int (n + 1)),
     |IntBool::Boolean b| (IntBool::Boolean b),
 )
 
+// TODO(quinn): I broke type annotations temporarily in (#8).
 // type annotations work, but function types don't appear to be supported by
 // the parser and type checking seems to not work
-fn inc2: I32 = |x| (x + 1)
+fn inc2 |x| x + 1
 
 // this parses
-choice Result (T * E) = Ok T | Err E
+choice Result |T * E| {
+    Ok T,
+    Err E,
+}
 
 // this doesn't
-// choice Option T = Some T | None
+choice Option |T| {
+    Some T,
+    None {},
+}
 
 // this also parses, but like `calculate` for some reason parses to an empty
 // function
-fn map_result = (
+fn map_result (
     |Result::Ok x, f| (Result::Ok (x in f)),
     |Result::Err e, f| (Result::Err e),
 )
 
 // we can instantiate an `IntBool`, but `calculate` doesn't work since it
 // parses as having no arms for some reason
-fn main = || (10 in fib)
+fn main || fib of 10
