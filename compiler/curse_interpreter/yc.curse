@@ -1,0 +1,12 @@
+fn of |f, x| x f {}
+
+fn rec |x, f| f of (|x| x rec f) of x
+
+fn fact |n|
+    { acc: 1, n: n } rec |loop| (
+        |{ acc: acc, n: 1 }| acc,
+        |{ acc: acc, n: n }| loop of { acc: acc * n, n: n - 1 },
+    )
+
+fn main ||
+    fact of 3
