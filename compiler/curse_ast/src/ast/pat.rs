@@ -2,15 +2,13 @@ use crate::ast::{Constructor, Lit, Record};
 use curse_span::{HasSpan, Span};
 
 #[derive(Clone, Debug)]
-pub enum Pat<'ast> {
-    Lit(Lit<'ast>),
-    Record(Record<'ast, PatRef<'ast>>),
-    Constructor(Constructor<'ast, Self>),
+pub enum Pat {
+    Lit(Lit),
+    Record(Box<Record<Self>>),
+    Constructor(Box<Constructor<Self>>),
 }
 
-pub type PatRef<'ast> = &'ast Pat<'ast>;
-
-impl HasSpan for Pat<'_> {
+impl HasSpan for Pat {
     fn start(&self) -> u32 {
         match self {
             Pat::Lit(lit) => lit.start(),

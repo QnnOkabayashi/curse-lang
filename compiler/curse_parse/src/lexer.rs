@@ -1,4 +1,3 @@
-use bumpalo::Bump;
 use curse_ast::ast::tok;
 use curse_span::{HasSpan, Span};
 use logos::Logos;
@@ -89,22 +88,20 @@ macro_rules! declare_tokens {
         }
 
         #[derive(Clone, Debug)]
-        pub struct Lexer<'ast, 'input> {
+        pub struct Lexer<'input> {
             lex: logos::Lexer<'input, LogosToken>,
-            strings: &'ast Bump,
         }
 
-        impl<'ast, 'input> Lexer<'ast, 'input> {
-            pub fn new(strings: &'ast Bump, input: &'input str) -> Self {
+        impl<'input> Lexer<'input> {
+            pub fn new(input: &'input str) -> Self {
                 Lexer {
                     lex: Logos::lexer(input),
-                    strings,
                 }
             }
         }
 
-        impl<'ast, 'input> Iterator for Lexer<'ast, 'input> {
-            type Item = Result<(usize, Token<'ast>, usize), LexError>;
+        impl<'input> Iterator for Lexer<'input> {
+            type Item = Result<(usize, Token<'input>, usize), LexError>;
 
             fn next(&mut self) -> Option<Self::Item> {
                 let token = self.lex.next()?;
@@ -114,15 +111,15 @@ macro_rules! declare_tokens {
                     Ok(LogosToken::Word(word)) => match word {
                         Word::Ident => Token::Ident(tok::Literal {
                             location: span.start,
-                            literal: self.strings.alloc_str(self.lex.slice()),
+                            literal: self.lex.slice(),
                         }),
                         Word::TypeIdent => Token::TypeIdent(tok::Literal {
                             location: span.start,
-                            literal: self.strings.alloc_str(self.lex.slice()),
+                            literal: self.lex.slice(),
                         }),
                         Word::Integer => Token::Integer(tok::Literal {
                             location: span.start,
-                            literal: self.strings.alloc_str(self.lex.slice()),
+                            literal: self.lex.slice(),
                         }),
                         Word::InvalidIdent => return Some(Err(LexError::InvalidIdent(span))),
                         Word::InvalidInteger => return Some(Err(LexError::InvalidInteger(span))),

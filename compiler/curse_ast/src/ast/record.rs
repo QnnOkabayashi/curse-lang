@@ -1,32 +1,33 @@
 use crate::ast::{tok, Iter};
 use crate::ast_struct;
 use curse_span::HasSpan;
+use curse_interner::Ident;
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Record<'ast, T> {
+    pub struct Record<T> {
         pub lbrace: tok::LBrace,
-        pub fields: Vec<(Field<'ast, T>, tok::Comma)>,
-        pub trailing: Option<Field<'ast, T>>,
+        pub fields: Vec<(Field<T>, tok::Comma)>,
+        pub trailing: Option<Field<T>>,
         pub rbrace: tok::RBrace,
     }
 }
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Field<'ast, T> {
-        pub ident: tok::Literal<'ast>,
+    pub struct Field<T> {
+        pub ident: Ident,
         pub value: Option<(tok::Colon, T)>,
     }
 }
 
-impl<'ast, T> Record<'ast, T> {
-    pub fn iter_fields(&self) -> Iter<'_, Field<'ast, T>, tok::Comma> {
+impl<T> Record<T> {
+    pub fn iter_fields(&self) -> Iter<'_, Field<T>, tok::Comma> {
         Iter::new(self.fields.iter(), self.trailing.as_ref())
     }
 }
 
-impl<T> HasSpan for Record<'_, T> {
+impl<T> HasSpan for Record<T> {
     fn start(&self) -> u32 {
         self.lbrace.start()
     }
@@ -36,7 +37,7 @@ impl<T> HasSpan for Record<'_, T> {
     }
 }
 
-impl<T: HasSpan> HasSpan for Field<'_, T> {
+impl<T: HasSpan> HasSpan for Field<T> {
     fn start(&self) -> u32 {
         self.ident.start()
     }

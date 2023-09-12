@@ -1,6 +1,7 @@
 use std::io;
 
 use bumpalo::Bump;
+use curse_interner::StringInterner;
 
 mod builtins;
 mod error;
@@ -8,12 +9,11 @@ mod evaluation;
 mod value;
 
 pub fn main() -> io::Result<()> {
+    let mut interner = StringInterner::new();
     curse_interner::init();
 
-    let ast_arena = Bump::new();
-    let strings = Bump::new();
     let hir_arena = Bump::new();
-    let mut parser = curse_parse::Parser::new(&ast_arena, &strings);
+    let mut parser = curse_parse::Parser::new(&mut interner);
 
     let mut args = std::env::args();
     args.next();
@@ -27,11 +27,13 @@ pub fn main() -> io::Result<()> {
         return Ok(());
     }
 
+    curse_interner::replace(Some(interner));
+
     let mut lowerer = curse_ast_lowering::Lowerer::new(&hir_arena);
     let hir_program = curse_ast_lowering::Lower::lower(&ast_program, &mut lowerer);
 
     if !lowerer.errors.is_empty() {
-        eprintln!("{:?}", parser.errors);
+        eprintln!("{:?}", lowerer.errors);
         return Ok(());
     }
 

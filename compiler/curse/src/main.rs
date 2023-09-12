@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use bumpalo::Bump;
+use curse_interner::StringInterner;
 use miette::{Diagnostic, GraphicalReportHandler, NamedSource};
 use thiserror::Error;
 
@@ -41,13 +42,11 @@ impl<E: Diagnostic> Errors<E> {
 }
 
 fn main() {
-    curse_interner::init();
+    let mut interner = StringInterner::new();
 
     let input: &str = programs::REGIONS;
 
-    let ast_arena = Bump::new();
-    let strings = Bump::new();
-    let mut parser = curse_parse::Parser::new(&ast_arena, &strings);
+    let mut parser = curse_parse::Parser::new(&mut interner);
     let ast_program = parser.parse_program(input);
 
     if !parser.errors.is_empty() {
@@ -60,6 +59,8 @@ fn main() {
 
         return;
     }
+
+    curse_interner::replace(Some(interner));
 
     let hir_arena = Bump::new();
     let mut lowerer = curse_ast_lowering::Lowerer::new(&hir_arena);

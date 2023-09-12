@@ -12,12 +12,12 @@ mod ty;
 pub use def::{
     ChoiceDef, ExplicitTypes, FunctionDef, GenericParams, StructDef, VariantDef, Variants,
 };
-pub use expr::{Appl, Arm, Closure, Expr, ExprRef, Param, Paren, Region, RegionKind, Symbol};
-pub use pat::{Pat, PatRef};
+pub use expr::{Appl, Arm, Closure, Expr, Param, Paren, Region, RegionKind, Symbol};
+pub use pat::Pat;
 pub use program::Program;
 pub use record::{Field, Record};
 pub use shared::{Constructor, Iter, Lit, Path};
-pub use ty::{GenericArgs, NamedType, Type, TypeRef};
+pub use ty::{GenericArgs, NamedType, Type};
 
 /// Macro to automatically derive a `new` constructor.
 #[macro_export]
@@ -35,6 +35,25 @@ macro_rules! ast_struct {
 
         impl<$($generics),*> $name <$($generics),*> {
             pub fn new($($field : $ty),*) -> $name <$($generics),*> {
+                $name { $($field),* }
+            }
+        }
+    };
+
+
+(
+    $(#[$attrs:meta])*
+    $vis:vis struct $name:ident {
+        $($field_vis:vis $field:ident : $ty:ty,)*
+    }
+) => {
+        $(#[$attrs])*
+        $vis struct $name {
+            $($field_vis $field : $ty,)*
+        }
+
+        impl $name {
+            pub fn new($($field : $ty),*) -> $name {
                 $name { $($field),* }
             }
         }

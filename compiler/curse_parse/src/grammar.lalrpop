@@ -1,12 +1,14 @@
 use crate::{lexer::*, Parser};
 use curse_ast::ast::{
-    tok, Appl, Arm, ChoiceDef, Closure, Constructor, ExplicitTypes, Expr, Field, FunctionDef,
+    tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr, Field, FunctionDef,
     GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef, 
     Symbol, Type, VariantDef, Variants,
     Region, RegionKind,
 };
+use curse_interner::Ident;
+use curse_span::HasSpan;
 
-grammar<'ast>(parser: &mut Parser<'ast>);
+grammar<'input>(parser: &mut Parser<'_>);
 
 extern {
     type Location = usize;
@@ -15,13 +17,13 @@ extern {
     // Any changes here must also be reflected in:
     // - curse_parse/src/lexer.rs
     // - curse_ast/src/tok.rs
-    enum Token<'ast> {
+    enum Token<'input> {
         // In the grammar, if we specify the string on the lhs,
         // it means that we're waiting for the lexer to
         // give us the rhs.
-        "ident literal" => Token::Ident(<tok::Literal<'ast>>),
-        "type ident literal" => Token::TypeIdent(<tok::Literal<'ast>>),
-        "integer literal" => Token::Integer(<tok::Literal<'ast>>),
+        "ident literal" => Token::Ident(<tok::Literal<'input>>),
+        "type ident literal" => Token::TypeIdent(<tok::Literal<'input>>),
+        "integer literal" => Token::Integer(<tok::Literal<'input>>),
         ":" => Token::Colon(<tok::Colon>),
         "::" => Token::ColonColon(<tok::ColonColon>),
         "," => Token::Comma(<tok::Comma>),
@@ -58,14 +60,14 @@ extern {
 
 /// === Term Aliases ===
 
-Ident: tok::Literal<'ast> = "ident literal";
-TypeIdent: tok::Literal<'ast> = "type ident literal";
-Integer: tok::Literal<'ast> = "integer literal";
+Ident: Ident = "ident literal" => Ident::new_in(<>.as_ref(), <>.span(), parser.interner);
+TypeIdent: Ident = "type ident literal" => Ident::new_in(<>.as_ref(), <>.span(), parser.interner);
+Integer: Ident = "integer literal" => Ident::new_in(<>.as_ref(), <>.span(), parser.interner);
 
 
 /// === Program ===
 
-pub Program: Program<'ast> = {
+pub Program: Program = {
     FunctionDef => Program::default().with_function_def(<>),
     ChoiceDef => Program::default().with_choice_def(<>),
     StructDef => Program::default().with_struct_def(<>),
@@ -82,101 +84,100 @@ pub Program: Program<'ast> = {
 
 /// === Definitions ===
 
-GenericParams: GenericParams<'ast> = {
+GenericParams: GenericParams = {
     "|" (TypeIdent "*")* TypeIdent "|" => GenericParams::new(<>),
 };
 
-ExplicitTypes: ExplicitTypes<'ast> = {
-    GenericParams? ":" Ref<Type> => ExplicitTypes::new(<>),
-}
+// ExplicitTypes: ExplicitTypes = {
+//     GenericParams? ":" Ref<Type> => ExplicitTypes::new(<>),
+// }
 
-FunctionDef: FunctionDef<'ast> = {
+FunctionDef: FunctionDef = {
     "fn" Ident Closure => FunctionDef::new(<>),
     // "fn" Ident ExplicitTypes? Closure => FunctionDef::new(<>),
 };
 
-StructDef: StructDef<'ast> = {
-    "struct" TypeIdent GenericParams? Ref<Type> => StructDef::new(<>),
+StructDef: StructDef = {
+    "struct" TypeIdent GenericParams? Type => StructDef::new(<>),
 };
 
-ChoiceDef: ChoiceDef<'ast> = {
+ChoiceDef: ChoiceDef = {
     "choice" TypeIdent GenericParams? Variants => ChoiceDef::new(<>),
 };
 
-Variants: Variants<'ast> = {
+Variants: Variants = {
     "{" (VariantDef ",")* VariantDef? "}" => Variants::new(<>),
 }
 
-VariantDef: VariantDef<'ast> = {
-    TypeIdent Ref<Type> => VariantDef::new(<>),
+VariantDef: VariantDef = {
+    TypeIdent Type => VariantDef::new(<>),
 };
 
 
 /// === Record ===
 
-Record<T>: Record<'ast, T> = {
+Record<T>: Record<T> = {
     "{" (Field<T> ",")* Field<T>? "}" => Record::new(<>),
 };
 
-Field<T>: Field<'ast, T> = {
+Field<T>: Field<T> = {
     Ident (":" T)? => Field::new(<>),
 };
 
-// Get an arena-allocated reference
-Ref<T>: &'ast T = {
-    T => parser.bump.alloc(<>),
+Box<T>: Box<T> = {
+    T => Box::new(<>),
 }
 
 
 /// === Types ===
 
-Type: Type<'ast> = {
-    NamedType => Type::Named(<>),
-    Record<Ref<Type>> => Type::Record(<>),
+Type: Type = {
+    Box<NamedType> => Type::Named(<>),
+    Box<Record<Type>> => Type::Record(<>),
     ! => {
         parser.errors.push(<>.error.into());
         Type::Error
     }
 };
 
-GenericArgs: GenericArgs<'ast> = {
-    Ref<Type> => GenericArgs::Single(<>),
-    "(" (Type "*")* Ref<Type> ")" => GenericArgs::CartesianProduct(<>),
+GenericArgs: GenericArgs = {
+    Type => GenericArgs::Single(<>),
+    "(" (Type "*")* Type ")" => GenericArgs::CartesianProduct(<>),
 };
 
-NamedType: NamedType<'ast> = {
+NamedType: NamedType = {
     TypePath GenericArgs? => NamedType::new(<>),
 };
 
 
 /// === Patterns ===
 
-Pat: Pat<'ast> = {
+Pat: Pat = {
     Lit => Pat::Lit(<>),
-    Record<Ref<Pat>> => Pat::Record(<>),
-    Constructor<Pat> => Pat::Constructor(<>),
+    Box<Record<Pat>> => Pat::Record(<>),
+    Box<Constructor<Pat>> => Pat::Constructor(<>),
 };
 
 
 /// === Shared ===
 
-Lit: Lit<'ast> = {
+Lit: Lit = {
     Integer => Lit::Integer(<>),
     Ident => Lit::Ident(<>),
     "true" => Lit::True(<>),
     "false" => Lit::False(<>),
 };
 
-Path: Path<'ast> = {
+Path: Path = {
     (Ident "::")* Ident => Path::new(<>),
 };
 
-TypePath: Path<'ast> = {
+TypePath: Path = {
     (Ident "::")* TypeIdent => Path::new(<>),
 };
 
-Constructor<T>: Constructor<'ast, T> = {
-    TypePath ("::" TypeIdent)? Ref<T> => Constructor::new(<>),
+Constructor<T>: Constructor<T> = {
+    TypePath ("::" TypeIdent)? T => Constructor::new(<>),
 };
 
 
@@ -198,11 +199,11 @@ Symbol: Symbol = {
     ">=" => Symbol::Ge(<>),
 };
 
-ClosureNonpiecewise: Closure<'ast> = {
+ClosureNonpiecewise: Closure = {
     Arm => Closure::NonPiecewise(<>),
 };
 
-ClosurePiecewise: Closure<'ast> = {
+ClosurePiecewise: Closure = {
     "(" ")" => Closure::Empty(<>),
     "(" (Arm ",")+ Arm? ")" => Closure::Piecewise(<>),
 };
@@ -212,20 +213,20 @@ Closure = {
     ClosurePiecewise,
 };
 
-Arm: Arm<'ast> = {
-    "|" (Param ",")* Param? "|" Ref<EndExpr> => Arm::new(<>),
+Arm: Arm = {
+    "|" (Param ",")* Param? "|" EndExpr => Arm::new(<>),
 };
 
-Param: Param<'ast> = {
-    Ref<Pat> (":" Ref<Type>)? => Param::new(<>),
+Param: Param = {
+    Pat (":" Type)? => Param::new(<>),
 };
 
-Appl<Rhs>: Appl<'ast> = {
-    Ref<Expr> Ref<Term> Ref<Rhs> => Appl::new(<>),
+Appl<Rhs>: Appl = {
+    Expr Term Rhs => Appl::new(<>),
 };
 
-Region: Region<'ast> = {
-    RegionKind Ref<Pat> "{" Ref<EndExpr> "}" => Region::new(<>),
+Region: Region = {
+    RegionKind Pat "{" EndExpr "}" => Region::new(<>),
 };
 
 RegionKind: RegionKind = {
@@ -234,17 +235,17 @@ RegionKind: RegionKind = {
     "ref" "mut" => RegionKind::RefMut(<>),
 }
 
-Paren: Paren<'ast> = {
-    "(" Ref<EndExpr> ")" => Paren::new(<>),
+Paren: Paren = {
+    "(" EndExpr ")" => Paren::new(<>),
 };
 
-Term: Expr<'ast> = {
-    Paren => Expr::Paren(<>),
+Term: Expr = {
+    Box<Paren> => Expr::Paren(<>),
     Symbol => Expr::Symbol(<>),
     Lit => Expr::Lit(<>),
-    Record<Ref<EndExpr>> => Expr::Record(<>),
-    Ref<ClosurePiecewise> => Expr::Closure(<>),
-    Region => Expr::Region(<>),
+    Box<Record<EndExpr>> => Expr::Record(<>),
+    Box<ClosurePiecewise> => Expr::Closure(<>),
+    Box<Region> => Expr::Region(<>),
     ! => {
         parser.errors.push(<>.error.into());
         Expr::Error
@@ -253,16 +254,16 @@ Term: Expr<'ast> = {
 
 EndTerm = {
     Term,
-    Constructor<EndExpr> => Expr::Constructor(<>),
-    Ref<ClosureNonpiecewise> => Expr::Closure(<>),
+    Box<Constructor<EndExpr>> => Expr::Constructor(<>),
+    Box<ClosureNonpiecewise> => Expr::Closure(<>),
 };
 
 Expr = {
     Term,
-    Appl<Term> => Expr::Appl(<>),
+    Box<Appl<Term>> => Expr::Appl(<>),
 };
 
 pub EndExpr = {
     EndTerm,
-    Appl<EndTerm> => Expr::Appl(<>),
+    Box<Appl<EndTerm>> => Expr::Appl(<>),
 };
