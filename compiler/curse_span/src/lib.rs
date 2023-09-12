@@ -40,6 +40,20 @@ pub trait HasSpan {
     }
 }
 
+impl HasSpan for Span {
+    fn start(&self) -> u32 {
+        self.start
+    }
+
+    fn end(&self) -> u32 {
+        self.end
+    }
+
+    fn span(&self) -> Span {
+        *self
+    }
+}
+
 impl<T: HasSpan> HasSpan for &T {
     fn start(&self) -> u32 {
         (*self).start()

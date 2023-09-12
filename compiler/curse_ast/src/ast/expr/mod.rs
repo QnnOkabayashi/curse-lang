@@ -1,4 +1,4 @@
-use crate::ast::{tok, Constructor, Lit, PatRef, Record};
+use crate::ast::{tok, Constructor, Lit, Pat, Record};
 use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
@@ -6,26 +6,23 @@ mod closure;
 pub use closure::*;
 
 #[derive(Clone, Debug)]
-pub enum Expr<'ast> {
-    Paren(Paren<'ast>),
+pub enum Expr {
+    Paren(Box<Paren>),
     Symbol(Symbol),
-    Lit(Lit<'ast>),
-    Record(Record<'ast, ExprRef<'ast>>),
-    Constructor(Constructor<'ast, Self>),
-    Closure(&'ast Closure<'ast>),
-    Appl(Appl<'ast>),
-    Region(Region<'ast>),
-    Field(ExprRef<'ast>, tok::Literal<'ast>),
+    Lit(Lit),
+    Record(Box<Record<Self>>),
+    Constructor(Box<Constructor<Self>>),
+    Closure(Box<Closure>),
+    Appl(Box<Appl>),
+    Region(Box<Region>),
     Error,
 }
 
-pub type ExprRef<'ast> = &'ast Expr<'ast>;
-
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Paren<'ast> {
+    pub struct Paren {
         pub lparen: tok::LParen,
-        pub expr: &'ast Expr<'ast>,
+        pub expr: Expr,
         pub rparen: tok::RParen,
     }
 }
@@ -49,23 +46,23 @@ pub enum Symbol {
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Appl<'ast> {
-        pub lhs: &'ast Expr<'ast>,
-        pub fun: &'ast Expr<'ast>,
-        pub rhs: &'ast Expr<'ast>,
+    pub struct Appl {
+        pub lhs: Expr,
+        pub fun: Expr,
+        pub rhs: Expr,
     }
 }
 
 ast_struct! {
     /// A region, e.g. `ref mut x { x + 1 }`
     #[derive(Clone, Debug)]
-    pub struct Region<'ast> {
+    pub struct Region {
         pub kind: RegionKind,
         // Should only be an ident or a record of idents with no values, e.g. `{ a, b }`.
         // Anything else will be caught at lowering.
-        pub pat: PatRef<'ast>,
+        pub pat: Pat,
         pub lbrace: tok::LBrace,
-        pub body: ExprRef<'ast>,
+        pub body: Expr,
         pub rbrace: tok::RBrace,
     }
 }
@@ -79,7 +76,7 @@ pub enum RegionKind {
 
 // === impl Span ===
 
-impl HasSpan for Expr<'_> {
+impl HasSpan for Expr {
     fn start(&self) -> u32 {
         match self {
             Expr::Paren(paren) => paren.start(),
@@ -90,7 +87,6 @@ impl HasSpan for Expr<'_> {
             Expr::Closure(closure) => closure.start(),
             Expr::Appl(appl) => appl.start(),
             Expr::Region(region) => region.start(),
-            Expr::Field(expr, _field) => expr.start(),
             Expr::Error => todo!(),
         }
     }
@@ -105,7 +101,6 @@ impl HasSpan for Expr<'_> {
             Expr::Closure(closure) => closure.end(),
             Expr::Appl(appl) => appl.end(),
             Expr::Region(region) => region.end(),
-            Expr::Field(_expr, field) => field.end(),
             Expr::Error => todo!(),
         }
     }
@@ -120,16 +115,12 @@ impl HasSpan for Expr<'_> {
             Expr::Closure(closure) => closure.span(),
             Expr::Appl(appl) => appl.span(),
             Expr::Region(region) => region.span(),
-            Expr::Field(expr, field) => Span {
-                start: expr.start(),
-                end: field.end(),
-            },
             Expr::Error => todo!(),
         }
     }
 }
 
-impl HasSpan for Paren<'_> {
+impl HasSpan for Paren {
     fn start(&self) -> u32 {
         self.lparen.start()
     }
@@ -195,7 +186,7 @@ impl HasSpan for Symbol {
     }
 }
 
-impl HasSpan for Appl<'_> {
+impl HasSpan for Appl {
     fn start(&self) -> u32 {
         self.lhs.start()
     }
@@ -205,7 +196,7 @@ impl HasSpan for Appl<'_> {
     }
 }
 
-impl HasSpan for Region<'_> {
+impl HasSpan for Region {
     fn start(&self) -> u32 {
         self.kind.start()
     }

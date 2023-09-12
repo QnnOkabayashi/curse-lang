@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 curse_span = { path = "../curse_span" }
+curse_interner = { path = "../curse_interner" }

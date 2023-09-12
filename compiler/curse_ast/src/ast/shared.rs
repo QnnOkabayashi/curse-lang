@@ -1,4 +1,5 @@
 use crate::{ast::tok, ast_struct};
+use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::mem;
 
@@ -41,9 +42,9 @@ impl<'a, T, D> Iterator for Iter<'a, T, D> {
 impl<'a, T, D> ExactSizeIterator for Iter<'a, T, D> {}
 
 #[derive(Copy, Clone, Debug)]
-pub enum Lit<'ast> {
-    Integer(tok::Literal<'ast>),
-    Ident(tok::Literal<'ast>),
+pub enum Lit {
+    Integer(Ident),
+    Ident(Ident),
     True(tok::True),
     False(tok::False),
 }
@@ -51,31 +52,27 @@ pub enum Lit<'ast> {
 ast_struct! {
     /// A path, e.g. `std::collections::Vec`
     #[derive(Clone, Debug)]
-    pub struct Path<'ast> {
-        pub parts: Vec<(tok::Literal<'ast>, tok::ColonColon)>,
-        pub ident: tok::Literal<'ast>,
+    pub struct Path {
+        pub parts: Vec<(Ident, tok::ColonColon)>,
+        pub ident: Ident,
     }
 }
 
-impl<'ast> Path<'ast> {
-    pub fn iter_parts(&self) -> Iter<'_, tok::Literal<'ast>, tok::ColonColon> {
+impl Path {
+    pub fn iter_parts(&self) -> Iter<'_, Ident, tok::ColonColon> {
         Iter::new(self.parts.iter(), Some(&self.ident))
     }
 }
 
 /// A constructor, e.g. `Option::None {}`
 #[derive(Clone, Debug)]
-pub struct Constructor<'ast, T> {
-    pub path: Path<'ast>,
-    pub inner: &'ast T,
+pub struct Constructor<T> {
+    pub path: Path,
+    pub inner: T,
 }
 
-impl<'ast, T> Constructor<'ast, T> {
-    pub fn new(
-        mut path: Path<'ast>,
-        variant: Option<(tok::ColonColon, tok::Literal<'ast>)>,
-        inner: &'ast T,
-    ) -> Self {
+impl<T> Constructor<T> {
+    pub fn new(mut path: Path, variant: Option<(tok::ColonColon, Ident)>, inner: T) -> Self {
         if let Some((colon_colon, variant)) = variant {
             let last = mem::replace(&mut path.ident, variant);
             path.parts.push((last, colon_colon));
@@ -85,7 +82,7 @@ impl<'ast, T> Constructor<'ast, T> {
     }
 }
 
-impl HasSpan for Lit<'_> {
+impl HasSpan for Lit {
     fn start(&self) -> u32 {
         match self {
             Lit::Integer(integer) => integer.start(),
@@ -114,7 +111,7 @@ impl HasSpan for Lit<'_> {
     }
 }
 
-impl HasSpan for Path<'_> {
+impl HasSpan for Path {
     fn start(&self) -> u32 {
         if let Some((ident, _)) = self.parts.first() {
             ident.start()
@@ -128,7 +125,7 @@ impl HasSpan for Path<'_> {
     }
 }
 
-impl<T: HasSpan> HasSpan for Constructor<'_, T> {
+impl<T: HasSpan> HasSpan for Constructor<T> {
     fn start(&self) -> u32 {
         self.path.start()
     }

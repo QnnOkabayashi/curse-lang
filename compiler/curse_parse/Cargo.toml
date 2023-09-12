@@ -10,8 +10,8 @@ lalrpop = "0.20.0"
 lalrpop-util = "0.20.0"
 curse_ast = { path = "../curse_ast" }
 curse_span = { path = "../curse_span" }
+curse_interner = { path = "../curse_interner" }
 logos = "0.13"
 miette = "5.9.0"
-bumpalo = "3.13.0"
 thiserror = "1.0.39"
 unicode-ident = "1.0.9"

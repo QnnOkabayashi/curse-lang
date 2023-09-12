@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
-use bumpalo::Bump;
 use curse_ast::ast;
+use curse_interner::StringInterner;
 use lalrpop_util::lalrpop_mod;
 
 mod error;
@@ -15,30 +15,28 @@ lalrpop_mod!(
     grammar
 );
 
-pub struct Parser<'ast> {
-    pub bump: &'ast Bump,
-    pub strings: &'ast Bump,
+pub struct Parser<'intern> {
+    pub interner: &'intern mut StringInterner,
     pub errors: Vec<Error>,
 }
 
-impl<'ast> Parser<'ast> {
-    pub fn new(bump: &'ast Bump, strings: &'ast Bump) -> Self {
+impl<'intern> Parser<'intern> {
+    pub fn new(interner: &'intern mut StringInterner) -> Self {
         Parser {
-            bump,
-            strings,
+            interner,
             errors: Vec::with_capacity(0),
         }
     }
 
-    pub fn parse_program(&mut self, input: &str) -> ast::Program<'ast> {
+    pub fn parse_program(&mut self, input: &str) -> ast::Program {
         grammar::ProgramParser::new()
-            .parse(self, Lexer::new(self.strings, input))
+            .parse(self, Lexer::new(input))
             .expect("`Program` rule recovers from all errors")
     }
 
-    pub fn parse_expr(&mut self, input: &str) -> ast::Expr<'ast> {
+    pub fn parse_expr(&mut self, input: &str) -> ast::Expr {
         grammar::EndExprParser::new()
-            .parse(self, Lexer::new(self.strings, input))
+            .parse(self, Lexer::new(input))
             .expect("`EndExpr` rule recovers from all errors")
     }
 }

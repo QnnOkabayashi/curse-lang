@@ -1,20 +1,21 @@
-use crate::ast::{tok, Closure, Iter, TypeRef};
+use crate::ast::{tok, Closure, Iter, Type};
 use crate::ast_struct;
+use curse_interner::Ident;
 use curse_span::HasSpan;
 
 ast_struct! {
     /// Example: `|K * V|`
     #[derive(Clone, Debug)]
-    pub struct GenericParams<'ast> {
+    pub struct GenericParams {
         open: tok::Pipe,
-        params: Vec<(tok::Literal<'ast>, tok::Star)>,
-        last: tok::Literal<'ast>,
+        params: Vec<(Ident, tok::Star)>,
+        last: Ident,
         close: tok::Pipe,
     }
 }
 
-impl<'ast> GenericParams<'ast> {
-    pub fn iter_params(&self) -> Iter<'_, tok::Literal<'ast>, tok::Star> {
+impl GenericParams {
+    pub fn iter_params(&self) -> Iter<'_, Ident, tok::Star> {
         Iter::new(self.params.iter(), Some(&self.last))
     }
 }
@@ -22,58 +23,58 @@ impl<'ast> GenericParams<'ast> {
 ast_struct! {
     /// Example: `fn add = |x, y| x + y`
     #[derive(Clone, Debug)]
-    pub struct FunctionDef<'ast> {
+    pub struct FunctionDef {
         pub fn_: tok::Fn,
-        pub ident: tok::Literal<'ast>,
-        pub function: Closure<'ast>,
+        pub ident: Ident,
+        pub function: Closure,
     }
 }
 
 ast_struct! {
     /// Example: `T: T -> T`
     #[derive(Clone, Debug)]
-    pub struct ExplicitTypes<'ast> {
-        pub generic_params: Option<GenericParams<'ast>>,
+    pub struct ExplicitTypes {
+        pub generic_params: Option<GenericParams>,
         pub colon: tok::Colon,
-        pub ty: TypeRef<'ast>,
+        pub ty: Type,
     }
 }
 
 ast_struct! {
     /// Example: `struct Id I32`
     #[derive(Clone, Debug)]
-    pub struct StructDef<'ast> {
+    pub struct StructDef {
         pub struct_: tok::Struct,
-        pub ident: tok::Literal<'ast>,
-        pub generic_params: Option<GenericParams<'ast>>,
-        pub ty: TypeRef<'ast>,
+        pub ident: Ident,
+        pub generic_params: Option<GenericParams>,
+        pub ty: Type,
     }
 }
 
 ast_struct! {
     /// Example: `choice Option |T| { Some T, None {} }`
     #[derive(Clone, Debug)]
-    pub struct ChoiceDef<'ast> {
+    pub struct ChoiceDef {
         pub choice: tok::Choice,
-        pub ident: tok::Literal<'ast>,
-        pub generic_params: Option<GenericParams<'ast>>,
-        pub variants: Variants<'ast>,
+        pub ident: Ident,
+        pub generic_params: Option<GenericParams>,
+        pub variants: Variants,
     }
 }
 
 ast_struct! {
     /// Example: `{ Some T, None {} }`
     #[derive(Debug, Clone)]
-    pub struct Variants<'ast> {
+    pub struct Variants {
         lbrace: tok::LBrace,
-        variants: Vec<(VariantDef<'ast>, tok::Comma)>,
-        last: Option<VariantDef<'ast>>,
+        variants: Vec<(VariantDef, tok::Comma)>,
+        last: Option<VariantDef>,
         rbrace: tok::RBrace,
     }
 }
 
-impl<'ast> Variants<'ast> {
-    pub fn iter_variants(&self) -> Iter<'_, VariantDef<'ast>, tok::Comma> {
+impl Variants {
+    pub fn iter_variants(&self) -> Iter<'_, VariantDef, tok::Comma> {
         Iter::new(self.variants.iter(), self.last.as_ref())
     }
 }
@@ -81,13 +82,13 @@ impl<'ast> Variants<'ast> {
 ast_struct! {
     /// Example: `Some T`
     #[derive(Clone, Debug)]
-    pub struct VariantDef<'ast> {
-        pub ident: tok::Literal<'ast>,
-        pub ty: TypeRef<'ast>,
+    pub struct VariantDef {
+        pub ident: Ident,
+        pub ty: Type,
     }
 }
 
-impl HasSpan for GenericParams<'_> {
+impl HasSpan for GenericParams {
     fn start(&self) -> u32 {
         self.open.start()
     }
@@ -97,7 +98,7 @@ impl HasSpan for GenericParams<'_> {
     }
 }
 
-impl HasSpan for FunctionDef<'_> {
+impl HasSpan for FunctionDef {
     fn start(&self) -> u32 {
         self.fn_.start()
     }
@@ -107,7 +108,7 @@ impl HasSpan for FunctionDef<'_> {
     }
 }
 
-impl HasSpan for StructDef<'_> {
+impl HasSpan for StructDef {
     fn start(&self) -> u32 {
         self.struct_.start()
     }
@@ -117,7 +118,7 @@ impl HasSpan for StructDef<'_> {
     }
 }
 
-impl HasSpan for ChoiceDef<'_> {
+impl HasSpan for ChoiceDef {
     fn start(&self) -> u32 {
         self.choice.start()
     }
@@ -127,7 +128,7 @@ impl HasSpan for ChoiceDef<'_> {
     }
 }
 
-impl HasSpan for Variants<'_> {
+impl HasSpan for Variants {
     fn start(&self) -> u32 {
         self.lbrace.start()
     }
@@ -137,7 +138,7 @@ impl HasSpan for Variants<'_> {
     }
 }
 
-impl HasSpan for VariantDef<'_> {
+impl HasSpan for VariantDef {
     fn start(&self) -> u32 {
         self.ident.start()
     }

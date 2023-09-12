@@ -56,7 +56,7 @@ pub enum Error {
     InvalidInteger(#[label("This isn't a valid integer")] SourceSpan),
 }
 
-type LalrParseError<'ast> = ParseError<usize, Token<'ast>, LexError>;
+type LalrParseError<'input> = ParseError<usize, Token<'input>, LexError>;
 
 impl From<LalrParseError<'_>> for Error {
     fn from(value: LalrParseError<'_>) -> Self {

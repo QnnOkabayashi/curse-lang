@@ -30,6 +30,13 @@ impl Ident {
             span,
         }
     }
+
+    pub fn new_in(s: &str, span: Span, interner: &mut StringInterner) -> Self {
+        Ident {
+            symbol: InternedString::get_or_intern_in(s, interner),
+            span,
+        }
+    }
 }
 
 impl<T: AsRef<str> + HasSpan> From<T> for Ident {
@@ -65,21 +72,25 @@ pub struct InternedString(string_interner::DefaultSymbol);
 
 impl InternedString {
     pub fn get_or_intern(s: &str) -> Self {
-        InternedString(
-            STRINGS
-                .write()
-                .as_mut()
-                .expect("no string interner loaded")
-                .get_or_intern(s),
+        Self::get_or_intern_in(
+            s,
+            STRINGS.write().as_mut().expect("no string interner loaded"),
         )
     }
 
     pub fn get(s: &str) -> Option<Self> {
-        STRINGS
-            .read()
-            .as_ref()
-            .and_then(|interner| interner.get(s))
-            .map(Self)
+        Self::get_in(
+            s,
+            STRINGS.read().as_ref().expect("no string interner loaded"),
+        )
+    }
+
+    pub fn get_in(s: &str, interner: &StringInterner) -> Option<Self> {
+        interner.get(s).map(InternedString)
+    }
+
+    pub fn get_or_intern_in(s: &str, interner: &mut StringInterner) -> Self {
+        InternedString(interner.get_or_intern(s))
     }
 
     pub fn string(&self) -> StringGuard<'_> {

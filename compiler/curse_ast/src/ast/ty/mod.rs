@@ -5,17 +5,15 @@ mod named;
 pub use named::{GenericArgs, NamedType};
 
 #[derive(Clone, Debug)]
-pub enum Type<'ast> {
-    Named(NamedType<'ast>),
+pub enum Type {
+    Named(Box<NamedType>),
     // Failing to specify the type of a field in a record should be reported during ast lowering,
     // not during parsing, so we allow for a type to be omitted in this representation.
-    Record(Record<'ast, TypeRef<'ast>>),
+    Record(Box<Record<Self>>),
     Error,
 }
 
-pub type TypeRef<'ast> = &'ast Type<'ast>;
-
-impl HasSpan for Type<'_> {
+impl HasSpan for Type {
     fn start(&self) -> u32 {
         match self {
             Type::Named(named) => named.start(),

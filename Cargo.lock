@@ -146,6 +146,7 @@ dependencies = [
 name = "curse_ast"
 version = "0.0.0"
 dependencies = [
+ "curse_interner",
  "curse_span",
 ]
 
@@ -214,8 +215,8 @@ dependencies = [
 name = "curse_parse"
 version = "0.0.0"
 dependencies = [
- "bumpalo",
  "curse_ast",
+ "curse_interner",
  "curse_span",
  "lalrpop",
  "lalrpop-util",
