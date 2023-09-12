@@ -64,4 +64,8 @@ fn add_points |{ x: x1, y: y1 }, { x: x2, y: y2 }|
 fn main2 || { x: 1, y: 2 } add_points { x: 3, y: 4 }
 
 // works, but doesn't parse without the parens (should it?)
-fn main || (Result::Ok 3) map_result inc
+fn main3 || Result::Ok 3 map_result inc
+
+fn main || Result::Ok Result::Ok |x| x + 1
+
+
