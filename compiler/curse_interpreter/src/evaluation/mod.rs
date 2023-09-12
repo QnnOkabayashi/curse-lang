@@ -134,13 +134,12 @@ fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
             if pattern_map.entries.len() != value_map.entries.len() {
                 false
             } else {
-                pattern_map
-                    .entries
-                    .iter()
-                    .zip(&value_map.entries)
-                    .all(|((_, pat), (_, val))| {
-                        pat.is_some_and(|pat| check_pattern(val.as_ref(), pat))
-                    })
+                pattern_map.entries.iter().zip(&value_map.entries).all(
+                    |((_, opt_pat), (_, val))| match opt_pat {
+                        Some(pat) => check_pattern(val.as_ref(), pat),
+                        None => true,
+                    },
+                )
             }
         }
         (
@@ -175,11 +174,17 @@ fn match_pattern<'hir>(
         match (&pattern.kind, value.as_ref()) {
             (PatKind::Record(pattern_map), Value::Record(value_map)) => {
                 if pattern_map.entries.len() == value_map.entries.len() {
-                    pattern_map.entries.iter().zip(&value_map.entries).for_each(
-                        |((_, pat), (_, val))| {
-                            pat.map(|pat| match_pattern(val.clone(), pat, local_state));
-                        },
-                    );
+                    // if there's no pattern after the name, binds value to the name, otherwise
+                    // matches on the pattern
+                    for ((name, opt_pat), (_, val)) in
+                        pattern_map.entries.iter().zip(&value_map.entries)
+                    {
+                        if let Some(pat) = opt_pat {
+                            match_pattern(Rc::clone(&val), pat, local_state)?;
+                        } else {
+                            local_state.insert(name.symbol, Rc::clone(&val));
+                        }
+                    }
 
                     // should be ok since we already made sure the pattern
                     // successfully matched
