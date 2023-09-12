@@ -1,0 +1,53 @@
+fn rec |x, f| f of (|x| x rec f) of x
+fn of |f, x| x f {}
+fn in |x, f| x f {}
+
+choice List {
+    Cons {
+        value: I32,
+        next: List,
+    },
+    Nil {},
+}
+
+fn push_back (
+    |List::Nil {}, x|
+        List::Cons {
+            value: x,
+            next: List::Nil{},
+        },
+    |List::Cons { value, next }, x|
+        List::Cons {
+            value,
+            next: next push_back x,
+        }
+)
+
+fn reverse (
+    |List::Nil {}| List::Nil {},
+    |List::Cons { value, next }| next
+        in reverse
+        push_back value
+)
+
+fn reverse_fast |src|
+    { src, dst: List::Nil {} } rec |loop| (
+        |{ src: List::Nil {}, dst }| dst,
+        |{ src: List::Cons { value, next }, dst }| loop of {
+            src: next,
+            dst: List::Cons {
+                value,
+                next: dst,
+            },
+        },
+    )
+
+
+fn main || 
+    List::Nil {}
+        push_back 1
+        push_back 2
+        push_back 3
+        push_back 4
+        in reverse_fast
+
