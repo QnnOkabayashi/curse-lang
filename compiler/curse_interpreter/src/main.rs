@@ -31,8 +31,6 @@ pub fn main() -> io::Result<()> {
     let mut lowerer = curse_ast_lowering::Lowerer::new(&hir_arena);
     let hir_program = curse_ast_lowering::Lower::lower(&ast_program, &mut lowerer);
 
-    dbg!(&hir_program.struct_defs);
-
     if !lowerer.errors.is_empty() {
         eprintln!("{:?}", lowerer.errors);
         return Ok(());
