@@ -53,7 +53,7 @@ impl fmt::Display for Ident {
 
 impl fmt::Debug for Ident {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.symbol, f)
+        fmt::Display::fmt(&self.symbol, f)
     }
 }
 
