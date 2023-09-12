@@ -58,15 +58,22 @@ fn eval_expr<'hir>(
         ExprKind::Record(map) => Ok(Rc::new(Value::Record(OwnedMap::new(
             map.entries
                 .iter()
-                .map(|(ident, expr)| {
-                    Ok((
+                .map(|(ident, opt_expr)| match opt_expr {
+                    // if some, set the field with name `ident` to the result of evaluating the
+                    // expr
+                    Some(expr) => Ok((*ident, eval_expr(expr, global_state, local_state)?)),
+                    // otherwise look up the ident in the environment
+                    None => Ok((
                         *ident,
-                        eval_expr(
-                            expr.ok_or(EvalError::MissingField)?,
-                            global_state,
-                            local_state,
-                        )?,
-                    ))
+                        local_state
+                            .get(&ident.symbol)
+                            .or(global_state.functions.get(&ident.symbol))
+                            .ok_or_else(|| EvalError::UnboundVariable {
+                                literal: ident.to_string(),
+                                span: ident.span,
+                            })
+                            .cloned()?,
+                    )),
                 })
                 .collect::<Result<_, _>>()?,
         )))),
@@ -74,12 +81,12 @@ fn eval_expr<'hir>(
             tag: constructor.path,
             value: eval_expr(constructor.inner, global_state, local_state)?,
         })),
-        ExprKind::Closure(arms) => Ok(Rc::new(Value::Function(arms))),
+        ExprKind::Closure(arms) => Ok(Rc::new(Value::Function(arms, local_state.clone()))),
         ExprKind::Appl(appl) => {
             let lhs = eval_expr(appl.lhs(), global_state, local_state)?;
             let fun = eval_expr(appl.fun(), global_state, local_state)?;
             let rhs = eval_expr(appl.rhs(), global_state, local_state)?;
-            call_function(lhs, fun, rhs, global_state, local_state)
+            call_function(lhs, fun, rhs, global_state)
         }
         ExprKind::Region(_) => todo!("Regions"),
         ExprKind::Error => todo!("error handling"),
@@ -91,10 +98,9 @@ fn call_function<'hir>(
     function: ValueRef<'hir>,
     right: ValueRef<'hir>,
     global_state: &GlobalBindings<'hir>,
-    local_state: &mut Bindings<'hir>,
 ) -> Result<ValueRef<'hir>, EvalError> {
-    match *function {
-        Value::Function(arms) => {
+    match function.as_ref() {
+        Value::Function(arms, closure_env) => {
             let arm = arms
                 .iter()
                 .find(|&arm| match arm.params.len() {
@@ -109,7 +115,7 @@ fn call_function<'hir>(
                 .ok_or(EvalError::PatternMatchRefuted)?;
 
             // there's definitely some room for neat optimizations here
-            let mut new_scope = local_state.clone();
+            let mut new_scope = closure_env.clone();
             match arm.params.len() {
                 0 => eval_expr(arm.body, global_state, &mut new_scope),
                 1 => {
@@ -135,13 +141,12 @@ fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
             if pattern_map.entries.len() != value_map.entries.len() {
                 false
             } else {
-                pattern_map
-                    .entries
-                    .iter()
-                    .zip(&value_map.entries)
-                    .all(|((_, pat), (_, val))| {
-                        pat.is_some_and(|pat| check_pattern(val.as_ref(), pat))
-                    })
+                pattern_map.entries.iter().zip(&value_map.entries).all(
+                    |((_, opt_pat), (_, val))| match opt_pat {
+                        Some(pat) => check_pattern(val.as_ref(), pat),
+                        None => true,
+                    },
+                )
             }
         }
         (
@@ -176,11 +181,17 @@ fn match_pattern<'hir>(
         match (&pattern.kind, value.as_ref()) {
             (PatKind::Record(pattern_map), Value::Record(value_map)) => {
                 if pattern_map.entries.len() == value_map.entries.len() {
-                    pattern_map.entries.iter().zip(&value_map.entries).for_each(
-                        |((_, pat), (_, val))| {
-                            pat.map(|pat| match_pattern(val.clone(), pat, local_state));
-                        },
-                    );
+                    // if there's no pattern after the name, binds value to the name, otherwise
+                    // matches on the pattern
+                    for ((name, opt_pat), (_, val)) in
+                        pattern_map.entries.iter().zip(&value_map.entries)
+                    {
+                        if let Some(pat) = opt_pat {
+                            match_pattern(Rc::clone(&val), pat, local_state)?;
+                        } else {
+                            local_state.insert(name.symbol, Rc::clone(&val));
+                        }
+                    }
 
                     // should be ok since we already made sure the pattern
                     // successfully matched
@@ -222,7 +233,7 @@ pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<ValueRef<'hir>, 
     for (name, def) in &program.function_defs {
         global_state
             .functions
-            .insert(*name, Rc::new(Value::Function(def.arms)));
+            .insert(*name, Rc::new(Value::Function(def.arms, HashMap::new())));
     }
 
     for (name, def) in &program.choice_defs {
@@ -230,8 +241,6 @@ pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<ValueRef<'hir>, 
             global_state.constructors.insert(variant.symbol, *name);
         }
     }
-
-    let mut local_state = HashMap::new();
 
     call_function(
         Rc::new(Value::default()),
@@ -242,6 +251,5 @@ pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<ValueRef<'hir>, 
             .cloned()?,
         Rc::new(Value::default()),
         &global_state,
-        &mut local_state,
     )
 }
