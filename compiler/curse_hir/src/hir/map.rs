@@ -20,9 +20,7 @@ impl<T> Default for Map<'_, T> {
 // Manual impl because `#[derive(Clone)]` has `T: Clone` bound.
 impl<T> Clone for Map<'_, T> {
     fn clone(&self) -> Self {
-        Map {
-            entries: self.entries,
-        }
+        *self
     }
 }
 

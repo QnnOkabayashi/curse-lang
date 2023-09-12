@@ -9,17 +9,15 @@ mod evaluation;
 mod value;
 
 pub fn main() -> io::Result<()> {
-    let mut interner = StringInterner::new();
-    curse_interner::init();
-
-    let hir_arena = Bump::new();
-    let mut parser = curse_parse::Parser::new(&mut interner);
-
-    let mut args = std::env::args();
-    args.next();
-
-    let file_name = args.next().expect("usage: ./curse_interpreter <filename>");
+    let args = std::env::args();
+    let file_name = args
+        .skip(1)
+        .next()
+        .expect("usage: ./curse_interpreter <filename>");
     let file = std::fs::read_to_string(file_name).expect("file read error");
+
+    let mut interner = StringInterner::new();
+    let mut parser = curse_parse::Parser::new(&mut interner);
 
     let ast_program = parser.parse_program(&file);
     if !parser.errors.is_empty() {
@@ -29,6 +27,7 @@ pub fn main() -> io::Result<()> {
 
     curse_interner::replace(Some(interner));
 
+    let hir_arena = Bump::new();
     let mut lowerer = curse_ast_lowering::Lowerer::new(&hir_arena);
     let hir_program = curse_ast_lowering::Lower::lower(&ast_program, &mut lowerer);
 
