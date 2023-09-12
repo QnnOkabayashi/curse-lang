@@ -13,19 +13,18 @@ choice Ordering {
 }
 
 fn cmp |a, b|
-    a > b then
-        Ordering::Greater {} 
-    else_do || a < b then
-        Ordering::Less {}
-    else
-        Ordering::Equal {}
+    (a < b) (
+        |true, _| Ordering::Less {},
+        |_, true| Ordering::Greater {},
+        |false, false| Ordering::Equal {},
+    ) (a > b)
 
 fn then_do (
     |true, f| Option::Some (f of {}),
     |false, _| Option::None {},
 )
 
-fn then(
+fn then (
     |true, x| Option::Some x,
     |false, _| Option::None {},
 )
@@ -89,5 +88,5 @@ fn main || (
         insert { k: 0, v: 0 }
         insert { k: 3, v: 3 }
         get 3
-
 )
+
