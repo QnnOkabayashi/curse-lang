@@ -124,16 +124,12 @@ Field<T>: Field<T> = {
     Ident (":" T)? => Field::new(<>),
 };
 
-Box<T>: Box<T> = {
-    T => Box::new(<>),
-}
-
 
 /// === Types ===
 
 Type: Type = {
-    Box<NamedType> => Type::Named(<>),
-    Box<Record<Type>> => Type::Record(<>),
+    NamedType => Type::Named(Box::new(<>)),
+    Record<Type> => Type::Record(Box::new(<>)),
     ! => {
         parser.errors.push(<>.error.into());
         Type::Error
@@ -154,8 +150,8 @@ NamedType: NamedType = {
 
 Pat: Pat = {
     Lit => Pat::Lit(<>),
-    Box<Record<Pat>> => Pat::Record(<>),
-    Box<Constructor<Pat>> => Pat::Constructor(<>),
+    Record<Pat> => Pat::Record(Box::new(<>)),
+    Constructor<Pat> => Pat::Constructor(Box::new(<>)),
 };
 
 
@@ -240,12 +236,12 @@ Paren: Paren = {
 };
 
 Term: Expr = {
-    Box<Paren> => Expr::Paren(<>),
+    Paren => Expr::Paren(Box::new(<>)),
     Symbol => Expr::Symbol(<>),
     Lit => Expr::Lit(<>),
-    Box<Record<EndExpr>> => Expr::Record(<>),
-    Box<ClosurePiecewise> => Expr::Closure(<>),
-    Box<Region> => Expr::Region(<>),
+    Record<EndExpr> => Expr::Record(Box::new(<>)),
+    ClosurePiecewise => Expr::Closure(Box::new(<>)),
+    Region => Expr::Region(Box::new(<>)),
     ! => {
         parser.errors.push(<>.error.into());
         Expr::Error
@@ -254,16 +250,16 @@ Term: Expr = {
 
 EndTerm = {
     Term,
-    Box<Constructor<EndExpr>> => Expr::Constructor(<>),
-    Box<ClosureNonpiecewise> => Expr::Closure(<>),
+    Constructor<EndExpr> => Expr::Constructor(Box::new(<>)),
+    ClosureNonpiecewise => Expr::Closure(Box::new(<>)),
 };
 
 Expr = {
     Term,
-    Box<Appl<Term>> => Expr::Appl(<>),
+    Appl<Term> => Expr::Appl(Box::new(<>)),
 };
 
 pub EndExpr = {
     EndTerm,
-    Box<Appl<EndTerm>> => Expr::Appl(<>),
+    Appl<EndTerm> => Expr::Appl(Box::new(<>)),
 };
