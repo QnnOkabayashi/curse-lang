@@ -58,15 +58,22 @@ fn eval_expr<'hir>(
         ExprKind::Record(map) => Ok(Rc::new(Value::Record(OwnedMap::new(
             map.entries
                 .iter()
-                .map(|(ident, expr)| {
-                    Ok((
+                .map(|(ident, opt_expr)| match opt_expr {
+                    // if some, set the field with name `ident` to the result of evaluating the
+                    // expr
+                    Some(expr) => Ok((*ident, eval_expr(expr, global_state, local_state)?)),
+                    // otherwise look up the ident in the environment
+                    None => Ok((
                         *ident,
-                        eval_expr(
-                            expr.ok_or(EvalError::MissingField)?,
-                            global_state,
-                            local_state,
-                        )?,
-                    ))
+                        local_state
+                            .get(&ident.symbol)
+                            .or(global_state.functions.get(&ident.symbol))
+                            .ok_or_else(|| EvalError::UnboundVariable {
+                                literal: ident.to_string(),
+                                span: ident.span,
+                            })
+                            .cloned()?,
+                    )),
                 })
                 .collect::<Result<_, _>>()?,
         )))),
