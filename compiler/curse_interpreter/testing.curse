@@ -17,7 +17,6 @@ choice IntBool {
     Boolean Bool,
 }
 
-// for some reason, this function parses as having empty arms
 fn calculate (
     |IntBool::Int n| (IntBool::Int (n + 1)),
     |IntBool::Boolean b| (IntBool::Boolean b),
@@ -50,13 +49,19 @@ struct Wrapper |T| {
     yes: Bool,
 }
 
-// this also parses, but like `calculate` for some reason parses to an empty
-// function
 fn map_result (
     |Result::Ok x, f| (Result::Ok (x in f)),
     |Result::Err e, f| (Result::Err e),
 )
 
-// we can instantiate an `IntBool`, but `calculate` doesn't work since it
-// parses as having no arms for some reason
+fn add_points |{ x: x1, y: y1 }, { x: x2, y: y2 }|
+    {
+        x: x1 + x2,
+        y: y1 + y2,
+    }
+
+// types would make this actually be `Point`s, but oh well, this works
+fn main2 || { x: 1, y: 2 } add_points { x: 3, y: 4 }
+
+// works, but doesn't parse without the parens (should it?)
 fn main || (Result::Ok 3) map_result inc

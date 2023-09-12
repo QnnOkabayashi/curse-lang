@@ -4,7 +4,7 @@ use crate::builtins;
 use crate::error::EvalError;
 use crate::value::{OwnedMap, Value, ValueRef};
 use curse_hir::hir::{self, ExprKind, ExprRef, Lit, PatKind, PatRef, Program};
-use curse_interner::{Ident, InternedString};
+use curse_interner::InternedString;
 
 // globally available functions, both regular named functions as well as type constructors
 pub struct GlobalBindings<'hir> {
@@ -129,13 +129,6 @@ fn call_function<'hir>(
     }
 }
 
-fn tag_path_equal<'a>(path1: &'a [Ident], path2: &'a [Ident]) -> bool {
-    path1.len() == path2.len()
-        && path1.iter().zip(path2).fold(true, |acc, (tag1, tag2)| {
-            acc && (tag1.to_string() == tag2.to_string())
-        })
-}
-
 fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
     match (&pattern.kind, value) {
         (PatKind::Record(pattern_map), Value::Record(value_map)) => {
@@ -158,7 +151,7 @@ fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
                 value,
             },
         ) => {
-            if tag_path_equal(pat_tag, value_tag) {
+            if pat_tag == value_tag {
                 check_pattern(value, pattern)
             } else {
                 false
@@ -203,7 +196,7 @@ fn match_pattern<'hir>(
                     value,
                 },
             ) => {
-                if tag_path_equal(pat_tag, value_tag) {
+                if pat_tag == value_tag {
                     match_pattern(value.clone(), pattern, local_state)
                 } else {
                     Err(EvalError::FailedPatternMatch)
