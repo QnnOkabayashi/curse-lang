@@ -37,7 +37,7 @@ pub fn main() -> io::Result<()> {
     }
 
     match evaluation::execute_program(&hir_program) {
-        Ok(val) => println!("{}", &val),
+        Ok(val) => println!("{:#?}", &val),
         Err(e) => eprintln!("{e:?}"),
     }
 
