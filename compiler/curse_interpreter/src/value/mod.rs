@@ -2,7 +2,7 @@ use curse_hir::hir::Arm;
 use curse_interner::Ident;
 use std::{fmt::Display, rc::Rc};
 
-use crate::error::EvalError;
+use crate::{error::EvalError, evaluation::Bindings};
 
 pub type ValueRef<'hir> = Rc<Value<'hir>>;
 
@@ -13,7 +13,7 @@ pub enum Value<'hir> {
     Integer(u32),
     // String(&'hir str),
     Bool(bool),
-    Function(&'hir [Arm<'hir>]),
+    Function(&'hir [Arm<'hir>], Bindings<'hir>),
     Record(OwnedMap<ValueRef<'hir>>),
     Choice { tag: &'hir [Ident], value: ValueRef<'hir> },
     Builtin(Builtin<'hir>),
@@ -35,7 +35,7 @@ impl Display for Value<'_> {
             Integer(int) => write!(f, "{int}"),
             // String(string) => write!(f, "{string}"),
             Bool(bool) => write!(f, "{bool}"),
-            Function(_) => write!(f, "<function>"),
+            Function(..) => write!(f, "<function>"),
             Builtin(_) => write!(f, "<builtin>"),
             Record(map) => write!(f, "{map:?}"),
             Choice { tag, value } => write!(f, "{tag:?} {value}"),

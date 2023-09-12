@@ -9,4 +9,4 @@ fn fact |n|
     )
 
 fn main ||
-    fact of 3
+    fact of 6
