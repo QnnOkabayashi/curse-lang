@@ -144,8 +144,14 @@ fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
                     })
             }
         }
-        (PatKind::Constructor(variants, pattern), Value::Choice { tag, value }) => {
-            if variants == tag {
+        (
+            PatKind::Constructor(pat_tag, pattern),
+            Value::Choice {
+                tag: value_tag,
+                value,
+            },
+        ) => {
+            if pat_tag == value_tag {
                 check_pattern(value, pattern)
             } else {
                 false
@@ -183,8 +189,14 @@ fn match_pattern<'hir>(
                     Err(EvalError::FailedPatternMatch)
                 }
             }
-            (PatKind::Constructor(variants, pattern), Value::Choice { tag, value }) => {
-                if variants.contains(tag.last().expect("Empty variant path")) {
+            (
+                PatKind::Constructor(pat_tag, pattern),
+                Value::Choice {
+                    tag: value_tag,
+                    value,
+                },
+            ) => {
+                if pat_tag == value_tag {
                     match_pattern(value.clone(), pattern, local_state)
                 } else {
                     Err(EvalError::FailedPatternMatch)

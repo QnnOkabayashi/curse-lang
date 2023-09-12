@@ -17,7 +17,7 @@ pub fn init() -> Option<StringInterner> {
     replace(Some(StringInterner::new()))
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Eq, Hash)]
 pub struct Ident {
     pub symbol: InternedString,
     pub span: Span,
@@ -64,6 +64,24 @@ impl HasSpan for Ident {
 
     fn end(&self) -> u32 {
         self.span.end
+    }
+}
+
+impl PartialEq for Ident {
+    fn eq(&self, other: &Self) -> bool {
+        self.symbol == other.symbol
+    }
+}
+
+impl PartialOrd for Ident {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.symbol.partial_cmp(&other.symbol)
+    }
+}
+
+impl Ord for Ident {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.symbol.cmp(&other.symbol)
     }
 }
 
