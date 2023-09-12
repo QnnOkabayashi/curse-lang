@@ -69,14 +69,13 @@ impl<'hir> Lowerer<'hir> {
         lower_field_fn: F,
     ) -> &'hir [(Ident, T::Lowered<'hir>)]
     where
-        F: Fn(&ast::Field<T>, Ident, &mut Lowerer<'hir>) -> T::Lowered<'hir>,
+        F: Fn(&ast::Field<T>, &mut Lowerer<'hir>) -> T::Lowered<'hir>,
     {
-        let fields = self
-            .bump
-            .alloc_slice_fill_iter(record.iter_fields().map(|field| {
-                let ident = Ident::from(field.ident);
-                (ident, lower_field_fn(field, ident, self))
-            }));
+        let fields = self.bump.alloc_slice_fill_iter(
+            record
+                .iter_fields()
+                .map(|field| (field.ident, lower_field_fn(field, self))),
+        );
 
         fields.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         fields
@@ -274,7 +273,7 @@ impl<'hir> Lower<'hir> for ast::Expr {
                 Err(()) => ExprKind::Error,
             },
             ast::Expr::Record(record) => ExprKind::Record(Map {
-                entries: lowerer.lower_record(record, |field, _, lowerer| {
+                entries: lowerer.lower_record(record, |field, lowerer| {
                     field.value.as_ref().map(|(_colon, expr)| {
                         let expr = expr.lower(lowerer);
                         &*lowerer.bump.alloc(expr)
@@ -493,7 +492,7 @@ impl<'hir> Lower<'hir> for ast::Pat {
                 Err(()) => PatKind::Error,
             },
             ast::Pat::Record(record) => PatKind::Record(Map {
-                entries: lowerer.lower_record(record, |field, _, lowerer| {
+                entries: lowerer.lower_record(record, |field, lowerer| {
                     field.value.as_ref().map(|(_colon, pat)| {
                         let pat = pat.lower(lowerer);
                         &*lowerer.bump.alloc(pat)
@@ -523,14 +522,16 @@ impl<'hir> Lower<'hir> for ast::Type {
         let kind = match self {
             ast::Type::Named(named) => named.lower(lowerer),
             ast::Type::Record(record) => TypeKind::Record(Map {
-                entries: lowerer.lower_record(record, |field, field_ident, lowerer| {
-                    if let Some((_colon, ty)) = field.value.as_ref() {
+                entries: lowerer.lower_record(record, |field, lowerer| {
+                    if let Some((_, ty)) = field.value.as_ref() {
                         let ty = ty.lower(lowerer);
                         lowerer.bump.alloc(ty)
                     } else {
                         lowerer
                             .errors
-                            .push(LoweringError::TypeRecordMissingFieldType { field_ident });
+                            .push(LoweringError::TypeRecordMissingFieldType {
+                                field_ident: field.ident,
+                            });
 
                         lowerer.bump.alloc(Type {
                             kind: TypeKind::Error,
