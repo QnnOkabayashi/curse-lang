@@ -6,12 +6,26 @@ choice Option |T| {
     None {},
 }
 
+choice Ordering {
+    Less {},
+    Equal {},
+    Greater {},
+}
+
+fn cmp |a, b|
+    a > b then
+        Ordering::Greater {} 
+    else_do || a < b then
+        Ordering::Less {}
+    else
+        Ordering::Equal {}
+
 fn then_do (
     |true, f| Option::Some (f of {}),
     |false, _| Option::None {},
 )
 
-fn then (
+fn then(
     |true, x| Option::Some x,
     |false, _| Option::None {},
 )
@@ -45,26 +59,27 @@ fn insert (
             right: Tree::Empty {},
         },
     |Tree::Node { key, value, left, right }, { k, v }|
-        k > key then_do (||
-            right insert { k, v } in |right|
-            Tree::Node { key, value, left, right }
-        ) else_do || k < key then_do (||
-            left insert { k, v } in |left|
-            Tree::Node { key, value, left, right }
-        ) else_do ||
-            Tree::Node { key, value: v, left, right }
+        k cmp key in (
+            |Ordering::Greater {}| 
+                right insert { k, v } in |right|
+                Tree::Node { key, value, left, right },
+            |Ordering::Less {}| 
+                left insert { k, v } in |left|
+                Tree::Node { key, value, left, right },
+            |Ordering::Equal {}|
+                Tree::Node { key, value: v, left, right }
+        )
 )
 
 fn get (
     |Tree::Empty {}, _|
         Option::None {},
     |Tree::Node { key, value, left, right }, k|
-        k > key then_do (||
-            right get k
-        ) else_do || k < key then_do (||
-            left get k
-        ) else_do ||
-            Option::Some value
+        k cmp key in (
+            |Ordering::Greater {}| right get k,
+            |Ordering::Less {}| left get k,
+            |Ordering::Equal {}| Option::Some value,
+        )
 )
 
 fn main || (
@@ -73,6 +88,6 @@ fn main || (
         insert { k: 1, v: 1 }
         insert { k: 0, v: 0 }
         insert { k: 3, v: 3 }
-        get 4
+        get 3
 
 )
