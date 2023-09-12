@@ -242,6 +242,7 @@ Term: Expr = {
     Record<EndExpr> => Expr::Record(Box::new(<>)),
     ClosurePiecewise => Expr::Closure(Box::new(<>)),
     Region => Expr::Region(Box::new(<>)),
+    Constructor<Term> => Expr::Constructor(Box::new(<>)),
     ! => {
         parser.errors.push(<>.error.into());
         Expr::Error
@@ -250,8 +251,14 @@ Term: Expr = {
 
 EndTerm = {
     Term,
-    Constructor<EndExpr> => Expr::Constructor(Box::new(<>)),
+    TermThatAbsorbsEverythingAfter,
+};
+
+TermThatAbsorbsEverythingAfter: Expr = {
+    // e.g. |x| ...
     ClosureNonpiecewise => Expr::Closure(Box::new(<>)),
+    // e.g. Some Ok |x| ...
+    Constructor<TermThatAbsorbsEverythingAfter> => Expr::Constructor(Box::new(<>)),
 };
 
 Expr = {
