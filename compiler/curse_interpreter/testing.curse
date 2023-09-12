@@ -40,6 +40,16 @@ choice Option |T| {
     None {},
 }
 
+struct Point {
+    x: I32,
+    y: I32,
+}
+
+struct Wrapper |T| {
+    value: T,
+    yes: Bool,
+}
+
 // this also parses, but like `calculate` for some reason parses to an empty
 // function
 fn map_result (

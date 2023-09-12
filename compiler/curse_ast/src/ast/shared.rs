@@ -26,16 +26,13 @@ impl<'a, T, D> Iterator for Iter<'a, T, D> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        if self.last.is_none() {
-            (0, Some(0))
-        } else {
-            let (lo, hi) = self.parts.size_hint();
-            // hi <= isize::MAX since it comes from a slice,
-            // which must point to an allocation, which cannot be
-            // > isize::MAX
-            // Therefore, it follows that hi + 1 < usize::MAX
-            (lo + 1, hi.map(|hi| hi + 1))
-        }
+        let last = self.last.is_some() as usize;
+        let (lo, hi) = self.parts.size_hint();
+        // hi <= isize::MAX since it comes from a slice,
+        // which must point to an allocation, which cannot be
+        // > isize::MAX
+        // Therefore, it follows that hi + 1 < usize::MAX
+        (lo + last, Some(hi.unwrap() + last))
     }
 }
 
