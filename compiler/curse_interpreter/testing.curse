@@ -59,4 +59,4 @@ fn map_result (
 
 // we can instantiate an `IntBool`, but `calculate` doesn't work since it
 // parses as having no arms for some reason
-fn main || fib of 10
+fn main || (Result::Ok 3) map_result inc
