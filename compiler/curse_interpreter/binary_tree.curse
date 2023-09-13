@@ -81,6 +81,35 @@ fn get (
         )
 )
 
+fn remove (
+    |Tree::Empty {}, _| Tree::Empty {},
+    |Tree::Node { key, value, left, right }, k|
+        k cmp key in (
+            |Ordering::Less {}|
+                left remove k in |left|
+                Tree::Node { key, value, left, right },
+            |Ordering::Greater {}|
+                right remove k in |right|
+                Tree::Node { key, value, left, right },
+            |Ordering::Equal {}|
+                { left, right } in (
+                    |Tree::Empty {}, right| right,
+                    |left, Tree::Empty {}| left,
+                    |Tree::Node { .. }, right| 
+                    
+                    // go down left tree and get the max node
+                    // then put that node where this one is
+                    // with this one's current right and 
+                    // the left with its max removed
+                )
+        )
+)
+
+fn max_key (
+    |Tree::Empty {}| Option::None {},
+    |Tree::Node { key, value, left, right }| max_key of right else_do || Option::Some { key, value },
+)
+
 fn main || (
     Tree::Empty {}
         insert { k: 2, v: 2 }
