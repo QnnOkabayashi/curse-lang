@@ -24,6 +24,7 @@ extern {
         "ident literal" => Token::Ident(<tok::Literal<'input>>),
         "type ident literal" => Token::TypeIdent(<tok::Literal<'input>>),
         "integer literal" => Token::Integer(<tok::Literal<'input>>),
+        "string literal" => Token::StringLiteral(<tok::Literal<'input>>),
         ":" => Token::Colon(<tok::Colon>),
         "::" => Token::ColonColon(<tok::ColonColon>),
         "," => Token::Comma(<tok::Comma>),
@@ -60,9 +61,14 @@ extern {
 
 /// === Term Aliases ===
 
+// TODO(quinn): make this not hard to read
 Ident: Ident = "ident literal" => Ident::new_in(<>.as_ref(), <>.span(), parser.interner);
 TypeIdent: Ident = "type ident literal" => Ident::new_in(<>.as_ref(), <>.span(), parser.interner);
 Integer: Ident = "integer literal" => Ident::new_in(<>.as_ref(), <>.span(), parser.interner);
+
+// TODO(quinn): make this not an `Ident` so it's more descriptive
+// But we do want it interned to dedup string literals eventually
+StringLiteral: Ident = "string literal" => Ident::new_in(<>.as_ref(), <>.span(), parser.interner);
 
 
 /// === Program ===
@@ -157,7 +163,9 @@ Pat: Pat = {
 
 /// === Shared ===
 
+// Can be used in patterns or as expressions
 Lit: Lit = {
+    // TODO(quinn): use the `StringLiteral` rule for string literals once we add those
     Integer => Lit::Integer(<>),
     Ident => Lit::Ident(<>),
     "true" => Lit::True(<>),

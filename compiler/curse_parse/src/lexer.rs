@@ -6,8 +6,11 @@ use unicode_ident::{is_xid_continue, is_xid_start};
 
 #[derive(Clone, Debug)]
 enum Word {
+    // e.g. "hello"
     Ident,
+    // e.g. "Hello"
     TypeIdent,
+    // e.g. 1_000_000
     Integer,
     InvalidIdent,
     InvalidInteger,
@@ -44,6 +47,9 @@ macro_rules! declare_tokens {
         enum LogosToken {
             #[regex("\\w+", lex_word)]
             Word(Word),
+            // TODO(quinn): support escape sequences
+            #[regex(r#""[^"]*""#)]
+            StringLiteral,
             $(
                 #[token($tok)]
                 $name,
@@ -55,6 +61,8 @@ macro_rules! declare_tokens {
             Ident(tok::Literal<'ast>),
             TypeIdent(tok::Literal<'ast>),
             Integer(tok::Literal<'ast>),
+            // includes quotes on each end
+            StringLiteral(tok::Literal<'ast>),
             $(
                 $(#[$attr])*
                 $name(tok::$name),
@@ -67,6 +75,7 @@ macro_rules! declare_tokens {
                     Token::Ident(tok) => tok.span(),
                     Token::TypeIdent(tok) => tok.span(),
                     Token::Integer(tok) => tok.span(),
+                    Token::StringLiteral(tok) => tok.span(),
                     $(
                         Token::$name(tok) => tok.span(),
                     )*
@@ -80,6 +89,7 @@ macro_rules! declare_tokens {
                     Token::Ident(tok) => fmt::Display::fmt(tok, f),
                     Token::TypeIdent(tok) => fmt::Display::fmt(tok, f),
                     Token::Integer(tok) => fmt::Display::fmt(tok, f),
+                    Token::StringLiteral(tok) => fmt::Display::fmt(tok, f),
                     $(
                         Token::$name(_) => f.write_str($tok),
                     )*
@@ -124,6 +134,10 @@ macro_rules! declare_tokens {
                         Word::InvalidIdent => return Some(Err(LexError::InvalidIdent(span))),
                         Word::InvalidInteger => return Some(Err(LexError::InvalidInteger(span))),
                     },
+                    Ok(LogosToken::StringLiteral) => Token::StringLiteral(tok::Literal {
+                        location: span.start,
+                        literal: self.lex.slice(),
+                    }),
                     $(
                         Ok(LogosToken::$name) => Token::$name(tok::$name {
                             location: span.start
