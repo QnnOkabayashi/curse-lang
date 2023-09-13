@@ -76,7 +76,7 @@ fn filter (
 fn foldr (
     |List::Nil {}, { init, f }| init,
     |List::Cons { value, next }, { init, f }|
-        value f (next foldl { init, f })
+        value f (next foldr { init, f })
 )
 
 // nice tail-recursive impl with `rec`
@@ -101,13 +101,11 @@ fn unfold |init, f|
     }
 
 fn range |a, b|
-    a unfold |x| x < (b - 1)
-        // note: parens not required here because this returns an `Option`
-        then_do || Option::Some (x + 1)
-        else_do || Option::None {}
+    a unfold |x| x < (b - 1) then_do || x + 1
     
-fn main || 
+fn main ||
     1 range 10
-      map (|x| x + 1)
-      filter (|x| x % 2 = 0)
-      foldl { init: 0, f: |x, y| x + y }
+        map (|x| x + 1)
+        filter (|x| x % 2 = 0)
+        foldl { init: 0, f: + }
+
