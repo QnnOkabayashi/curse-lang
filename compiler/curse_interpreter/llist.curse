@@ -2,6 +2,21 @@ fn rec |x, f| f of (|x| x rec f) of x
 fn of |f, x| x f {}
 fn in |x, f| x f {}
 
+choice Option |T| {
+    Some T,
+    None {},
+}
+
+fn then_do (
+    |true, f| Option::Some (f of {}),
+    |false, _| Option::None {},
+)
+
+fn else_do (
+    |Option::Some val, _| val,
+    |Option::None {}, f| f of {},
+)
+
 choice List {
     Cons {
         value: I32,
@@ -42,12 +57,57 @@ fn reverse_fast |src|
         },
     )
 
+fn map (
+    |List::Nil {}, _| List::Nil {},
+    |List::Cons { value, next }, f|
+        List::Cons {
+            value: f of value,
+            next: next map f
+        }
+)
 
+fn filter (
+    |List::Nil {}, _| List::Nil {},
+    |List::Cons { value, next }, p| value in p
+        then_do (|| List::Cons { value, next: next filter p })
+        else_do || next filter p
+)
+
+fn foldr (
+    |List::Nil {}, { init, f }| init,
+    |List::Cons { value, next }, { init, f }|
+        value f (next foldl { init, f })
+)
+
+// nice tail-recursive impl with `rec`
+fn foldl |list, { init, f }|
+    { list, acc: init } rec |loop| (
+        |{ list: List::Nil {}, acc }| acc,
+        |{ list: List::Cons { value, next }, acc }|
+            loop of {
+                list: next,
+                acc: acc f value,
+            }
+    )
+
+// |T| (T, T -> Option T) -> List T
+fn unfold |init, f|
+    List::Cons {
+        value: init,
+        next: init in f in (
+            |Option::Some next_val| next_val unfold f,
+            |Option::None {}| List::Nil {},
+        )
+    }
+
+fn range |a, b|
+    a unfold |x| x < (b - 1)
+        // note: parens not required here because this returns an `Option`
+        then_do || Option::Some (x + 1)
+        else_do || Option::None {}
+    
 fn main || 
-    List::Nil {}
-        push_back 1
-        push_back 2
-        push_back 3
-        push_back 4
-        in reverse_fast
-
+    1 range 10
+      map (|x| x + 1)
+      filter (|x| x % 2 = 0)
+      foldl { init: 0, f: |x, y| x + y }
