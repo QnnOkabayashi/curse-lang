@@ -93,29 +93,36 @@ fn remove (
                 Tree::Node { key, value, left, right },
             |Ordering::Equal {}|
                 { left, right } in (
-                    |Tree::Empty {}, right| right,
-                    |left, Tree::Empty {}| left,
-                    |Tree::Node { .. }, right| 
-                    
-                    // go down left tree and get the max node
-                    // then put that node where this one is
-                    // with this one's current right and 
-                    // the left with its max removed
+                    |{ left: Tree::Empty {}, right }| right,
+                    |{ left, right: Tree::Empty {} }| left,
+                    |{ left, right }| 
+                        max_pair of left in (
+                            |Option::Some { key_max, key_value }|
+                                Tree::Node { key: key_max, value: key_value, left: left remove key_max, right },
+                            |Option::None {}| unreachable,
+                        )
                 )
         )
 )
 
-fn max_key (
+fn max_pair (
     |Tree::Empty {}| Option::None {},
-    |Tree::Node { key, value, left, right }| max_key of right else_do || Option::Some { key, value },
+    |Tree::Node { key, value, left, right }|
+        Option::Some (
+            max_pair of right in (
+                |Option::Some pair| pair,
+                |Option::None {}| { key, value },
+            )
+        )
 )
 
 fn main || (
     Tree::Empty {}
-        insert { k: 2, v: 2 }
+        insert { k: 3, v: 3 }
         insert { k: 1, v: 1 }
         insert { k: 0, v: 0 }
-        insert { k: 3, v: 3 }
-        get 3
+        insert { k: 2, v: 2 }
+        insert { k: 4, v: 4 }
+        remove 1
 )
 
