@@ -56,6 +56,17 @@ fn filter (
         else_do || next filter p
 )
 
+fn filter_map (
+    |List::Nil {}, _| List::Nil {},
+    |List::Cons { value, next }, f| f of value in (
+        |Option::Some value| List::Cons {
+            value,
+            next: next filter_map f,
+        },
+        |Option::None {}| next filter_map f,
+    ),
+)
+
 fn foldr (
     |List::Nil {}, { init, f }| init,
     |List::Cons { value, next }, { init, f }|
