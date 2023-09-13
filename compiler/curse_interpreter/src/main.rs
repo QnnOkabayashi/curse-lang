@@ -1,6 +1,7 @@
 use std::io;
 
 use bumpalo::Bump;
+use curse_hir::hir;
 use curse_interner::StringInterner;
 
 mod builtins;
@@ -8,15 +9,10 @@ mod error;
 mod evaluation;
 mod value;
 
-pub fn main() -> io::Result<()> {
-    let args = std::env::args();
-    let file_name = args
-        .skip(1)
-        .next()
-        .expect("usage: ./curse_interpreter <filename>");
-    let file = std::fs::read_to_string(file_name).expect("file read error");
+// TODO(william): better return value
+fn get_defs(interner: &mut StringInterner, file: &str) -> ast::Program {
+    let program = std::fs::read_to_string(file).expect("file read error");
 
-    let mut interner = StringInterner::new();
     let mut parser = curse_parse::Parser::new(&mut interner);
 
     let ast_program = parser.parse_program(&file);
@@ -24,6 +20,29 @@ pub fn main() -> io::Result<()> {
         eprintln!("{:?}", parser.errors);
         return Ok(());
     }
+
+    for import in ast_program.dynamic_imports {
+        let s: &str = import.symbol.get_in(interner);
+        let s = s[1..s.len() - 1].to_string();
+        let other_program = get_defs(interner, &s);
+        ast_program
+            .function_defs
+            .extend(other_program.function_defs);
+        ast_program.choice_defs.extend(other_program.choice_defs);
+        ast_program.struct_defs.extend(other_program.struct_defs);
+    }
+    ast_program
+}
+
+pub fn main() -> io::Result<()> {
+    let file_name = std::env::args()
+        .skip(1)
+        .next()
+        .expect("usage: ./curse_interpreter <filename>");
+
+    let mut interner = StringInterner::new();
+
+    let ast_program = get_defs(&mut interner, &file_name);
 
     curse_interner::replace(Some(interner));
 
@@ -35,8 +54,6 @@ pub fn main() -> io::Result<()> {
         eprintln!("{:?}", lowerer.errors);
         return Ok(());
     }
-
-    dbg!(&hir_program.dynamic_imports);
 
     match evaluation::execute_program(&hir_program) {
         Ok(val) => println!("{:#?}", &val),
