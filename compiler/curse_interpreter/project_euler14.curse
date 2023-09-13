@@ -1,0 +1,29 @@
+dynamic_import "llist.curse"
+
+fn collatz (
+    |1| 1,
+    |n| n % 2 = 0
+            then_do (|| n / 2 in collatz + 1)
+            else_do (|| 3 * n + 1 in collatz + 1)
+)
+
+fn collatz_tail_recursive |n|
+    { n, acc: 1 } rec |loop| (
+        |{ n: 1, acc }| acc,
+        |{ n, acc }|
+            n % 2 = 0
+                then_do (|| { n: n / 2, acc: acc + 1 } in loop)
+                else_do (|| { n: 3 * n + 1, acc: acc + 1 } in loop)
+    )
+
+fn main ||
+    1 range 125_000
+        map collatz
+        in enumerate
+        foldl {
+            init: { max_x: 0, max_i: 0 },
+            f: |{ max_x, max_i }, { x, i }|
+                   x > max_x
+                   then { max_x: x, max_i: i }
+                   else { max_x, max_i }
+        }

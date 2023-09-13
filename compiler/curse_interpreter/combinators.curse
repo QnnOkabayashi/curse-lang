@@ -1,0 +1,55 @@
+dynamic_import "llist.curse"
+
+// ------------- definitions ------------------
+
+// dyadic extensions of I combinators
+fn left |x, y| x
+fn right |x, y| y
+
+// K combinator
+fn const |c| |x, y| c
+
+// two different dyadic extensions of B combinator
+fn atop |f, g| |x, y| x g y in f
+fn comp |f, g| |x, y| (g of x) f (g of y)
+
+// basically S combinators
+fn lbind |f, g| |x, y| (f of x) g y
+fn rbind |g, f| |x, y| x g (f of y)
+
+// called passive in J, which is a terrible name
+fn flip |f| |x, y| y f x
+
+// reflex from J (monadic flip)
+fn reflex |f| |x| x f x
+
+// fork from J (kinda bad in curse)
+fn fork |{ l, m, r }| |x, y| (x l y) m (x r y)
+
+fn from_monad |f, { x, y }| x f y
+fn from_dyad |f| |{ x, y }| x f y
+
+
+// --------------- testing stuff -----------------
+
+
+
+fn square |x| x * x
+fn inc |x| x + 1
+fn double |x| x * 2
+
+// gives floor(sqrt(x)) if x is a *positive* integer
+fn sqrt |x|
+    1 rec |loop| |y|
+    y * y > x
+    then (y - 1)
+    else_do || y + 1 in loop
+
+// this could be pointfree
+fn average |ls| fork of { l: sum, m: /, r: length } of ls
+
+// this could be pointfree if we had let!
+fn third_side |a, b| a (sqrt atop + comp square) c
+
+fn main || 
+    1 range 10 in (+ in zip_with in reflex)
