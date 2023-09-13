@@ -1,23 +1,4 @@
-dynamic_import "binary_tree.curse"
-
-fn rec |x, f| f of (|x| x rec f) of x
-fn of |f, x| x f {}
-fn in |x, f| x f {}
-
-choice Option |T| {
-    Some T,
-    None {},
-}
-
-fn then_do (
-    |true, f| Option::Some (f of {}),
-    |false, _| Option::None {},
-)
-
-fn else_do (
-    |Option::Some val, _| val,
-    |Option::None {}, f| f of {},
-)
+dynamic_import "std.curse"
 
 choice List {
     Cons {

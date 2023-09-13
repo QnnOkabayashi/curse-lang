@@ -111,6 +111,10 @@ impl InternedString {
         InternedString(interner.get_or_intern(s))
     }
 
+    pub fn string_in<'intern>(&self, interner: &'intern StringInterner) -> Option<&'intern str> {
+        interner.resolve(self.0)
+    }
+
     pub fn string(&self) -> StringGuard<'_> {
         StringGuard {
             guard: STRINGS.read(),

@@ -1,7 +1,7 @@
 use std::io;
 
 use bumpalo::Bump;
-use curse_hir::hir;
+use curse_ast::ast;
 use curse_interner::StringInterner;
 
 mod builtins;
@@ -10,28 +10,33 @@ mod evaluation;
 mod value;
 
 // TODO(william): better return value
-fn get_defs(interner: &mut StringInterner, file: &str) -> ast::Program {
-    let program = std::fs::read_to_string(file).expect("file read error");
+fn flatten_asts(interner: &mut StringInterner, filepath: &str) -> io::Result<ast::Program> {
+    let input = std::fs::read_to_string(filepath).expect("file read error");
 
-    let mut parser = curse_parse::Parser::new(&mut interner);
+    let mut parser = curse_parse::Parser::new(interner);
 
-    let ast_program = parser.parse_program(&file);
+    let mut ast_program = parser.parse_program(&input);
     if !parser.errors.is_empty() {
         eprintln!("{:?}", parser.errors);
-        return Ok(());
+        return Err(io::Error::new(io::ErrorKind::Other, "errors!!!"));
     }
 
-    for import in ast_program.dynamic_imports {
-        let s: &str = import.symbol.get_in(interner);
+    for import in ast_program.dynamic_imports.iter() {
+        let s: &str = import
+            .file_string
+            .symbol
+            .string_in(interner)
+            .expect("file name in interner");
+        // trim off quotes
         let s = s[1..s.len() - 1].to_string();
-        let other_program = get_defs(interner, &s);
+        let other_program = flatten_asts(interner, &s)?;
         ast_program
             .function_defs
             .extend(other_program.function_defs);
         ast_program.choice_defs.extend(other_program.choice_defs);
         ast_program.struct_defs.extend(other_program.struct_defs);
     }
-    ast_program
+    Ok(ast_program)
 }
 
 pub fn main() -> io::Result<()> {
@@ -42,7 +47,7 @@ pub fn main() -> io::Result<()> {
 
     let mut interner = StringInterner::new();
 
-    let ast_program = get_defs(&mut interner, &file_name);
+    let ast_program = flatten_asts(&mut interner, &file_name)?;
 
     curse_interner::replace(Some(interner));
 

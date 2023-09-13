@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bumpalo = "3.13.0"
+curse_ast = { path = "../curse_ast" }
 curse_hir = { path = "../curse_hir" }
 curse_interner = { path = "../curse_interner" }
 curse_span = { path = "../curse_span" }

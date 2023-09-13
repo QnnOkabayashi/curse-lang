@@ -1,7 +1,4 @@
-fn of |f, x| x f {}
-fn in |x, f| x f {}
-
-fn rec |x, f| f of (|x| x rec f) of x
+dynamic_import "std.curse"
 
 fn fact |n|
     { acc: 1, n } rec |loop| (

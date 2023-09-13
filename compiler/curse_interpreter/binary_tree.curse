@@ -1,43 +1,4 @@
-fn of |f, x| x f {}
-fn in |x, f| x f {}
-
-choice Option |T| {
-    Some T,
-    None {},
-}
-
-choice Ordering {
-    Less {},
-    Equal {},
-    Greater {},
-}
-
-fn cmp |a, b|
-    (a < b) (
-        |true, _| Ordering::Less {},
-        |_, true| Ordering::Greater {},
-        |false, false| Ordering::Equal {},
-    ) (a > b)
-
-fn then_do (
-    |true, f| Option::Some (f of {}),
-    |false, _| Option::None {},
-)
-
-fn then (
-    |true, x| Option::Some x,
-    |false, _| Option::None {},
-)
-
-fn else_do (
-    |Option::Some val, _| val,
-    |Option::None {}, f| f of {},
-)
-
-fn else (
-    |Option::Some val, _| val,
-    |Option::None {}, x| x
-)
+dynamic_import "std.curse"
 
 choice Tree |T| {
     Node {
