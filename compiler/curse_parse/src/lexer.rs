@@ -187,6 +187,7 @@ declare_tokens! {
     "false" => False,
     "ref" => Ref,
     "mut" => Mut,
+    "dynamic_import" => DynamicImport,
 }
 
 #[derive(Copy, Clone, Debug)]

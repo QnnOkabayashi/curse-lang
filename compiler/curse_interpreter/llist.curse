@@ -1,3 +1,5 @@
+dynamic_import "binary_tree.curse"
+
 fn rec |x, f| f of (|x| x rec f) of x
 fn of |f, x| x f {}
 fn in |x, f| x f {}

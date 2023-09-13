@@ -9,6 +9,19 @@ mod shared;
 pub mod tok;
 mod ty;
 
+pub mod bikeshed {
+    use curse_interner::Ident;
+    use crate::ast::tok;
+
+    crate::ast_struct! {
+        #[derive(Debug, Clone)]
+        pub struct DynamicImport {
+            pub dynamic_import: tok::DynamicImport,
+            pub file_string: Ident,
+        }
+    }
+}
+
 pub use def::{
     ChoiceDef, ExplicitTypes, FunctionDef, GenericParams, StructDef, VariantDef, Variants,
 };

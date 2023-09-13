@@ -3,7 +3,7 @@ use curse_ast::ast::{
     tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr, Field, FunctionDef,
     GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef, 
     Symbol, Type, VariantDef, Variants,
-    Region, RegionKind,
+    Region, RegionKind, bikeshed,
 };
 use curse_interner::Ident;
 use curse_span::HasSpan;
@@ -56,6 +56,7 @@ extern {
         "false" => Token::False(<tok::False>),
         "ref" => Token::Ref(<tok::Ref>),
         "mut" => Token::Mut(<tok::Mut>),
+        "dynamic_import" => Token::DynamicImport(<tok::DynamicImport>),
     }
 }
 
@@ -77,10 +78,12 @@ pub Program: Program = {
     FunctionDef => Program::default().with_function_def(<>),
     ChoiceDef => Program::default().with_choice_def(<>),
     StructDef => Program::default().with_struct_def(<>),
+    DynamicImport => Program::default().with_dynamic_import(<>),
 
     Program FunctionDef => Program::with_function_def(<>),
     Program ChoiceDef => Program::with_choice_def(<>),
     Program StructDef => Program::with_struct_def(<>),
+    Program DynamicImport => Program::with_dynamic_import(<>),
 
     ! => {
         parser.errors.push(<>.error.into());
@@ -89,6 +92,11 @@ pub Program: Program = {
 };
 
 /// === Definitions ===
+
+// TODO(quinn): BAD BAD BAD THIS IS BASICALLY C INCLUDE
+DynamicImport: bikeshed::DynamicImport = {
+    "dynamic_import" StringLiteral => bikeshed::DynamicImport::new(<>),
+};
 
 GenericParams: GenericParams = {
     "|" (TypeIdent "*")* TypeIdent "|" => GenericParams::new(<>),

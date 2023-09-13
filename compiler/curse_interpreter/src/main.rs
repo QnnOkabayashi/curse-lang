@@ -36,6 +36,8 @@ pub fn main() -> io::Result<()> {
         return Ok(());
     }
 
+    dbg!(&hir_program.dynamic_imports);
+
     match evaluation::execute_program(&hir_program) {
         Ok(val) => println!("{:#?}", &val),
         Err(e) => eprintln!("{e:?}"),

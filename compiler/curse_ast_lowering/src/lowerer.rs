@@ -8,6 +8,7 @@ use curse_hir::hir::{
 };
 use curse_interner::{Ident, InternedString};
 use curse_span::HasSpan;
+use std::collections::HashSet;
 use std::{collections::HashMap, slice};
 
 /// AST nodes that lower to things that can appear as field values.
@@ -114,6 +115,11 @@ impl<'hir> Lower<'hir> for ast::Program {
             function_defs: HashMap::with_capacity(self.function_defs.len()),
             struct_defs: HashMap::with_capacity(self.struct_defs.len()),
             choice_defs: HashMap::with_capacity(self.choice_defs.len()),
+            dynamic_imports: self
+                .dynamic_imports
+                .iter()
+                .map(|di| di.file_string)
+                .collect(),
         };
 
         for ast_def in self.function_defs.iter() {

@@ -5,14 +5,15 @@ mod pat;
 mod ty;
 mod program {
     use crate::hir::{ChoiceDef, FunctionDef, StructDef};
-    use curse_interner::InternedString;
-    use std::collections::HashMap;
+    use curse_interner::{Ident, InternedString};
+    use std::collections::{HashMap, HashSet};
 
     #[derive(Debug)]
     pub struct Program<'hir> {
         pub function_defs: HashMap<InternedString, FunctionDef<'hir>>,
         pub struct_defs: HashMap<InternedString, StructDef<'hir>>,
         pub choice_defs: HashMap<InternedString, ChoiceDef<'hir>>,
+        pub dynamic_imports: HashSet<Ident>,
     }
 }
 mod shared {
