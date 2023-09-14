@@ -115,9 +115,4 @@ fn range |a, b|
 fn length |ls| ls foldl { init: 0, f: |acc, _| acc + 1}
 fn sum |ls| ls foldl { init: 0, f: + }
     
-// fn main ||
-//     1 range 10
-//         map (|x| x + 1)
-//         filter (|x| x % 2 = 0)
-//         foldl { init: 0, f: + }
-// 
+// removing `main` so we can import as a library
