@@ -1,0 +1,50 @@
+dynamic_import "std.curse"
+
+struct Fn |Lhs * Rhs * Out| {}
+
+struct Iterator |St * T| {
+    state: St,
+    next_fn: Fn (St * {} * { next_value: Option T, next_state: St }),
+}
+
+fn range |begin, end| {
+    state: { begin, end },
+    next_fn: |{ begin, end }| begin < end then begin
+        in |next_value| {
+            next_value,
+            next_state: { begin: begin + 1, end },
+        },
+}
+
+fn map |iter, map_fn| {
+    state: iter,
+    next_fn: |iter|
+        next of iter
+        in |{ iter, next_value }| {
+            next_value: next_value option_map map_fn,
+            next_state: iter,
+        },
+}
+
+// Takes an iterator and returns a record containing:
+// 1. the updated iterator,
+// 2. the optional value produced
+fn next |{ state, next_fn }|
+    next_fn of state in |{ next_value, next_state }| {
+        iter: { state: next_state, next_fn },
+        next_value,
+    }
+
+fn foldr |iter, fold|
+    next of iter in |{ iter, next_value }|
+        next_value
+            option_map (|value| iter foldr fold fold value)
+            else 0
+
+fn sum |iter|
+    iter foldr +
+
+    
+fn main ||
+    1 range 5 map (|x| x + 1) in sum
+
