@@ -1,0 +1,10 @@
+dynamic_import "llist.curse"
+
+// 0.5ms!!!!
+fn main ||
+    { a: 1, b: 1 }
+        unfold (|{ a, b }|
+            a < 4_000_000 then { a: a + b, b: a }
+        )
+        filter_map (|{ a, b }| a % 2 = 0 then a)
+        in sum

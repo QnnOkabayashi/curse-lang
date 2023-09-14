@@ -1,0 +1,41 @@
+// I usually want `combinators` and `llist`, but they both import `std`, this
+// way we'll just always have both
+dynamic_import "llist.curse"
+
+// dyadic extensions of I combinators
+fn left |x, y| x
+fn right |x, y| y
+
+// K combinator
+fn const |c| |x, y| c
+
+// two different dyadic extensions of B combinator
+// maybe these should be reversed given curse's syntax?
+fn atop |f, g| |x, y| x g y in f
+fn comp |f, g| |x, y| (g of x) f (g of y)
+
+// monadic composition
+fn mcomp |f, g| |x| x in g in f
+
+// like `&` in J or sections in Haskell
+// could be very useful, especially for things like `map`
+fn lbind |x, f| |y| x f y
+fn rbind |f, y| |x| x f y
+
+// called passive in J, which is a terrible name
+fn flip |f| |x, y| y f x
+
+// reflex from J (monadic flip)
+fn reflex |f| |x| x f x
+
+// fork from J (kinda bad in curse)
+// I'm trying to figure out a way to do it with two binops rather than one
+// "ternary", but I'm not sure how
+fn fork |{ l, m, r }| |x, y| (x l y) m (x r y)
+
+// monadic fork
+fn mfork |x, { l, m, r }| (l of x) m (r of x)
+
+// rough equivalents of `curry` and `uncurry` in Haskell
+fn from_monad |f, { x, y }| x f y
+fn from_dyad |f| |{ x, y }| x f y

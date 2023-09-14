@@ -1,0 +1,16 @@
+dynamic_import "std.curse"
+
+fn largest_prime_factor |n|
+    { i: 2, n } rec |loop| (
+        |{ i, n: 1 }| i,
+        |{ i, n }|
+            n % i = 0
+            then_do (|| { i: i, n: n / i } in loop)
+            else_do (|| { i: i + 1, n } in loop),
+    )
+
+// actual integer too big unfortunately
+// largest integer that isn't too big and doesn't cause a stack overflow
+// gets the right answer in about 1ms though
+fn main ||
+    60085 in largest_prime_factor

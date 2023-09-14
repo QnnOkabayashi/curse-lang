@@ -94,12 +94,37 @@ fn unfold |init, f|
         )
     }
 
-fn range |a, b|
-    a unfold |x| x < (b - 1) then_do || x + 1
-    
-fn main ||
-    1 range 10
-        map (|x| x + 1)
-        filter (|x| x % 2 = 0)
-        foldl { init: 0, f: + }
+// usage: list1 (zip_with of f) list2
+fn zip_with |f| (
+    |List::Nil {}, _| List::Nil {},
+    |_, List::Nil {}| List::Nil {},
+    |List::Cons { value: x, next: xs }, List::Cons { value: y, next: ys }|
+        List::Cons {
+            value: x f y,
+            next: xs (zip_with of f) ys
+        }
+)
 
+fn enumerate |ls|
+    ls (zip_with of |x, i| { x, i }) (1 range (length of ls))
+
+// inclusive on both ends
+fn range |a, b|
+    a unfold |x| x < b then_do || x + 1
+
+fn length |ls| ls foldl { init: 0, f: |acc, _| acc + 1}
+fn sum |ls| ls foldl { init: 0, f: + }
+
+fn index (
+    |List::Nil {}, k| Option::None {},
+    |List::Cons { value, next }, 0| Option::Some value,
+    |List::Cons { value, next }, k| next index (k - 1),
+)
+
+fn last (
+    |List::Nil {}| Option::None {},
+    |List::Cons { value, next: List::Nil {} }| Option::Some value,
+    |List::Cons { value, next }| next in last,
+)
+    
+// removing `main` so we can import as a library
