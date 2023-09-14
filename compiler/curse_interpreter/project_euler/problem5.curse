@@ -1,0 +1,16 @@
+dynamic_import "llist.curse"
+
+// literally easiest with just a desktop calculator
+// here's a solution to demonstrate curse though
+
+fn gcd (
+    |a, 0| a,
+    |a, b| b gcd (a % b),
+)
+
+fn lcm |a, b| a * b / (a gcd b)
+
+// 0.5ms!!!
+fn main ||
+    1 range 19
+        foldl { init: 1, f: lcm }

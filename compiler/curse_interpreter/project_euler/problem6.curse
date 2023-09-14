@@ -1,0 +1,9 @@
+dynamic_import "combinators.curse"
+
+// 1.5ms
+fn main ||
+    1 range 100 mfork {
+        l: (reflex of *) mcomp sum,
+        m: -,
+        r: sum mcomp (map rbind (reflex of *)),
+    }

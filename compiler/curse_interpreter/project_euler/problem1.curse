@@ -1,0 +1,14 @@
+dynamic_import "combinators.curse"
+
+// built on release mode, doesn't overflow the stack and executes in about
+// 9.5ms with the right answer!
+fn main ||
+    1 range 999 mfork {
+        l: mfork rbind {
+            l: filter rbind (|x| x % 3 = 0),
+            m: + comp sum,
+            r: filter rbind (|x| x % 5 = 0),
+        },
+        m: -,
+        r: |ls| ls filter (|x| x % 15 = 0) in sum,
+    }

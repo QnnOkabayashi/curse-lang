@@ -33,6 +33,9 @@ fn reflex |f| |x| x f x
 // "ternary", but I'm not sure how
 fn fork |{ l, m, r }| |x, y| (x l y) m (x r y)
 
+// monadic fork
+fn mfork |x, { l, m, r }| (l of x) m (r of x)
+
 // rough equivalents of `curry` and `uncurry` in Haskell
 fn from_monad |f, { x, y }| x f y
 fn from_dyad |f| |{ x, y }| x f y

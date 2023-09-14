@@ -1,0 +1,30 @@
+dynamic_import "llist.curse"
+
+// I don't want to think about implementing a sieve in curse
+
+fn is_prime |n|
+    2 rec |loop| |i|
+        n % i = 0
+        then false
+        else_do || i * i > n
+                   then true
+                   else_do || i + 1 in loop
+
+// literally the farthest it can go without overflowing the stack
+// only takes 50ms
+// we're pretty fast, stack space is definitely the limiting factor
+// with TCO, this really should just be a wicked fast while loop
+fn main ||
+    { current: 2, index: 1 } rec |loop| (
+        |{ current, index }| current in is_prime
+            then_do (|| index = 275
+                        then current
+                        else_do || loop of {
+                            current: current + 1,
+                            index: index + 1,
+                        })
+            else_do || loop of {
+                current: current + 1,
+                index,
+            }
+    )

@@ -114,5 +114,17 @@ fn range |a, b|
 
 fn length |ls| ls foldl { init: 0, f: |acc, _| acc + 1}
 fn sum |ls| ls foldl { init: 0, f: + }
+
+fn index (
+    |List::Nil {}, k| Option::None {},
+    |List::Cons { value, next }, 0| Option::Some value,
+    |List::Cons { value, next }, k| next index (k - 1),
+)
+
+fn last (
+    |List::Nil {}| Option::None {},
+    |List::Cons { value, next: List::Nil {} }| Option::Some value,
+    |List::Cons { value, next }| next in last,
+)
     
 // removing `main` so we can import as a library
