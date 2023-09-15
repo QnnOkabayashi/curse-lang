@@ -49,6 +49,15 @@ fn symbol_to_primop(symbol: hir::Symbol) -> Primop {
     }
 }
 
+fn branching_symbol(symbol: hir::Symbol) -> bool {
+    match symbol {
+        hir::Symbol::Eq | hir::Symbol::Lt | hir::Symbol::Gt | hir::Symbol::Le | hir::Symbol::Ge => {
+            true
+        }
+        _ => false,
+    }
+}
+
 fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSExpr {
     match expr.kind {
         ExprKind::Symbol(symb) => {
@@ -66,7 +75,7 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
                         Value::Var(x),
                         Value::Var(y),
                         t,
-                        Box::new(cont(Value::Var(t))),
+                        vec![cont(Value::Var(t))],
                     )),
                 )],
                 Box::new(cont(Value::Var(f))),
@@ -108,18 +117,44 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
         }
         ExprKind::Closure(_) => todo!(),
         ExprKind::Appl(appl) => match appl.fun().kind {
-            ExprKind::Symbol(symb) => convert_expr(*appl.lhs(), &mut |lhs| {
-                convert_expr(*appl.rhs(), &mut |rhs| {
-                    let t = gensym("t");
-                    CPSPrimop::new(
-                        symbol_to_primop(symb),
-                        lhs,
-                        rhs,
-                        t,
-                        Box::new(cont(Value::Var(t))),
-                    )
-                })
-            }),
+            ExprKind::Symbol(symb) => {
+                if branching_symbol(symb) {
+                    convert_expr(*appl.lhs(), &mut |lhs| {
+                        convert_expr(*appl.rhs(), &mut |rhs| {
+                            let x = Value::Var(gensym("x"));
+                            let y = Value::Var(gensym("y"));
+                            let k = Value::Var(gensym("k"));
+                            let b = gensym("b");
+                            Fix::new(
+                                vec![Function::new(x, k, y, Box::new(cont(x)))],
+                                Box::new(CPSPrimop::new(
+                                    symbol_to_primop(symb),
+                                    lhs,
+                                    rhs,
+                                    b,
+                                    vec![
+                                        Appl::new(k, vec![Value::Int(1)]),
+                                        Appl::new(k, vec![Value::Int(0)]),
+                                    ],
+                                )),
+                            )
+                        })
+                    })
+                } else {
+                    convert_expr(*appl.lhs(), &mut |lhs| {
+                        convert_expr(*appl.rhs(), &mut |rhs| {
+                            let t = gensym("t");
+                            CPSPrimop::new(
+                                symbol_to_primop(symb),
+                                lhs,
+                                rhs,
+                                t,
+                                vec![cont(Value::Var(t))],
+                            )
+                        })
+                    })
+                }
+            }
             _ => {
                 let x = Value::Var(gensym("x"));
                 let r = Value::Var(gensym("r"));

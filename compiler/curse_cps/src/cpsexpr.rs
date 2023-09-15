@@ -60,7 +60,8 @@ pub struct CPSPrimop {
     pub left: Value,
     pub right: Value,
     pub name: InternedString,
-    pub continuation: Box<CPSExpr>,
+    // primitives that would return booleans branch
+    pub continuations: Vec<CPSExpr>,
 }
 
 impl CPSPrimop {
@@ -69,14 +70,14 @@ impl CPSPrimop {
         left: Value,
         right: Value,
         name: InternedString,
-        continuation: Box<CPSExpr>,
+        continuations: Vec<CPSExpr>,
     ) -> CPSExpr {
         CPSExpr::Primop(Self {
             primop,
             left,
             right,
             name,
-            continuation,
+            continuations,
         })
     }
 }
