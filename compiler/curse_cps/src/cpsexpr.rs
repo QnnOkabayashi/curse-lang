@@ -7,7 +7,7 @@ use curse_interner::InternedString;
 pub enum Value {
     Var(InternedString),
     Int(u32),
-    String(InternedString)
+    String(InternedString),
 }
 
 pub fn var(s: &str) -> Value {
@@ -42,13 +42,16 @@ pub enum CPSExpr {
     /// Construct a record out of a literal.
     Record(CPSRecord),
 
+    /// Pick an element out of a record.
+    Select(CPSSelect),
+
     /// Apply a function to its args.
     /// Note: doesn't need a continuation since functions never return.
-    Appl(Appl),
+    Appl(CPSAppl),
 
     /// Define several functions. Mutually recursive functions must be defined in the
     /// same `Fix` CPSExpr.
-    Fix(Fix),
+    Fix(CPSFix),
 
     /// Useful to have an endpoint somewhere for testing purposes.
     Halt(Value),
@@ -99,15 +102,23 @@ impl CPSRecord {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct CPSSelect {
+    pub index: usize,
+    pub record: Value,
+    pub result: InternedString,
+    pub continuation: Box<CPSExpr>,
+}
+
 /// User created functions always take three arguments, but continuations only take one. There
 /// might be a better way to handle this.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Appl {
+pub struct CPSAppl {
     pub function: Value,
     pub args: Vec<Value>,
 }
 
-impl Appl {
+impl CPSAppl {
     pub fn new(function: Value, args: Vec<Value>) -> CPSExpr {
         CPSExpr::Appl(Self { function, args })
     }
@@ -136,12 +147,12 @@ impl Function {
 /// A `Vec` of functions to define (basically always either the list of top level functions or a
 /// single closure) and a continuation representing what to do next.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Fix {
+pub struct CPSFix {
     pub functions: Vec<Function>,
     pub continuation: Box<CPSExpr>,
 }
 
-impl Fix {
+impl CPSFix {
     pub fn new(functions: Vec<Function>, continuation: Box<CPSExpr>) -> CPSExpr {
         CPSExpr::Fix(Self {
             functions,

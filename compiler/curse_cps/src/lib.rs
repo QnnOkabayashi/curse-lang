@@ -4,7 +4,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use cpsexpr::{
-    var, var_from_id, Appl, CPSExpr, CPSPrimop, CPSRecord, Fix, Function, Primop, Value,
+    var, var_from_id, CPSAppl, CPSExpr, CPSPrimop, CPSRecord, CPSFix, Function, Primop, Value,
 };
 use curse_hir::hir::{self, ExprKind};
 use curse_interner::InternedString;
@@ -65,7 +65,7 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
             let y = gensym("y");
             let f = gensym("f");
             let t = gensym("t");
-            Fix::new(
+            CPSFix::new(
                 vec![Function::new(
                     Value::Var(x),
                     Value::Var(f),
@@ -125,7 +125,7 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
                             let y = Value::Var(gensym("y"));
                             let k = Value::Var(gensym("k"));
                             let b = gensym("b");
-                            Fix::new(
+                            CPSFix::new(
                                 vec![Function::new(x, k, y, Box::new(cont(x)))],
                                 Box::new(CPSPrimop::new(
                                     symbol_to_primop(symb),
@@ -133,8 +133,8 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
                                     rhs,
                                     b,
                                     vec![
-                                        Appl::new(k, vec![Value::Int(1)]),
-                                        Appl::new(k, vec![Value::Int(0)]),
+                                        CPSAppl::new(k, vec![Value::Int(1)]),
+                                        CPSAppl::new(k, vec![Value::Int(0)]),
                                     ],
                                 )),
                             )
@@ -158,11 +158,11 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
             _ => {
                 let x = Value::Var(gensym("x"));
                 let r = Value::Var(gensym("r"));
-                Fix::new(
+                CPSFix::new(
                     vec![Function::new(x, r, Value::Int(0), Box::new(cont(x)))],
                     Box::new(convert_expr(*appl.fun(), &mut |f| {
                         convert_expr(*appl.lhs(), &mut |lhs| {
-                            convert_expr(*appl.rhs(), &mut |rhs| Appl::new(f, vec![lhs, rhs, r]))
+                            convert_expr(*appl.rhs(), &mut |rhs| CPSAppl::new(f, vec![lhs, rhs, r]))
                         })
                     })),
                 )
@@ -174,6 +174,8 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
 }
 
 // pls make this better Quinn
+// TODO(william) we should sort the fields in records alphabetically to guarantee that entries of
+// records of the same type will line up regardless of the order of the fields
 fn convert_record(
     map_vec: Rc<Vec<(curse_interner::Ident, Option<hir::Expr>)>>,
     current_vec: Rc<RefCell<Vec<Value>>>,

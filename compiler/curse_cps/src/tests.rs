@@ -4,7 +4,7 @@ use curse_span::Span;
 
 use crate::{
     convert_expr,
-    cpsexpr::{var, Appl, CPSExpr, CPSPrimop, CPSRecord, Fix, Function, Primop, Value::*},
+    cpsexpr::{var, CPSAppl, CPSExpr, CPSPrimop, CPSRecord, CPSFix, Function, Primop, Value::*},
     reset_sym_counter,
 };
 
@@ -196,24 +196,24 @@ fn appl() {
 
     let cps_expr = convert_expr(expr, &mut |val| CPSExpr::Halt(val));
 
-    let expected = CPSExpr::Fix(Fix {
+    let expected = CPSExpr::Fix(CPSFix {
         functions: vec![Function {
             left: var("x__1_"),
             name: var("r__2_"),
             right: Int(0),
             continuation: Box::new(CPSExpr::Halt(var("x__1_"))),
         }],
-        continuation: Box::new(CPSExpr::Fix(Fix {
+        continuation: Box::new(CPSExpr::Fix(CPSFix {
             functions: vec![Function {
                 left: var("x__3_"),
                 name: var("r__4_"),
                 right: Int(0),
-                continuation: Box::new(CPSExpr::Appl(Appl {
+                continuation: Box::new(CPSExpr::Appl(CPSAppl {
                     function: var("in"),
                     args: vec![var("x__3_"), var("sum"), var("r__2_")],
                 })),
             }],
-            continuation: Box::new(CPSExpr::Appl(Appl {
+            continuation: Box::new(CPSExpr::Appl(CPSAppl {
                 function: var("range"),
                 args: vec![Int(1), Int(100), var("r__4_")],
             })),
@@ -234,7 +234,7 @@ fn symb() {
     };
 
     let cps = convert_expr(expr, &mut |val| CPSExpr::Halt(val));
-    let expected = CPSExpr::Fix(Fix {
+    let expected = CPSExpr::Fix(CPSFix {
         functions: vec![Function {
             left: var("x__1_"),
             name: var("f__3_"),
@@ -359,7 +359,7 @@ fn branching() {
                 left: Int(1),
                 right: Int(1),
                 name: t2,
-                continuations: vec![CPSExpr::Fix(Fix {
+                continuations: vec![CPSExpr::Fix(CPSFix {
                     functions: vec![Function {
                         left: Var(x),
                         name: Var(k),
@@ -372,11 +372,11 @@ fn branching() {
                         right: Var(t2),
                         name: b,
                         continuations: vec![
-                            CPSExpr::Appl(Appl {
+                            CPSExpr::Appl(CPSAppl {
                                 function: Var(k),
                                 args: vec![Int(1)],
                             }),
-                            CPSExpr::Appl(Appl {
+                            CPSExpr::Appl(CPSAppl {
                                 function: Var(k),
                                 args: vec![Int(0)],
                             }),
