@@ -41,3 +41,8 @@ fn else (
     |Option::Some val, _| val,
     |Option::None {}, x| x
 )
+
+fn option_map (
+    |Option::Some v, f| Option::Some (f of v),
+    |Option::None {}, _| Option::None {},
+)
