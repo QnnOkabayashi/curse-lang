@@ -222,3 +222,80 @@ fn appl() {
 
     assert_eq!(cps_expr, expected);
 }
+
+#[test]
+fn symb() {
+    let _interner = curse_interner::init();
+    reset_sym_counter();
+
+    let expr = hir::Expr {
+        kind: ExprKind::Symbol(hir::Symbol::Plus),
+        span: Span { start: 0, end: 0 },
+    };
+
+    let cps = convert_expr(expr, &mut |val| CPSExpr::Halt(val));
+    let expected = CPSExpr::Fix(Fix {
+        functions: vec![Function {
+            left: var("x__1_"),
+            name: var("f__3_"),
+            right: var("y__2_"),
+            continuation: Box::new(CPSExpr::Primop(CPSPrimop {
+                primop: Primop::Plus,
+                left: var("x__1_"),
+                right: var("y__2_"),
+                name: InternedString::get_or_intern("t__4_"),
+                continuation: Box::new(CPSExpr::Halt(var("t__4_"))),
+            })),
+        }],
+        continuation: Box::new(CPSExpr::Halt(var("f__3_"))),
+    });
+
+    assert_eq!(cps, expected);
+}
+
+#[test]
+fn ctor() {
+    let _interner = curse_interner::init();
+    let span = Span { start: 0, end: 0 };
+    reset_sym_counter();
+
+    let four = hir::Expr {
+        kind: ExprKind::Lit(hir::Lit::Integer(4)),
+        span,
+    };
+    let parts = [
+        four,
+        hir::Expr {
+            kind: ExprKind::Symbol(hir::Symbol::Plus),
+            span,
+        },
+        four,
+    ];
+    let inner = hir::Expr {
+        kind: ExprKind::Appl(hir::Appl { parts: &parts }),
+        span,
+    };
+    let path = [Ident::new("Option", span), Ident::new("Some", span)];
+    let ctor_expr = hir::Expr {
+        kind: ExprKind::Constructor(hir::Constructor {
+            path: &path,
+            inner: &inner,
+        }),
+        span,
+    };
+
+    let ctor_cps = convert_expr(ctor_expr, &mut |val| CPSExpr::Halt(val));
+    let expected = CPSExpr::Primop(CPSPrimop {
+        primop: Primop::Plus,
+        left: Int(4),
+        right: Int(4),
+        name: InternedString::get_or_intern("t__2_"),
+        continuation: Box::new(CPSExpr::Record(CPSRecord {
+            values: vec![var("[Option, Some]"), var("t__2_")],
+            name: InternedString::get_or_intern("ctor__1_"),
+            continuation: Box::new(CPSExpr::Halt(var("ctor__1_"))),
+        })),
+    });
+
+    assert_eq!(ctor_cps, expected);
+}

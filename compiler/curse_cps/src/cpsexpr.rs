@@ -1,14 +1,13 @@
 use curse_interner::InternedString;
 
-pub type Ident = InternedString;
-
 /// Represents literal values, records and functions are created via CPSFix and CPSRecord
 /// respectively then get named. As a result, everything is either an integer literal or a name.
 /// Booleans can be `0` or `1`, since everything's been typechecked already.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Value {
-    Var(Ident),
+    Var(InternedString),
     Int(u32),
+    String(InternedString)
 }
 
 pub fn var(s: &str) -> Value {
@@ -26,6 +25,13 @@ pub enum Primop {
     Times,
     Minus,
     Div,
+    Semi,
+    Mod,
+    Eq,
+    Lt,
+    Gt,
+    Le,
+    Ge,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -53,7 +59,7 @@ pub struct CPSPrimop {
     pub primop: Primop,
     pub left: Value,
     pub right: Value,
-    pub name: Ident,
+    pub name: InternedString,
     pub continuation: Box<CPSExpr>,
 }
 
@@ -62,7 +68,7 @@ impl CPSPrimop {
         primop: Primop,
         left: Value,
         right: Value,
-        name: Ident,
+        name: InternedString,
         continuation: Box<CPSExpr>,
     ) -> CPSExpr {
         CPSExpr::Primop(Self {
@@ -78,12 +84,12 @@ impl CPSPrimop {
 #[derive(Debug, PartialEq, Eq)]
 pub struct CPSRecord {
     pub values: Vec<Value>,
-    pub name: Ident,
+    pub name: InternedString,
     pub continuation: Box<CPSExpr>,
 }
 
 impl CPSRecord {
-    pub fn new(values: Vec<Value>, name: Ident, continuation: Box<CPSExpr>) -> CPSExpr {
+    pub fn new(values: Vec<Value>, name: InternedString, continuation: Box<CPSExpr>) -> CPSExpr {
         CPSExpr::Record(Self {
             values,
             name,

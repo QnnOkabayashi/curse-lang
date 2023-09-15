@@ -3,7 +3,9 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use cpsexpr::{var_from_id, Appl, CPSExpr, CPSPrimop, CPSRecord, Fix, Function, Primop, Value};
+use cpsexpr::{
+    var, var_from_id, Appl, CPSExpr, CPSPrimop, CPSRecord, Fix, Function, Primop, Value,
+};
 use curse_hir::hir::{self, ExprKind};
 use curse_interner::InternedString;
 
@@ -36,20 +38,40 @@ fn symbol_to_primop(symbol: hir::Symbol) -> Primop {
         hir::Symbol::Star => Primop::Times,
         hir::Symbol::Dot => todo!(),
         hir::Symbol::DotDot => todo!(),
-        hir::Symbol::Semi => todo!(),
-        hir::Symbol::Percent => todo!(),
+        hir::Symbol::Semi => Primop::Semi,
+        hir::Symbol::Percent => Primop::Mod,
         hir::Symbol::Slash => Primop::Div,
-        hir::Symbol::Eq => todo!(),
-        hir::Symbol::Lt => todo!(),
-        hir::Symbol::Gt => todo!(),
-        hir::Symbol::Le => todo!(),
-        hir::Symbol::Ge => todo!(),
+        hir::Symbol::Eq => Primop::Eq,
+        hir::Symbol::Lt => Primop::Lt,
+        hir::Symbol::Gt => Primop::Gt,
+        hir::Symbol::Le => Primop::Le,
+        hir::Symbol::Ge => Primop::Ge,
     }
 }
 
 fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSExpr {
     match expr.kind {
-        ExprKind::Symbol(_) => todo!(),
+        ExprKind::Symbol(symb) => {
+            let x = gensym("x");
+            let y = gensym("y");
+            let f = gensym("f");
+            let t = gensym("t");
+            Fix::new(
+                vec![Function::new(
+                    Value::Var(x),
+                    Value::Var(f),
+                    Value::Var(y),
+                    Box::new(CPSPrimop::new(
+                        symbol_to_primop(symb),
+                        Value::Var(x),
+                        Value::Var(y),
+                        t,
+                        Box::new(cont(Value::Var(t))),
+                    )),
+                )],
+                Box::new(cont(Value::Var(f))),
+            )
+        }
         ExprKind::Lit(hir::Lit::Integer(n)) => cont(Value::Int(n)),
         ExprKind::Lit(hir::Lit::Bool(true)) => cont(Value::Int(1)),
         ExprKind::Lit(hir::Lit::Bool(false)) => cont(Value::Int(0)),
@@ -71,7 +93,19 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
                 0,
             )
         }
-        ExprKind::Constructor(_) => todo!(),
+        // represent a constructor as a record with a string tag and value
+        // TODO(william) represent tag with an integer (requires knowing all the variants in each
+        // enum)
+        ExprKind::Constructor(hir::Constructor { path, inner }) => {
+            let name = gensym("ctor");
+            convert_expr(*inner, &mut |inner_val| {
+                CPSRecord::new(
+                    vec![var(&format!("{path:?}")), inner_val],
+                    name,
+                    Box::new(cont(Value::Var(name))),
+                )
+            })
+        }
         ExprKind::Closure(_) => todo!(),
         ExprKind::Appl(appl) => match appl.fun().kind {
             ExprKind::Symbol(symb) => convert_expr(*appl.lhs(), &mut |lhs| {
