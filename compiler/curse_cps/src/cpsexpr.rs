@@ -96,8 +96,8 @@ impl CPSRecord {
 /// might be a better way to handle this.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Appl {
-    function: Value,
-    args: Vec<Value>,
+    pub function: Value,
+    pub args: Vec<Value>,
 }
 
 impl Appl {
@@ -109,10 +109,10 @@ impl Appl {
 /// Every function takes three args now: `left`, `right`, and a continuation.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Function {
-    left: Value,
-    name: Value,
-    right: Value,
-    continuation: Box<CPSExpr>,
+    pub left: Value,
+    pub name: Value,
+    pub right: Value,
+    pub continuation: Box<CPSExpr>,
 }
 
 impl Function {
@@ -130,8 +130,8 @@ impl Function {
 /// single closure) and a continuation representing what to do next.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Fix {
-    functions: Vec<Function>,
-    continuation: Box<CPSExpr>,
+    pub functions: Vec<Function>,
+    pub continuation: Box<CPSExpr>,
 }
 
 impl Fix {

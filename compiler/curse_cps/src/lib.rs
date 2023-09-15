@@ -88,12 +88,12 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
             }),
             _ => {
                 let x = Value::Var(gensym("x"));
-                let k = Value::Var(gensym("k"));
+                let r = Value::Var(gensym("r"));
                 Fix::new(
-                    vec![Function::new(x, k, Value::Int(0), Box::new(cont(x)))],
+                    vec![Function::new(x, r, Value::Int(0), Box::new(cont(x)))],
                     Box::new(convert_expr(*appl.fun(), &mut |f| {
                         convert_expr(*appl.lhs(), &mut |lhs| {
-                            convert_expr(*appl.rhs(), &mut |rhs| Appl::new(f, vec![lhs, rhs]))
+                            convert_expr(*appl.rhs(), &mut |rhs| Appl::new(f, vec![lhs, rhs, r]))
                         })
                     })),
                 )

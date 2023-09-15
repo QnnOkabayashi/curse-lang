@@ -4,7 +4,8 @@ use curse_span::Span;
 
 use crate::{
     convert_expr,
-    cpsexpr::{CPSPrimop, CPSExpr, CPSRecord, Primop, Value::*}, reset_sym_counter,
+    cpsexpr::{var, Appl, CPSExpr, CPSPrimop, CPSRecord, Fix, Function, Primop, Value::*},
+    reset_sym_counter,
 };
 
 // MAKE SURE TO RUN AS `cargo test -- --test-threads=1`
@@ -149,4 +150,75 @@ fn basics() {
             }))
         })
     );
+}
+
+#[test]
+fn appl() {
+    let _interner = curse_interner::init();
+    reset_sym_counter();
+
+    let span = Span { start: 0, end: 0 };
+
+    let inner_parts = [
+        hir::Expr {
+            kind: ExprKind::Lit(hir::Lit::Integer(1)),
+            span,
+        },
+        hir::Expr {
+            kind: ExprKind::Lit(hir::Lit::Ident(Ident::new("range", span))),
+            span,
+        },
+        hir::Expr {
+            kind: ExprKind::Lit(hir::Lit::Integer(100)),
+            span,
+        },
+    ];
+    let parts = [
+        hir::Expr {
+            kind: ExprKind::Appl(hir::Appl {
+                parts: &inner_parts,
+            }),
+            span,
+        },
+        hir::Expr {
+            kind: ExprKind::Lit(hir::Lit::Ident(Ident::new("in", span))),
+            span,
+        },
+        hir::Expr {
+            kind: ExprKind::Lit(hir::Lit::Ident(Ident::new("sum", span))),
+            span,
+        },
+    ];
+    let expr = hir::Expr {
+        kind: ExprKind::Appl(hir::Appl { parts: &parts }),
+        span,
+    };
+
+    let cps_expr = convert_expr(expr, &mut |val| CPSExpr::Halt(val));
+
+    let expected = CPSExpr::Fix(Fix {
+        functions: vec![Function {
+            left: var("x__1_"),
+            name: var("r__2_"),
+            right: Int(0),
+            continuation: Box::new(CPSExpr::Halt(var("x__1_"))),
+        }],
+        continuation: Box::new(CPSExpr::Fix(Fix {
+            functions: vec![Function {
+                left: var("x__3_"),
+                name: var("r__4_"),
+                right: Int(0),
+                continuation: Box::new(CPSExpr::Appl(Appl {
+                    function: var("in"),
+                    args: vec![var("x__3_"), var("sum"), var("r__2_")],
+                })),
+            }],
+            continuation: Box::new(CPSExpr::Appl(Appl {
+                function: var("range"),
+                args: vec![Int(1), Int(100), var("r__4_")],
+            })),
+        })),
+    });
+
+    assert_eq!(cps_expr, expected);
 }
