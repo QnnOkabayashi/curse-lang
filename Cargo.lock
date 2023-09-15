@@ -164,6 +164,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "curse_cps"
+version = "0.1.0"
+dependencies = [
+ "curse_hir",
+ "curse_interner",
+ "curse_span",
+]
+
+[[package]]
 name = "curse_hir"
 version = "0.0.0"
 dependencies = [

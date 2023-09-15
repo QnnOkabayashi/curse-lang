@@ -1,4 +1,4 @@
-use curse_hir::hir::Arm;
+use curse_hir::hir::{self, Arm};
 use curse_interner::Ident;
 use std::{fmt, rc::Rc};
 

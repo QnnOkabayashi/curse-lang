@@ -1,0 +1,130 @@
+// just for now
+#![allow(dead_code)]
+
+use std::{cell::RefCell, rc::Rc};
+
+use cpsexpr::{var_from_id, Appl, CPSExpr, CPSPrimop, CPSRecord, Fix, Function, Primop, Value};
+use curse_hir::hir::{self, ExprKind};
+use curse_interner::InternedString;
+
+pub mod cpsexpr;
+
+#[cfg(test)]
+mod tests;
+
+static mut CURRENT_ID: usize = 0;
+
+fn gensym(s: &str) -> InternedString {
+    // we're single threaded, so this is safe
+    // if we ever upgrade to multithreading, we can just replace this with an `AtomicUsize`
+    unsafe {
+        CURRENT_ID += 1;
+        InternedString::get_or_intern(&format!("{}__{}_", s, CURRENT_ID))
+    }
+}
+
+fn reset_sym_counter() {
+    unsafe {
+        CURRENT_ID = 0;
+    }
+}
+
+fn symbol_to_primop(symbol: hir::Symbol) -> Primop {
+    match symbol {
+        hir::Symbol::Plus => Primop::Plus,
+        hir::Symbol::Minus => Primop::Minus,
+        hir::Symbol::Star => Primop::Times,
+        hir::Symbol::Dot => todo!(),
+        hir::Symbol::DotDot => todo!(),
+        hir::Symbol::Semi => todo!(),
+        hir::Symbol::Percent => todo!(),
+        hir::Symbol::Slash => Primop::Div,
+        hir::Symbol::Eq => todo!(),
+        hir::Symbol::Lt => todo!(),
+        hir::Symbol::Gt => todo!(),
+        hir::Symbol::Le => todo!(),
+        hir::Symbol::Ge => todo!(),
+    }
+}
+
+fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSExpr {
+    match expr.kind {
+        ExprKind::Symbol(_) => todo!(),
+        ExprKind::Lit(hir::Lit::Integer(n)) => cont(Value::Int(n)),
+        ExprKind::Lit(hir::Lit::Bool(true)) => cont(Value::Int(1)),
+        ExprKind::Lit(hir::Lit::Bool(false)) => cont(Value::Int(0)),
+        ExprKind::Lit(hir::Lit::Ident(var)) => cont(var_from_id(var)),
+        ExprKind::Record(map) => {
+            let results = vec![];
+            let name = gensym("record");
+            let map = map.entries.iter().map(|(x, y)| (*x, y.cloned())).collect();
+            convert_record(
+                Rc::new(map),
+                Rc::new(RefCell::new(results)),
+                Rc::new(RefCell::new(&mut |values: Rc<RefCell<Vec<Value>>>| {
+                    CPSRecord::new(
+                        std::mem::take(&mut values.borrow_mut()),
+                        name,
+                        Box::new(cont(Value::Var(name))),
+                    )
+                })),
+                0,
+            )
+        }
+        ExprKind::Constructor(_) => todo!(),
+        ExprKind::Closure(_) => todo!(),
+        ExprKind::Appl(appl) => match appl.fun().kind {
+            ExprKind::Symbol(symb) => convert_expr(*appl.lhs(), &mut |lhs| {
+                convert_expr(*appl.rhs(), &mut |rhs| {
+                    let t = gensym("t");
+                    CPSPrimop::new(
+                        symbol_to_primop(symb),
+                        lhs,
+                        rhs,
+                        t,
+                        Box::new(cont(Value::Var(t))),
+                    )
+                })
+            }),
+            _ => {
+                let x = Value::Var(gensym("x"));
+                let k = Value::Var(gensym("k"));
+                Fix::new(
+                    vec![Function::new(x, k, Value::Int(0), Box::new(cont(x)))],
+                    Box::new(convert_expr(*appl.fun(), &mut |f| {
+                        convert_expr(*appl.lhs(), &mut |lhs| {
+                            convert_expr(*appl.rhs(), &mut |rhs| Appl::new(f, vec![lhs, rhs]))
+                        })
+                    })),
+                )
+            }
+        },
+        ExprKind::Region(_) => todo!(),
+        ExprKind::Error => todo!(),
+    }
+}
+
+// pls make this better Quinn
+fn convert_record(
+    map_vec: Rc<Vec<(curse_interner::Ident, Option<hir::Expr>)>>,
+    current_vec: Rc<RefCell<Vec<Value>>>,
+    cont: Rc<RefCell<&mut dyn FnMut(Rc<RefCell<Vec<Value>>>) -> CPSExpr>>,
+    map_index: usize,
+) -> CPSExpr {
+    match map_vec.get(map_index) {
+        Some((_ident, Some(expr))) => convert_expr(*expr, &mut |v| {
+            current_vec.borrow_mut().push(v);
+            convert_record(
+                map_vec.clone(),
+                current_vec.clone(),
+                cont.clone(),
+                map_index + 1,
+            )
+        }),
+        Some((ident, None)) => {
+            current_vec.borrow_mut().push(var_from_id(*ident));
+            convert_record(map_vec, current_vec, cont, map_index + 1)
+        }
+        None => (cont.borrow_mut())(current_vec.clone()),
+    }
+}
