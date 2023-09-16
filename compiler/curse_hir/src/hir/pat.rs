@@ -3,12 +3,13 @@ use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::fmt;
 
+#[derive(PartialEq, Eq)]
 pub struct Pat<'hir> {
     pub kind: PatKind<'hir>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PatKind<'hir> {
     Lit(Lit),
     Record(Map<'hir, Option<PatRef<'hir>>>),

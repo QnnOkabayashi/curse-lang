@@ -10,9 +10,11 @@ use curse_hir::hir::{self, ExprKind};
 use curse_interner::InternedString;
 
 pub mod cpsexpr;
+mod match_compiler;
 
 #[cfg(test)]
 mod tests;
+mod match_compiler2;
 
 static mut CURRENT_ID: usize = 0;
 
