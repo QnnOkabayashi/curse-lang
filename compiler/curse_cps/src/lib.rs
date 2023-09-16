@@ -4,10 +4,12 @@
 use std::{cell::RefCell, rc::Rc};
 
 use cpsexpr::{
-    var, var_from_id, CPSAppl, CPSExpr, CPSPrimop, CPSRecord, CPSFix, Function, Primop, Value,
+    var, var_from_id, CPSAppl, CPSExpr, CPSFix, CPSPrimop, CPSRecord, CPSSelect, Function, Primop,
+    Value,
 };
 use curse_hir::hir::{self, ExprKind};
 use curse_interner::InternedString;
+use match_compiler::{Binding, BindingValue, Body, Constructor, Decision, Test};
 
 pub mod cpsexpr;
 mod match_compiler;
@@ -199,4 +201,83 @@ fn convert_record(
         }
         None => (cont.borrow_mut())(current_vec.clone()),
     }
+}
+
+// bindings should be reversed for quick popping
+fn convert_bindings(bindings: &mut Vec<Binding>, cont: &mut dyn FnMut() -> CPSExpr) -> CPSExpr {
+    match bindings.pop() {
+        Some(Binding {
+            variable: lhs,
+            value: BindingValue::Variable(rhs),
+        }) => CPSPrimop::new(
+            Primop::Semi,
+            Value::Var(lhs),
+            Value::Int(0),
+            rhs,
+            vec![cont()],
+        ),
+        Some(Binding {
+            variable,
+            value: BindingValue::Record { name, index },
+        }) => CPSSelect::new(index, Value::Var(name), variable, Box::new(cont())),
+        None => cont(),
+    }
+}
+
+fn convert_decision_tree(tree: Decision, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSExpr {
+    match tree {
+        Decision::Success(Body {
+            value,
+            mut bindings,
+        }) => convert_bindings(&mut bindings, &mut || convert_expr(value, cont)),
+        Decision::Failure => CPSExpr::Halt(Value::Int(0)),
+        Decision::Branch {
+            test: Test {
+                variable,
+                constructor,
+            },
+            match_path,
+            fail_path,
+        } => {
+            let next = vec![
+                convert_decision_tree(*match_path, cont),
+                convert_decision_tree(*fail_path, cont),
+            ];
+            match constructor {
+                Constructor::Integer(n) => CPSPrimop::new(
+                    Primop::Eq,
+                    Value::Var(variable),
+                    Value::Int(n),
+                    gensym("eq"),
+                    next,
+                ),
+                Constructor::Boolean(b) => CPSPrimop::new(
+                    Primop::Eq,
+                    Value::Var(variable),
+                    Value::Int(if b { 1 } else { 0 }),
+                    gensym("eq"),
+                    next,
+                ),
+                Constructor::Record(_) => CPSPrimop::new(
+                    Primop::Record,
+                    Value::Var(variable),
+                    Value::Int(0),
+                    gensym("rec"),
+                    next,
+                ),
+                Constructor::NamedConstructor(path, _) => CPSPrimop::new(
+                    Primop::Eq,
+                    Value::Var(variable),
+                    Value::Int(resolve_path(path)),
+                    gensym("ctor"),
+                    next,
+                ),
+                Constructor::Variable(_) => unreachable!("already converted to binding in body"),
+            }
+        }
+    }
+}
+
+fn resolve_path<'hir>(_path: hir::Path<'hir>) -> u32 {
+    todo!()
 }

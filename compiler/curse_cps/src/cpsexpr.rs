@@ -32,6 +32,8 @@ pub enum Primop {
     Gt,
     Le,
     Ge,
+    // checks if a value is a record, branching if necessary
+    Record,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -108,6 +110,17 @@ pub struct CPSSelect {
     pub record: Value,
     pub result: InternedString,
     pub continuation: Box<CPSExpr>,
+}
+
+impl CPSSelect {
+    pub fn new(index: usize, record: Value, result: InternedString, continuation: Box<CPSExpr>) -> CPSExpr {
+        CPSExpr::Select(Self {
+            index,
+            record,
+            result,
+            continuation
+        })
+    }
 }
 
 /// User created functions always take three arguments, but continuations only take one. There

@@ -10,9 +10,9 @@ mod tests;
 type Variable = InternedString;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct Binding {
-    variable: Variable,
-    value: BindingValue,
+pub struct Binding {
+    pub variable: Variable,
+    pub value: BindingValue,
 }
 
 impl Binding {
@@ -24,7 +24,7 @@ impl Binding {
 // Choice types will be represented as records whose first entry is an integer tag, so for the
 // purposes of binding we can just use `Record`.
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum BindingValue {
+pub enum BindingValue {
     Variable(Variable),
     Record { name: Variable, index: usize },
 }
@@ -33,12 +33,12 @@ enum BindingValue {
 /// along the way.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Body<'hir> {
-    value: hir::ExprKind<'hir>,
-    bindings: Vec<Binding>,
+    pub value: hir::Expr<'hir>,
+    pub bindings: Vec<Binding>,
 }
 
 impl<'hir> Body<'hir> {
-    fn new(value: hir::ExprKind<'hir>, bindings: Vec<Binding>) -> Self {
+    fn new(value: hir::Expr<'hir>, bindings: Vec<Binding>) -> Self {
         Self { value, bindings }
     }
 }
@@ -47,7 +47,7 @@ impl<'hir> Body<'hir> {
 /// records, we're still working with the hir at this point which distinguishes them, which comes
 /// in handy for making better decision trees.
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum Constructor<'hir> {
+pub enum Constructor<'hir> {
     Integer(u32),
     Boolean(bool),
     Record(Vec<Constructor<'hir>>),
@@ -115,8 +115,8 @@ pub enum Decision<'hir> {
 /// One single comparison.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Test<'hir> {
-    variable: Variable,
-    constructor: Constructor<'hir>,
+    pub variable: Variable,
+    pub constructor: Constructor<'hir>,
 }
 
 impl<'hir> Test<'hir> {
@@ -159,7 +159,7 @@ impl<'hir> Clause<'hir> {
                 Test::new(left_variable, left_cons),
                 Test::new(right_variable, right_cons),
             ],
-            body: Body::new(arm.body.kind, vec![]),
+            body: Body::new(*arm.body, vec![]),
         }
     }
 
