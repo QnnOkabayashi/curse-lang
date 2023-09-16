@@ -229,7 +229,10 @@ fn convert_decision_tree(tree: Decision, cont: &mut dyn FnMut(Value) -> CPSExpr)
         Decision::Success(Body {
             value,
             mut bindings,
-        }) => convert_bindings(&mut bindings, &mut || convert_expr(value, cont)),
+        }) => {
+            bindings.reverse();
+            convert_bindings(&mut bindings, &mut || convert_expr(value, cont))
+        }
         Decision::Failure => CPSExpr::Halt(Value::Int(0)),
         Decision::Branch {
             test: Test {
