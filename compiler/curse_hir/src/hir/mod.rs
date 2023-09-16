@@ -26,7 +26,7 @@ mod shared {
         Bool(bool),
     }
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct Constructor<'hir, T> {
         pub path: Path<'hir>,
         pub inner: &'hir T,

@@ -14,7 +14,6 @@ mod match_compiler;
 
 #[cfg(test)]
 mod tests;
-mod match_compiler2;
 
 static mut CURRENT_ID: usize = 0;
 

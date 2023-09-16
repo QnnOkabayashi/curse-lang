@@ -1,219 +1,367 @@
-// big thanks to [Jules Jacobs](https://julesjacobs.com/notes/patternmatching/patternmatching.pdf)
-// and [Yorick Peterse](https://github.com/yorickpeterse/pattern-matching-in-rust)
-
-use std::collections::HashMap;
-
 use curse_hir::hir;
 use curse_interner::InternedString;
+use std::cmp::Ordering;
+
+use crate::gensym;
 
 type Variable = InternedString;
 
-pub enum Constructor<'hir> {
-    Named(hir::Path<'hir>),
-    Integer(u32),
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct Binding {
+    variable: Variable,
+    value: Variable,
 }
 
-#[derive(Clone)]
-struct Row<'hir> {
-    columns: Vec<Column<'hir>>,
-    body: Body<'hir>,
-}
-
-impl<'hir> Row<'hir> {
-    fn new(columns: Vec<Column<'hir>>, body: Body<'hir>) -> Self {
-        Self { columns, body }
-    }
-
-    fn remove_column(&mut self, column: &Column) -> Option<Column> {
-        self.columns
-            .iter()
-            .position(|c| c == column)
-            .map(|idx| self.columns.remove(idx))
+impl Binding {
+    fn new(variable: Variable, value: Variable) -> Self {
+        Self { variable, value }
     }
 }
 
-#[derive(Clone)]
+// Choice types will be represented as records whose first entry is an integer tag, so for the
+// purposes of binding we can just use `Record`.
+enum BindingValue {
+    Variable(Variable),
+    Record { name: Variable, index: usize },
+}
+
+/// The expression to evaluate once reaching the end of the tree with the bindings accrued
+/// along the way.
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Body<'hir> {
-    bindings: Vec<(InternedString, InternedString)>,
-    value: hir::Expr<'hir>,
+    value: hir::ExprKind<'hir>,
+    bindings: Vec<Binding>,
 }
 
 impl<'hir> Body<'hir> {
-    fn new(bindings: Vec<(InternedString, InternedString)>, value: hir::Expr<'hir>) -> Self {
-        Self { bindings, value }
+    fn new(value: hir::ExprKind<'hir>, bindings: Vec<Binding>) -> Self {
+        Self { value, bindings }
     }
 }
 
-// TODO(william): Ideally, I'd like the constructor names and paths resolved in the hir and just
-// replaced with numeric id's or something. In particular, since the types have already been
-// checked, we could just number the variants, which would simplify things quite a bit,
-// especially if we end up compiling this.
-#[derive(PartialEq, Eq, Clone)]
-struct Column<'hir> {
-    variable: Variable,
-    pattern: hir::PatRef<'hir>,
+/// The constructors we can compare values against. Although choice types will be represented with
+/// records, we're still working with the hir at this point which distinguishes them, which comes
+/// in handy for making better decision trees.
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum Constructor<'hir> {
+    Integer(u32),
+    Boolean(bool),
+    Record(Vec<Constructor<'hir>>),
+    NamedConstructor(hir::Path<'hir>, Box<Constructor<'hir>>),
+    Variable(Variable),
 }
 
-impl<'hir> Column<'hir> {
-    fn new(variable: Variable, pattern: hir::PatRef<'hir>) -> Self {
-        Self { variable, pattern }
-    }
-}
-
-pub struct Case<'hir> {
-    constructor: Constructor<'hir>,
-    argument: Vec<Variable>,
-    body: Decision<'hir>,
-}
-
-impl<'hir> Case<'hir> {
-    pub fn new(
-        constructor: Constructor<'hir>,
-        argument: Vec<Variable>,
-        body: Decision<'hir>,
-    ) -> Self {
-        Self {
-            constructor,
-            argument,
-            body,
-        }
-    }
-}
-
-pub enum Decision<'hir> {
-    Success(Body<'hir>),
-    Failure,
-    Switch(Variable, Vec<Case<'hir>>, Option<Box<Decision<'hir>>>),
-}
-
-pub struct Compiler {}
-
-impl<'hir> Compiler {
-    pub fn compile(mut self, arms: &'hir [hir::Arm<'hir>], arg: InternedString) -> Decision<'hir> {
-        let rows = arms
-            .iter()
-            .map(|hir::Arm { params, body }| {
-                Row::new(
-                    params
-                        .iter()
-                        .map(|hir::Param { pat, .. }| Column::new(arg, pat))
-                        .collect(),
-                    Body::new(vec![], **body),
-                )
-            })
-            .collect();
-        self.compile_rows(rows)
-    }
-
-    fn compile_rows(&mut self, rows: Vec<Row<'hir>>) -> Decision<'hir> {
-        if rows.is_empty() {
-            return Decision::Failure;
-        }
-
-        let mut rows = rows
-            .into_iter()
-            .map(|row| self.move_variable_patterns(row))
-            .collect::<Vec<_>>();
-
-        // if the first row has no columns, then we've moved all the variables to the RHS
-        // and it will always match
-        if rows.first().map_or(false, |c| c.columns.is_empty()) {
-            let row = rows.remove(0);
-
-            return Decision::Success(row.body);
-        }
-
-        // find the variable in rows[0] that's referred to the most across all rows
-        let branch_col = self.branch_column(&rows[0], &rows);
-
-        match branch_col.pattern.kind {
-            hir::PatKind::Lit(hir::Lit::Integer(n)) => {
-            }
-            hir::PatKind::Lit(hir::Lit::Bool(_)) => todo!(),
-            hir::PatKind::Lit(hir::Lit::Ident(_)) => {
-                unreachable!("due to `move_variable_patterns`")
-            }
-            hir::PatKind::Record(_) => todo!(),
-            hir::PatKind::Constructor(_, _) => todo!(),
+impl<'hir> Constructor<'hir> {
+    fn from_pattern(pat: hir::PatKind<'hir>) -> Constructor<'hir> {
+        match pat {
+            hir::PatKind::Lit(hir::Lit::Integer(n)) => Constructor::Integer(n),
+            hir::PatKind::Lit(hir::Lit::Bool(b)) => Constructor::Boolean(b),
+            hir::PatKind::Lit(hir::Lit::Ident(id)) => Constructor::Variable(id.symbol),
+            hir::PatKind::Record(map) => Constructor::Record(
+                map.entries
+                    .into_iter()
+                    .map(|x| match *x {
+                        (_, Some(pat)) => Constructor::from_pattern(pat.kind.clone()),
+                        (id, None) => Constructor::Variable(id.symbol),
+                    })
+                    .collect(),
+            ),
+            hir::PatKind::Constructor(path, pat) => Constructor::NamedConstructor(
+                path,
+                Box::new(Constructor::from_pattern(pat.kind.clone())),
+            ),
             hir::PatKind::Error => todo!(),
         }
     }
 
-    fn move_variable_patterns(&self, row: Row<'hir>) -> Row<'hir> {
-        let mut bindings = row.body.bindings;
-
-        for col in &row.columns {
-            if let hir::PatKind::Lit(hir::Lit::Ident(bind)) = col.pattern.kind {
-                bindings.push((bind.symbol, col.variable));
+    fn matches(&self, other: &Constructor<'hir>) -> bool {
+        match (self, other) {
+            (Constructor::Integer(n), Constructor::Integer(m)) => n == m,
+            (Constructor::Boolean(b1), Constructor::Boolean(b2)) => b1 == b2,
+            // type checking I think guarantees that the records must match
+            (Constructor::Record(_), Constructor::Record(_)) => true,
+            // this works because of our definition of `Eq` on `Ident`
+            (Constructor::NamedConstructor(path1, _), Constructor::NamedConstructor(path2, _)) => {
+                path1 == path2
             }
+            (Constructor::Variable(_), _) => true,
+            _ => false,
         }
+    }
+}
 
-        let columns = row
-            .columns
-            .into_iter()
-            .filter(|col| !matches!(col.pattern.kind, hir::PatKind::Lit(hir::Lit::Ident(_))))
-            .collect();
+/// The actual decision tree. At each step, we will compare a single variable against a single
+/// constructor. If it matches, we head down one subtree, and if it fails we head down another. If
+/// the list of variables and constructors is ever empty, then we are done and have successfully
+/// matched. On the other hand, if the remaining list of arms is empty, then our original set of
+/// arms must not have been exhaustive.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Decision<'hir> {
+    // note: if the leaves of the tree don't contain one of the original bodies, then the case
+    // that body belonged to was redundant, giving us a neat way to check for redundancy
+    Success(Body<'hir>),
+    Failure,
+    Branch {
+        test: Test<'hir>,
+        match_path: Box<Decision<'hir>>,
+        fail_path: Box<Decision<'hir>>,
+    },
+}
 
-        Row {
-            columns,
-            body: Body {
-                bindings,
-                value: row.body.value,
-            },
+/// One single comparison.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Test<'hir> {
+    variable: Variable,
+    constructor: Constructor<'hir>,
+}
+
+impl<'hir> Test<'hir> {
+    fn new(variable: Variable, constructor: Constructor<'hir>) -> Self {
+        Self {
+            variable,
+            constructor,
+        }
+    }
+}
+
+/// A clause can have multiple tests and then a body to execute if it matches.
+#[derive(Clone)]
+struct Clause<'hir> {
+    tests: Vec<Test<'hir>>,
+    body: Body<'hir>,
+}
+
+impl<'hir> Clause<'hir> {
+    fn new(tests: Vec<Test<'hir>>, body: Body<'hir>) -> Self {
+        Self { tests, body }
+    }
+
+    fn from_arm(arm: &hir::Arm<'hir>, left_variable: Variable, right_variable: Variable) -> Self {
+        let (left_cons, right_cons) = match arm.params {
+            &[] => (Constructor::Integer(0), Constructor::Integer(0)),
+            &[left] => (
+                Constructor::from_pattern(left.pat.kind.clone()),
+                Constructor::Integer(0),
+            ),
+            &[left, right] => (
+                Constructor::from_pattern(left.pat.kind.clone()),
+                Constructor::from_pattern(right.pat.kind.clone()),
+            ),
+            _ => unreachable!("will only ever be 0, 1, or 2"),
+        };
+
+        Self {
+            tests: vec![
+                Test::new(left_variable, left_cons),
+                Test::new(right_variable, right_cons),
+            ],
+            body: Body::new(arm.body.kind, vec![]),
         }
     }
 
-    fn branch_column<'a>(&'a self, row: &'a Row<'hir>, rows: &'a [Row<'hir>]) -> &'a Column {
-        let mut counts = HashMap::new();
-
-        for row in rows {
-            for col in &row.columns {
-                *counts.entry(&col.variable).or_insert(0usize) += 1;
-            }
-        }
-
-        row.columns
-            .iter()
-            .max_by_key(|col| counts[&col.variable])
-            .unwrap()
-    }
-
-    fn compile_int_cases(
-        &mut self,
-        rows: Vec<Row<'hir>>,
-        branch_col: Column<'hir>,
-    ) -> (Vec<Case<'hir>>, Box<Decision<'hir>>) {
-        let mut raw_cases: Vec<(Constructor, Vec<Variable>, Vec<Row>)> = Vec::new();
-        let mut fallback_rows = Vec::new();
-        let mut tested: HashMap<u32, usize> = HashMap::new();
-
-        for mut row in rows {
-            if let Some(col) = row.remove_column(&branch_col) {
-                let hir::PatKind::Lit(hir::Lit::Integer(val)) = col.pattern.kind else {
-                    unreachable!("only called if pattern is an `int`")
-                };
-
-                if let Some(index) = tested.get(&val) {
-                    raw_cases[*index].2.push(row);
-                    continue;
-                }
-
-                tested.insert(val, raw_cases.len());
-                raw_cases.push((Constructor::Integer(val), Vec::new(), vec![row]));
+    fn bind_bare_variables(&mut self) {
+        // for each test, if the test is against a variable, get rid of it and insert a
+        // new binding into the body of the clause
+        self.tests.retain(|test| {
+            if let Constructor::Variable(var) = test.constructor {
+                self.body.bindings.push(Binding::new(var, test.variable));
+                false
             } else {
-                fallback_rows.push(row);
+                true
+            }
+        });
+    }
+}
+
+type MatchExpr<'hir> = Vec<Clause<'hir>>;
+
+pub fn compile_match_expr<'hir>(
+    hir_closure: &'hir [hir::Arm<'hir>],
+    left: Variable,
+    right: Variable,
+) -> Decision<'hir> {
+    let match_expr = hir_closure
+        .into_iter()
+        .map(|arm| Clause::from_arm(arm, left, right))
+        .collect();
+
+    compile_match(match_expr)
+}
+
+fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
+    // base case
+    if match_expr.is_empty() {
+        return Decision::Failure;
+    }
+
+    // step 1
+    for clause in match_expr.iter_mut() {
+        clause.bind_bare_variables();
+    }
+
+    // other base case
+    if match_expr[0].tests.is_empty() {
+        return Decision::Success(match_expr[0].body.clone());
+    }
+
+    // step 2
+    let test_idx = select_test(&match_expr);
+    let test = match_expr[0].tests[test_idx].clone();
+
+    let mut a: MatchExpr<'hir> = vec![];
+    let mut b: MatchExpr<'hir> = vec![];
+
+    // step 4
+    'outer: for clause in match_expr.iter_mut() {
+        for (idx, new_test) in clause.tests.iter().enumerate() {
+            if new_test.variable == test.variable {
+                // case (a) of step 4
+                if new_test.constructor.matches(&test.constructor) {
+                    let mut new_tests = vec![];
+                    match &new_test.constructor {
+                        Constructor::Integer(_) | Constructor::Boolean(_) => (),
+                        Constructor::Record(ctors) => {
+                            new_tests = ctors
+                                .iter()
+                                .map(|ctor| Test::new(gensym("r"), ctor.clone()))
+                                .collect()
+                        }
+                        Constructor::NamedConstructor(_, ctor) => {
+                            new_tests.push(Test::new(gensym("c"), (**ctor).clone()))
+                        }
+                        Constructor::Variable(_) => unreachable!("already pushed vars to body"),
+                    }
+                    clause.tests.remove(idx);
+                    new_tests.append(&mut clause.tests);
+                    a.push(Clause::new(new_tests, clause.body.clone()));
+                    continue 'outer;
+                } else {
+                    // case (b) of step 4
+                    b.push(clause.clone());
+                    continue 'outer;
+                }
             }
         }
 
-        for (_, _, rows) in &mut raw_cases {
-            rows.append(&mut fallback_rows.clone());
+        // only here if none of the tests in `clause` were against `test.variable`,
+        // leading to case (c) of step 4
+        // the point of the heuristic `select_test` is to minimize this
+        a.push(clause.clone());
+        b.push(clause.clone());
+    }
+
+    // step 3 (and 5)
+    Decision::Branch {
+        test: test.clone(),
+        match_path: Box::new(compile_match(a)),
+        fail_path: Box::new(compile_match(b)),
+    }
+}
+
+// given a `MatchExpr`, finds the index of the best test to do first from the first clause
+fn select_test<'hir>(match_expr: &MatchExpr<'hir>) -> usize {
+    let mut counts = vec![0usize; match_expr[0].tests.len()];
+
+    for clause in &match_expr[1..] {
+        for test in &clause.tests {
+            for (idx, test2) in match_expr[0].tests.iter().enumerate() {
+                if test2.variable == test.variable {
+                    counts[idx] += 1;
+                }
+            }
         }
+    }
 
-        let cases = raw_cases
-            .into_iter()
-            .map(|(cons, vars, rows)| Case::new(cons, vars, self.compile_rows(rows)))
-            .collect();
+    counts
+        .iter()
+        .enumerate()
+        .max_by(|(_, &a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
 
-        (cases, Box::new(self.compile_rows(fallback_rows)))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reset_sym_counter;
+    use curse_hir::hir::{Arm, Expr, ExprKind, Lit, Param, Pat, PatKind};
+    use curse_interner::Ident;
+    use curse_span::Span;
+
+    fn var(s: &str) -> InternedString {
+        InternedString::get_or_intern(s)
+    }
+
+    #[test]
+    fn basic() {
+        let _interner = curse_interner::init();
+        reset_sym_counter();
+
+        let span = Span { start: 0, end: 0 };
+        let pat1 = Pat {
+            kind: PatKind::Lit(Lit::Integer(1)),
+            span,
+        };
+        let params1 = vec![Param {
+            pat: &pat1,
+            ascription: None,
+        }];
+        let body1 = Expr {
+            kind: ExprKind::Lit(Lit::Integer(0)),
+            span,
+        };
+        let arm1 = Arm {
+            params: &params1,
+            body: &body1,
+        };
+
+        let pat2 = Pat {
+            kind: PatKind::Lit(Lit::Ident(Ident::new("n", span))),
+            span,
+        };
+        let params2 = vec![Param {
+            pat: &pat2,
+            ascription: None,
+        }];
+        let body2 = Expr {
+            kind: ExprKind::Lit(Lit::Ident(Ident::new("n", span))),
+            span,
+        };
+        let arm2 = Arm {
+            params: &params2,
+            body: &body2,
+        };
+
+        let arms = &[arm1, arm2];
+        let tree = compile_match_expr(arms, var("x"), var("y"));
+
+        use Constructor::*;
+        use Decision::*;
+        let expected = Branch {
+            test: Test {
+                variable: var("y"),
+                constructor: Integer(0),
+            },
+            match_path: Box::new(Branch {
+                test: Test {
+                    variable: var("x"),
+                    constructor: Integer(1),
+                },
+                match_path: Box::new(Success(Body {
+                    value: ExprKind::Lit(Lit::Integer(0)),
+                    bindings: vec![],
+                })),
+                fail_path: Box::new(Success(Body {
+                    value: ExprKind::Lit(Lit::Ident(Ident::new("n", span))),
+                    bindings: vec![Binding {
+                        variable: var("n"),
+                        value: var("x"),
+                    }],
+                })),
+            }),
+            fail_path: Box::new(Failure),
+        };
+
+        assert_eq!(tree, expected);
     }
 }

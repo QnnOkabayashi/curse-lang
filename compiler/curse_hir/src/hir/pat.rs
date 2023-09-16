@@ -9,7 +9,7 @@ pub struct Pat<'hir> {
     pub span: Span,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PatKind<'hir> {
     Lit(Lit),
     Record(Map<'hir, Option<PatRef<'hir>>>),
