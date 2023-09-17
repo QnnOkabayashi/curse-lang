@@ -3,6 +3,7 @@ use crate::reset_sym_counter;
 use curse_hir::hir::{Arm, Expr, ExprKind, Lit, Map, Param, Pat, PatKind};
 use curse_interner::Ident;
 use curse_span::Span;
+use Decision::*;
 
 fn var(s: &str) -> InternedString {
     InternedString::get_or_intern(s)
@@ -55,7 +56,6 @@ fn basic_numbers() {
     let tree = compile_match_expr(arms, gensym("x"), gensym("y"));
 
     use Constructor::*;
-    use Decision::*;
     let expected = Branch {
         test: Test {
             variable: var("y__2_"),
@@ -138,7 +138,6 @@ fn basic_ctors() {
     let tree = compile_match_expr(arms, gensym("x"), gensym("y"));
 
     use Constructor::*;
-    use Decision::*;
     let expected = Branch {
         test: Test {
             variable: var("y__2_"),
@@ -154,7 +153,10 @@ fn basic_ctors() {
                 bindings: vec![
                     Binding {
                         variable: var("c__3_"),
-                        value: BindingValue::Variable(var("x__1_")),
+                        value: BindingValue::Record {
+                            name: var("x__1_"),
+                            index: 1,
+                        },
                     },
                     Binding {
                         variable: var("x"),
@@ -176,7 +178,10 @@ fn basic_ctors() {
                         value: ExprKind::Lit(Lit::Integer(0)),
                         bindings: vec![Binding {
                             variable: var("c__4_"),
-                            value: BindingValue::Variable(var("x__1_")),
+                            value: BindingValue::Record {
+                                name: var("x__1_"),
+                                index: 1,
+                            },
                         }],
                     })),
                     fail_path: Box::new(Failure),
@@ -226,7 +231,6 @@ fn basic_record() {
     let tree = compile_match_expr(arms, gensym("x"), gensym("y"));
 
     use Constructor::*;
-    use Decision::*;
     let expected = Branch {
         test: Test {
             variable: var("x__1_"),
@@ -437,4 +441,315 @@ fn complex() {
     // verified by hand. I'm not typing all that out. It's very inefficient, but is still
     // marginally more efficient than checking every single case
     assert_eq!(tree, tree);
+
+    // this can't be 100% correct, right?
+    // Branch {
+    //     test: Test {
+    //         variable: "y__2_",
+    //         constructor: NamedConstructor([Zero], Integer(0)),
+    //     },
+    //     match_path: Branch {
+    //         test: Test {
+    //             variable: "x__1_",
+    //             constructor: NamedConstructor([Add], Record([Variable("x"), Variable("y")])),
+    //         },
+    //         match_path: Branch {
+    //             test: Test {
+    //                 variable: "c__3_",
+    //                 constructor: Integer(0),
+    //             },
+    //             match_path: Branch {
+    //                 test: Test {
+    //                     variable: "c__6_",
+    //                     constructor: Record([Variable("x"), Variable("y")]),
+    //                 },
+    //                 match_path: Success(Body {
+    //                     value: Lit(Integer(1)),
+    //                     bindings: [
+    //                         Binding {
+    //                             variable: "c__3_",
+    //                             value: Variable("y__2_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "c__6_",
+    //                             value: Variable("x__1_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "r__7_",
+    //                             value: Record {
+    //                                 name: "c__6_",
+    //                                 index: 0,
+    //                             },
+    //                         },
+    //                         Binding {
+    //                             variable: "r__8_",
+    //                             value: Record {
+    //                                 name: "c__6_",
+    //                                 index: 1,
+    //                             },
+    //                         },
+    //                         Binding {
+    //                             variable: "x",
+    //                             value: Variable("r__7_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "y",
+    //                             value: Variable("r__8_"),
+    //                         },
+    //                     ],
+    //                 }),
+    //                 fail_path: Branch {
+    //                     test: Test {
+    //                         variable: "c__5_",
+    //                         constructor: Integer(0),
+    //                     },
+    //                     match_path: Success(Body {
+    //                         value: Lit(Integer(5)),
+    //                         bindings: [
+    //                             Binding {
+    //                                 variable: "x",
+    //                                 value: Variable("x__1_"),
+    //                             },
+    //                             Binding {
+    //                                 variable: "c__5_",
+    //                                 value: Variable("y__2_"),
+    //                             },
+    //                         ],
+    //                     }),
+    //                     fail_path: Failure,
+    //                 },
+    //             },
+    //             fail_path: Branch {
+    //                 test: Test {
+    //                     variable: "c__5_",
+    //                     constructor: Integer(0),
+    //                 },
+    //                 match_path: Success(Body {
+    //                     value: Lit(Integer(5)),
+    //                     bindings: [
+    //                         Binding {
+    //                             variable: "x",
+    //                             value: Variable("x__1_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "c__5_",
+    //                             value: Variable("y__2_"),
+    //                         },
+    //                     ],
+    //                 }),
+    //                 fail_path: Failure,
+    //             },
+    //         },
+    //         fail_path: Branch {
+    //             test: Test {
+    //                 variable: "x__1_",
+    //                 constructor: NamedConstructor([Mul], Record([Variable("x"), Variable("y")])),
+    //             },
+    //             match_path: Branch {
+    //                 test: Test {
+    //                     variable: "c__4_",
+    //                     constructor: Integer(0),
+    //                 },
+    //                 match_path: Branch {
+    //                     test: Test {
+    //                         variable: "c__9_",
+    //                         constructor: Record([Variable("x"), Variable("y")]),
+    //                     },
+    //                     match_path: Success(Body {
+    //                         value: Lit(Integer(2)),
+    //                         bindings: [
+    //                             Binding {
+    //                                 variable: "c__4_",
+    //                                 value: Variable("y__2_"),
+    //                             },
+    //                             Binding {
+    //                                 variable: "c__9_",
+    //                                 value: Variable("x__1_"),
+    //                             },
+    //                             Binding {
+    //                                 variable: "r__10_",
+    //                                 value: Record {
+    //                                     name: "c__9_",
+    //                                     index: 0,
+    //                                 },
+    //                             },
+    //                             Binding {
+    //                                 variable: "r__11_",
+    //                                 value: Record {
+    //                                     name: "c__9_",
+    //                                     index: 1,
+    //                                 },
+    //                             },
+    //                             Binding {
+    //                                 variable: "x",
+    //                                 value: Variable("r__10_"),
+    //                             },
+    //                             Binding {
+    //                                 variable: "y",
+    //                                 value: Variable("r__11_"),
+    //                             },
+    //                         ],
+    //                     }),
+    //                     fail_path: Branch {
+    //                         test: Test {
+    //                             variable: "c__5_",
+    //                             constructor: Integer(0),
+    //                         },
+    //                         match_path: Success(Body {
+    //                             value: Lit(Integer(5)),
+    //                             bindings: [
+    //                                 Binding {
+    //                                     variable: "x",
+    //                                     value: Variable("x__1_"),
+    //                                 },
+    //                                 Binding {
+    //                                     variable: "c__5_",
+    //                                     value: Variable("y__2_"),
+    //                                 },
+    //                             ],
+    //                         }),
+    //                         fail_path: Failure,
+    //                     },
+    //                 },
+    //                 fail_path: Branch {
+    //                     test: Test {
+    //                         variable: "c__5_",
+    //                         constructor: Integer(0),
+    //                     },
+    //                     match_path: Success(Body {
+    //                         value: Lit(Integer(5)),
+    //                         bindings: [
+    //                             Binding {
+    //                                 variable: "x",
+    //                                 value: Variable("x__1_"),
+    //                             },
+    //                             Binding {
+    //                                 variable: "c__5_",
+    //                                 value: Variable("y__2_"),
+    //                             },
+    //                         ],
+    //                     }),
+    //                     fail_path: Failure,
+    //                 },
+    //             },
+    //             fail_path: Branch {
+    //                 test: Test {
+    //                     variable: "c__5_",
+    //                     constructor: Integer(0),
+    //                 },
+    //                 match_path: Success(Body {
+    //                     value: Lit(Integer(5)),
+    //                     bindings: [
+    //                         Binding {
+    //                             variable: "x",
+    //                             value: Variable("x__1_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "c__5_",
+    //                             value: Variable("y__2_"),
+    //                         },
+    //                     ],
+    //                 }),
+    //                 fail_path: Failure,
+    //             },
+    //         },
+    //     },
+    //     fail_path: Branch {
+    //         test: Test {
+    //             variable: "y__2_",
+    //             constructor: NamedConstructor([Add], Record([Variable("y"), Variable("z")])),
+    //         },
+    //         match_path: Branch {
+    //             test: Test {
+    //                 variable: "c__12_",
+    //                 constructor: Record([Variable("y"), Variable("z")]),
+    //             },
+    //             match_path: Success(Body {
+    //                 value: Lit(Integer(3)),
+    //                 bindings: [
+    //                     Binding {
+    //                         variable: "x",
+    //                         value: Variable("x__1_"),
+    //                     },
+    //                     Binding {
+    //                         variable: "c__12_",
+    //                         value: Variable("y__2_"),
+    //                     },
+    //                     Binding {
+    //                         variable: "r__13_",
+    //                         value: Record {
+    //                             name: "c__12_",
+    //                             index: 0,
+    //                         },
+    //                     },
+    //                     Binding {
+    //                         variable: "r__14_",
+    //                         value: Record {
+    //                             name: "c__12_",
+    //                             index: 1,
+    //                         },
+    //                     },
+    //                     Binding {
+    //                         variable: "y",
+    //                         value: Variable("r__13_"),
+    //                     },
+    //                     Binding {
+    //                         variable: "z",
+    //                         value: Variable("r__14_"),
+    //                     },
+    //                 ],
+    //             }),
+    //             fail_path: Failure,
+    //         },
+    //         fail_path: Branch {
+    //             test: Test {
+    //                 variable: "y__2_",
+    //                 constructor: NamedConstructor([Mul], Record([Variable("y"), Variable("z")])),
+    //             },
+    //             match_path: Branch {
+    //                 test: Test {
+    //                     variable: "c__15_",
+    //                     constructor: Record([Variable("y"), Variable("z")]),
+    //                 },
+    //                 match_path: Success(Body {
+    //                     value: Lit(Integer(4)),
+    //                     bindings: [
+    //                         Binding {
+    //                             variable: "x",
+    //                             value: Variable("x__1_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "c__15_",
+    //                             value: Variable("y__2_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "r__16_",
+    //                             value: Record {
+    //                                 name: "c__15_",
+    //                                 index: 0,
+    //                             },
+    //                         },
+    //                         Binding {
+    //                             variable: "r__17_",
+    //                             value: Record {
+    //                                 name: "c__15_",
+    //                                 index: 1,
+    //                             },
+    //                         },
+    //                         Binding {
+    //                             variable: "y",
+    //                             value: Variable("r__16_"),
+    //                         },
+    //                         Binding {
+    //                             variable: "z",
+    //                             value: Variable("r__17_"),
+    //                         },
+    //                     ],
+    //                 }),
+    //                 fail_path: Failure,
+    //             },
+    //             fail_path: Failure,
+    //         },
+    //     },
+    // }
 }

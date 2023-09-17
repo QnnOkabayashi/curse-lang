@@ -1,6 +1,5 @@
 use curse_hir::hir;
 use curse_interner::InternedString;
-use std::cmp::Ordering;
 
 use crate::gensym;
 
@@ -246,10 +245,13 @@ fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
                         }
                         Constructor::NamedConstructor(_, ctor) => {
                             let c = gensym("c");
-                            clause
-                                .body
-                                .bindings
-                                .push(Binding::new(c, BindingValue::Variable(test.variable)));
+                            clause.body.bindings.push(Binding::new(
+                                c,
+                                BindingValue::Record {
+                                    name: test.variable,
+                                    index: 1,
+                                },
+                            ));
                             new_tests.push(Test::new(c, (**ctor).clone()))
                         }
                         Constructor::Variable(_) => unreachable!("already pushed vars to body"),
@@ -281,7 +283,9 @@ fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
     }
 }
 
-// given a `MatchExpr`, finds the index of the best test to do first from the first clause
+// given a `MatchExpr`, finds the index of the best test to do first from the first clause. in
+// particular, we want the test whose variable is most repeated throughout the other tests. that
+// way when testing that particular variable, we get the most information.
 fn select_test<'hir>(match_expr: &MatchExpr<'hir>) -> usize {
     let mut counts = vec![0usize; match_expr[0].tests.len()];
 
@@ -296,9 +300,9 @@ fn select_test<'hir>(match_expr: &MatchExpr<'hir>) -> usize {
     }
 
     counts
-        .iter()
+        .into_iter()
         .enumerate()
-        .max_by(|(_, &a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+        .max_by(|(_, a), (_, b)| a.cmp(&b))
         .map(|(index, _)| index)
         .unwrap_or(0)
 }
