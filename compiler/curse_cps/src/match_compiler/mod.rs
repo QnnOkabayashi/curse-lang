@@ -33,12 +33,12 @@ pub enum BindingValue {
 /// along the way.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Body<'hir> {
-    pub value: hir::Expr<'hir>,
+    pub value: hir::ExprKind<'hir>,
     pub bindings: Vec<Binding>,
 }
 
 impl<'hir> Body<'hir> {
-    fn new(value: hir::Expr<'hir>, bindings: Vec<Binding>) -> Self {
+    fn new(value: hir::ExprKind<'hir>, bindings: Vec<Binding>) -> Self {
         Self { value, bindings }
     }
 }
@@ -56,24 +56,23 @@ pub enum Constructor<'hir> {
 }
 
 impl<'hir> Constructor<'hir> {
-    fn from_pattern(pat: hir::PatKind<'hir>) -> Constructor<'hir> {
+    fn from_pattern(pat: &'hir hir::PatKind<'hir>) -> Constructor<'hir> {
         match pat {
-            hir::PatKind::Lit(hir::Lit::Integer(n)) => Constructor::Integer(n),
-            hir::PatKind::Lit(hir::Lit::Bool(b)) => Constructor::Boolean(b),
+            hir::PatKind::Lit(hir::Lit::Integer(n)) => Constructor::Integer(*n),
+            hir::PatKind::Lit(hir::Lit::Bool(b)) => Constructor::Boolean(*b),
             hir::PatKind::Lit(hir::Lit::Ident(id)) => Constructor::Variable(id.symbol),
             hir::PatKind::Record(map) => Constructor::Record(
                 map.entries
                     .into_iter()
                     .map(|x| match *x {
-                        (_, Some(pat)) => Constructor::from_pattern(pat.kind.clone()),
+                        (_, Some(pat)) => Constructor::from_pattern(&pat.kind),
                         (id, None) => Constructor::Variable(id.symbol),
                     })
                     .collect(),
             ),
-            hir::PatKind::Constructor(path, pat) => Constructor::NamedConstructor(
-                path,
-                Box::new(Constructor::from_pattern(pat.kind.clone())),
-            ),
+            hir::PatKind::Constructor(path, pat) => {
+                Constructor::NamedConstructor(path, Box::new(Constructor::from_pattern(&pat.kind)))
+            }
             hir::PatKind::Error => todo!(),
         }
     }
@@ -144,12 +143,12 @@ impl<'hir> Clause<'hir> {
         let (left_cons, right_cons) = match arm.params {
             &[] => (Constructor::Integer(0), Constructor::Integer(0)),
             &[left] => (
-                Constructor::from_pattern(left.pat.kind.clone()),
+                Constructor::from_pattern(&left.pat.kind),
                 Constructor::Integer(0),
             ),
             &[left, right] => (
-                Constructor::from_pattern(left.pat.kind.clone()),
-                Constructor::from_pattern(right.pat.kind.clone()),
+                Constructor::from_pattern(&left.pat.kind),
+                Constructor::from_pattern(&right.pat.kind),
             ),
             _ => unreachable!("will only ever be 0, 1, or 2"),
         };
@@ -159,7 +158,7 @@ impl<'hir> Clause<'hir> {
                 Test::new(left_variable, left_cons),
                 Test::new(right_variable, right_cons),
             ],
-            body: Body::new(*arm.body, vec![]),
+            body: Body::new(arm.body.kind, vec![]),
         }
     }
 
@@ -207,18 +206,20 @@ fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
 
     // other base case
     if match_expr[0].tests.is_empty() {
-        return Decision::Success(match_expr[0].body.clone());
+        return Decision::Success(match_expr.swap_remove(0).body);
     }
 
     // step 2
     let test_idx = select_test(&match_expr);
+
+    // we do need to clone this `test` since we'll be creating new `Clause`s
     let test = match_expr[0].tests[test_idx].clone();
 
     let mut a: MatchExpr<'hir> = vec![];
     let mut b: MatchExpr<'hir> = vec![];
 
     // step 4
-    'outer: for clause in match_expr.iter_mut() {
+    'outer: for mut clause in match_expr.into_iter() {
         for (idx, new_test) in clause.tests.iter().enumerate() {
             if new_test.variable == test.variable {
                 // case (a) of step 4
@@ -228,7 +229,7 @@ fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
                         Constructor::Integer(_) | Constructor::Boolean(_) => (),
                         Constructor::Record(ctors) => {
                             new_tests = ctors
-                                .iter()
+                                .into_iter()
                                 .enumerate()
                                 .map(|(index, ctor)| {
                                     let r = gensym("r");
@@ -255,11 +256,11 @@ fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
                     }
                     clause.tests.remove(idx);
                     new_tests.append(&mut clause.tests);
-                    a.push(Clause::new(new_tests, clause.body.clone()));
+                    a.push(Clause::new(new_tests, clause.body));
                     continue 'outer;
                 } else {
                     // case (b) of step 4
-                    b.push(clause.clone());
+                    b.push(clause);
                     continue 'outer;
                 }
             }
@@ -268,13 +269,13 @@ fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
         // only here if none of the tests in `clause` were against `test.variable`,
         // leading to case (c) of step 4
         // the point of the heuristic `select_test` is to minimize this
-        a.push(clause.clone());
-        b.push(clause.clone());
+        a.push(clause.clone()); // we definitely need this clone unfortunately
+        b.push(clause);
     }
 
     // step 3 (and 5)
     Decision::Branch {
-        test: test.clone(),
+        test,
         match_path: Box::new(compile_match(a)),
         fail_path: Box::new(compile_match(b)),
     }

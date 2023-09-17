@@ -4,7 +4,7 @@ use curse_span::Span;
 
 use crate::{
     convert_expr,
-    cpsexpr::{var, CPSAppl, CPSExpr, CPSPrimop, CPSRecord, CPSFix, Function, Primop, Value::*},
+    cpsexpr::{var, CPSAppl, CPSExpr, CPSFix, CPSPrimop, CPSRecord, Function, Primop, Value::*},
     reset_sym_counter,
 };
 
