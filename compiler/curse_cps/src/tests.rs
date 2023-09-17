@@ -4,11 +4,16 @@ use curse_span::Span;
 
 use crate::{
     convert_expr,
-    cpsexpr::{var, CPSAppl, CPSExpr, CPSFix, CPSPrimop, CPSRecord, Function, Primop, Value::*},
+    cpsexpr::{var, CPSAppl, CPSExpr, CPSFix, CPSPrimop, CPSRecord, Function, Primop, Value::{*, self}},
     reset_sym_counter,
 };
 
 // MAKE SURE TO RUN AS `cargo test -- --test-threads=1`
+
+pub fn string(s: &str) -> Value {
+    Value::String(InternedString::get_or_intern(s))
+}
+
 
 #[test]
 fn records() {
@@ -291,7 +296,7 @@ fn ctor() {
         right: Int(4),
         name: InternedString::get_or_intern("t__2_"),
         continuations: vec![CPSExpr::Record(CPSRecord {
-            values: vec![var("[Option, Some]"), var("t__2_")],
+            values: vec![string("[Option, Some]"), var("t__2_")],
             name: InternedString::get_or_intern("ctor__1_"),
             continuation: Box::new(CPSExpr::Halt(var("ctor__1_"))),
         })],

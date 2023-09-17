@@ -4,12 +4,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use cpsexpr::{
-    var, var_from_id, CPSAppl, CPSExpr, CPSFix, CPSPrimop, CPSRecord, Function, Primop,
-    Value,
+    var_from_id, CPSAppl, CPSExpr, CPSFix, CPSPrimop, CPSRecord, Function, Primop, Value,
 };
 use curse_hir::hir::{self, ExprKind};
 use curse_interner::InternedString;
-// use match_compiler::{Binding, BindingValue, Body, Constructor, Decision, Test};
 
 pub mod cpsexpr;
 mod match_compiler;
@@ -112,7 +110,7 @@ fn convert_expr(expr: hir::Expr, cont: &mut dyn FnMut(Value) -> CPSExpr) -> CPSE
             let name = gensym("ctor");
             convert_expr(*inner, &mut |inner_val| {
                 CPSRecord::new(
-                    vec![var(&format!("{path:?}")), inner_val],
+                    vec![Value::String(InternedString::get_or_intern(&format!("{path:?}"))), inner_val],
                     name,
                     Box::new(cont(Value::Var(name))),
                 )
