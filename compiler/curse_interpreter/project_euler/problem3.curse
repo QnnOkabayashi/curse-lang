@@ -1,4 +1,4 @@
-dynamic_import "std.curse"
+dynamic_import std
 
 fn largest_prime_factor |n|
     { i: 2, n } rec |loop| (

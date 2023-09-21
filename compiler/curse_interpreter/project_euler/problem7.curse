@@ -1,4 +1,4 @@
-dynamic_import "llist.curse"
+dynamic_import llist
 
 // I don't want to think about implementing a sieve in curse
 

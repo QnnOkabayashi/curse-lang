@@ -1,53 +1,128 @@
-use std::io;
+use std::{collections::HashSet, fs, io, mem};
 
 use bumpalo::Bump;
 use curse_ast::ast;
-use curse_interner::StringInterner;
+use curse_interner::{InternedString, StringInterner};
 
 mod builtins;
 mod error;
 mod evaluation;
 mod value;
 
-// TODO(william): better return value
-fn flatten_asts(interner: &mut StringInterner, filepath: &str) -> io::Result<ast::Program> {
-    let input = std::fs::read_to_string(filepath).expect("file read error");
-
-    let mut parser = curse_parse::Parser::new(interner);
-
-    let mut ast_program = parser.parse_program(&input);
-    if !parser.errors.is_empty() {
-        eprintln!("{:?}", parser.errors);
-        return Err(io::Error::new(io::ErrorKind::Other, "errors!!!"));
-    }
-
-    for import in ast_program.dynamic_imports.iter() {
-        let s: &str = import
-            .file_string
-            .symbol
-            .string_in(interner)
-            .expect("file name in interner");
-        // trim off quotes
-        let s = s[1..s.len() - 1].to_string();
-        let other_program = flatten_asts(interner, &s)?;
-        ast_program
-            .function_defs
-            .extend(other_program.function_defs);
-        ast_program.choice_defs.extend(other_program.choice_defs);
-        ast_program.struct_defs.extend(other_program.struct_defs);
-    }
-    Ok(ast_program)
+/// Concats AST items (fn, struct, choice defs) into one list of items,
+/// and deduplicates any imports.
+struct ImportResolver<'intern> {
+    interner: &'intern mut StringInterner,
+    function_defs: Vec<ast::FunctionDef>,
+    struct_defs: Vec<ast::StructDef>,
+    choice_defs: Vec<ast::ChoiceDef>,
+    imported: HashSet<InternedString>,
+    errors: Vec<Error>,
 }
 
-pub fn main() -> io::Result<()> {
-    let file_name = std::env::args()
+#[derive(Debug)]
+enum Error {
+    Io(io::Error),
+    Parse {
+        file: InternedString,
+        errors: Vec<curse_parse::Error>,
+    },
+}
+
+impl<'intern> ImportResolver<'intern> {
+    fn new(interner: &'intern mut StringInterner) -> Self {
+        ImportResolver {
+            interner,
+            function_defs: vec![],
+            struct_defs: vec![],
+            choice_defs: vec![],
+            imported: HashSet::new(),
+            errors: vec![],
+        }
+    }
+
+    /// The `file` parameter should be JUST the part before the `.curse`.
+    /// So the file `std.curse` would be referred to as `std`.
+    fn flatten_asts(&mut self, file: InternedString) {
+        // We should reuse the buffer for formatting but I'm doing it
+        // this way because it's dead simple and easy to understand.
+        let input = match fs::read_to_string(&format!(
+            "{}.curse",
+            file.string_in(self.interner)
+                .expect("ident not in interner")
+        )) {
+            Ok(input) => input,
+            Err(err) => {
+                self.errors.push(Error::Io(err));
+                return;
+            }
+        };
+
+        let mut parser = curse_parse::Parser::new(self.interner);
+
+        let ast::Program {
+            function_defs,
+            struct_defs,
+            choice_defs,
+            dynamic_imports,
+        } = parser.parse_program(&input);
+
+        if !parser.errors.is_empty() {
+            self.errors.push(Error::Parse {
+                file,
+                errors: mem::take(&mut parser.errors),
+            });
+            return;
+        }
+
+        self.function_defs.extend(function_defs);
+        self.struct_defs.extend(struct_defs);
+        self.choice_defs.extend(choice_defs);
+
+        for import in dynamic_imports {
+            let file = import.module.symbol;
+
+            // Deduplicate by inserting into the set
+            if self.imported.insert(file) {
+                self.flatten_asts(file);
+            }
+        }
+    }
+
+    fn finish(self) -> Result<ast::Program, Vec<Error>> {
+        if self.errors.is_empty() {
+            Ok(ast::Program {
+                function_defs: self.function_defs,
+                struct_defs: self.struct_defs,
+                choice_defs: self.choice_defs,
+                dynamic_imports: vec![],
+            })
+        } else {
+            Err(self.errors)
+        }
+    }
+}
+
+pub fn main() {
+    let file = std::env::args()
         .skip(1)
         .next()
-        .expect("usage: ./curse_interpreter <filename>");
+        .expect("usage: ./curse_interpreter <file without .curse ext>");
 
     let mut interner = StringInterner::new();
 
-    let ast_program = flatten_asts(&mut interner, &file_name)?;
+    let file = InternedString::get_or_intern_in(file.trim(), &mut interner);
+
+    let mut import_resolver = ImportResolver::new(&mut interner);
+    import_resolver.flatten_asts(file);
+    let ast_program = match import_resolver.finish() {
+        Ok(program) => program,
+        Err(errors) => {
+            curse_interner::replace(Some(interner));
+            eprintln!("{errors:?}");
+            return;
+        }
+    };
 
     curse_interner::replace(Some(interner));
 
@@ -57,13 +132,11 @@ pub fn main() -> io::Result<()> {
 
     if !lowerer.errors.is_empty() {
         eprintln!("{:?}", lowerer.errors);
-        return Ok(());
+        return;
     }
 
     match evaluation::execute_program(&hir_program) {
         Ok(val) => println!("{:#?}", &val),
         Err(e) => eprintln!("{e:?}"),
     }
-
-    Ok(())
 }

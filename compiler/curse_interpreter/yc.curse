@@ -1,4 +1,4 @@
-dynamic_import "std.curse"
+dynamic_import std
 
 fn fact |n|
     { acc: 1, n } rec |loop| (

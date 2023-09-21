@@ -1,4 +1,4 @@
-dynamic_import "std.curse"
+dynamic_import std
 
 struct Fn |Lhs * Rhs * Out| {}
 

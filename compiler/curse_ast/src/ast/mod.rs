@@ -17,7 +17,7 @@ pub mod bikeshed {
         #[derive(Debug, Clone)]
         pub struct DynamicImport {
             pub dynamic_import: tok::DynamicImport,
-            pub file_string: Ident,
+            pub module: Ident,
         }
     }
 }

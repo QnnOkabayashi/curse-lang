@@ -118,7 +118,7 @@ impl<'hir> Lower<'hir> for ast::Program {
             dynamic_imports: self
                 .dynamic_imports
                 .iter()
-                .map(|di| di.file_string)
+                .map(|di| di.module)
                 .collect(),
         };
 
