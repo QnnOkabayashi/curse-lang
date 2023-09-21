@@ -1,6 +1,6 @@
 // I usually want `combinators` and `llist`, but they both import `std`, this
 // way we'll just always have both
-dynamic_import "llist.curse"
+dynamic_import llist
 
 // dyadic extensions of I combinators
 fn left |x, y| x

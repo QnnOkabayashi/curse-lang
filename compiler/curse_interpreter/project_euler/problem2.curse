@@ -1,4 +1,4 @@
-dynamic_import "llist.curse"
+dynamic_import llist
 
 // 0.5ms!!!!
 fn main ||

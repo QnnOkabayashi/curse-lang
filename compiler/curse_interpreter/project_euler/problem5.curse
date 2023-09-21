@@ -1,4 +1,4 @@
-dynamic_import "llist.curse"
+dynamic_import llist
 
 // literally easiest with just a desktop calculator
 // here's a solution to demonstrate curse though

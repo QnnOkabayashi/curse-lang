@@ -1,4 +1,4 @@
-dynamic_import "combinators.curse"
+dynamic_import combinators
 
 // built on release mode, doesn't overflow the stack and executes in about
 // 9.5ms with the right answer!
