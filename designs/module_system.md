@@ -44,3 +44,24 @@ Here, we "pattern match" on the `std` file to bring `take`, `size_of`, `sync`, a
 
 I really like this style because it keeps the Zig feel of "everything is a struct", but also allows for importing a lot of things in a tree structure like Rust does.
 
+## More Examples
+
+This could also apply to runtime code.
+```
+{
+    { x: left, y: top }: { x: 0, y: 5 },
+    { x: right, y: bottom }: { x: 4, y: 0 },
+}
+```
+
+Is equivalent to
+```
+{
+    left: 0,
+    top: 5,
+    right: 4,
+    bottom: 0,
+}
+```
+
+
