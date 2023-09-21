@@ -95,7 +95,7 @@ pub Program: Program = {
 
 // TODO(quinn): BAD BAD BAD THIS IS BASICALLY C INCLUDE
 DynamicImport: bikeshed::DynamicImport = {
-    "dynamic_import" StringLiteral => bikeshed::DynamicImport::new(<>),
+    "dynamic_import" Ident => bikeshed::DynamicImport::new(<>),
 };
 
 GenericParams: GenericParams = {
