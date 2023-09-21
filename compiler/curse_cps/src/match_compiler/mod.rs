@@ -192,6 +192,28 @@ pub fn compile_match_expr<'hir>(
     compile_match(match_expr)
 }
 
+fn record_tests<'hir>(
+    ctors: &[Constructor<'hir>],
+    test: &Test,
+    body: &mut Body,
+) -> Vec<Test<'hir>> {
+    ctors
+        .into_iter()
+        .enumerate()
+        .map(|(index, ctor)| {
+            let r = gensym("r");
+            body.bindings.push(Binding::new(
+                r,
+                BindingValue::Record {
+                    name: test.variable,
+                    index,
+                },
+            ));
+            Test::new(r, ctor.clone())
+        })
+        .collect()
+}
+
 fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
     // base case
     if match_expr.is_empty() {
@@ -227,21 +249,7 @@ fn compile_match<'hir>(mut match_expr: MatchExpr<'hir>) -> Decision<'hir> {
                     match &new_test.constructor {
                         Constructor::Integer(_) | Constructor::Boolean(_) => (),
                         Constructor::Record(ctors) => {
-                            new_tests = ctors
-                                .into_iter()
-                                .enumerate()
-                                .map(|(index, ctor)| {
-                                    let r = gensym("r");
-                                    clause.body.bindings.push(Binding::new(
-                                        r,
-                                        BindingValue::Record {
-                                            name: test.variable,
-                                            index,
-                                        },
-                                    ));
-                                    Test::new(r, ctor.clone())
-                                })
-                                .collect()
+                            new_tests = record_tests(ctors, &test, &mut clause.body);
                         }
                         Constructor::NamedConstructor(_, ctor) => {
                             let c = gensym("c");

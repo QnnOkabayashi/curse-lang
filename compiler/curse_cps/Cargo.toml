@@ -9,3 +9,6 @@ edition = "2021"
 curse_interner = { path = "../curse_interner" }
 curse_span = { path = "../curse_span" }
 curse_hir = { path = "../curse_hir" }
+curse_parse = { path = "../curse_parse" }
+curse_ast_lowering = { path = "../curse_ast_lowering" }
+bumpalo = "3.14.0"
