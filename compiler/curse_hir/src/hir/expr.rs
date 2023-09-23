@@ -1,4 +1,4 @@
-use crate::hir::{Constructor, Lit, Map, PatRef, TypeRef};
+use crate::hir::{Constructor, Lit, Record, PatRef, TypeRef};
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::fmt;
@@ -21,7 +21,7 @@ impl fmt::Debug for Expr<'_> {
 pub enum ExprKind<'hir> {
     Symbol(Symbol),
     Lit(Lit),
-    Record(Map<'hir, Option<ExprRef<'hir>>>),
+    Record(Record<'hir, Option<ExprRef<'hir>>>),
     Constructor(Constructor<'hir, Expr<'hir>>),
     Closure(&'hir [Arm<'hir>]),
     Appl(Appl<'hir>),

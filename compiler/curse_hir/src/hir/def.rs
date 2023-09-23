@@ -1,4 +1,4 @@
-use crate::hir::{Arm, Map, TypeRef};
+use crate::hir::{Arm, Record, TypeRef};
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 
@@ -23,7 +23,7 @@ pub struct StructDef<'hir> {
 pub struct ChoiceDef<'hir> {
     pub ident: Ident,
     pub generic_params: &'hir [Ident],
-    pub variants: Map<'hir, TypeRef<'hir>>,
+    pub variants: Record<'hir, TypeRef<'hir>>,
     pub span: Span,
 }
 
