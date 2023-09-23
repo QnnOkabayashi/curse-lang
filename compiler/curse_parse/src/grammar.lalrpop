@@ -135,7 +135,8 @@ Record<T>: Record<T> = {
 };
 
 Field<T>: Field<T> = {
-    Ident (":" T)? => Field::new(<>),
+    Ident => Field::Shorthand(<>),
+    Ident ":" T => Field::BindingAndValue(<>),
 };
 
 

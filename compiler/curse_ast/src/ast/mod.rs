@@ -10,8 +10,8 @@ pub mod tok;
 mod ty;
 
 pub mod bikeshed {
-    use curse_interner::Ident;
     use crate::ast::tok;
+    use curse_interner::Ident;
 
     crate::ast_struct! {
         #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ pub use def::{
 pub use expr::{Appl, Arm, Closure, Expr, Param, Paren, Region, RegionKind, Symbol};
 pub use pat::Pat;
 pub use program::Program;
-pub use record::{Field, Record};
+pub use record::{Binding, BindingTree, Field, Record};
 pub use shared::{Constructor, Iter, Lit, Path};
 pub use ty::{GenericArgs, NamedType, Type};
 
