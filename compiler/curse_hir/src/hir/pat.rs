@@ -1,4 +1,4 @@
-use crate::hir::{Lit, Map};
+use crate::hir::{Lit, Record};
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::fmt;
@@ -11,7 +11,7 @@ pub struct Pat<'hir> {
 #[derive(Debug)]
 pub enum PatKind<'hir> {
     Lit(Lit),
-    Record(Map<'hir, Option<PatRef<'hir>>>),
+    Record(Record<'hir, Option<PatRef<'hir>>>),
     Constructor(&'hir [Ident], PatRef<'hir>),
     Error,
 }

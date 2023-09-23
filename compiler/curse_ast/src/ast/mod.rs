@@ -28,7 +28,7 @@ pub use def::{
 pub use expr::{Appl, Arm, Closure, Expr, Param, Paren, Region, RegionKind, Symbol};
 pub use pat::Pat;
 pub use program::Program;
-pub use record::{Binding, BindingTree, Field, Record};
+pub use record::{FieldBinding, BindingTree, Field, Record};
 pub use shared::{Constructor, Iter, Lit, Path};
 pub use ty::{GenericArgs, NamedType, Type};
 
