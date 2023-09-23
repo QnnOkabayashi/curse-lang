@@ -1,4 +1,4 @@
-use crate::hir::{Map, Path};
+use crate::hir::{Record, Path};
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::{fmt, str::FromStr};
@@ -23,7 +23,7 @@ pub enum TypeKind<'hir> {
         index: u32,
     },
     /// A record type, e.g. `{ key: K, value: V }`
-    Record(Map<'hir, TypeRef<'hir>>),
+    Record(Record<'hir, TypeRef<'hir>>),
     /// A primitive type, e.g. `I32`
     Primitive(PrimitiveType),
     Error,

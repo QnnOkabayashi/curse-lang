@@ -1,29 +1,61 @@
 use crate::ast::{tok, Iter};
 use crate::ast_struct;
-use curse_span::HasSpan;
 use curse_interner::Ident;
+use curse_span::HasSpan;
+
+// Kind of places record syntax can show up:
+// 1. types (binding tree: type)
+// 2. value construction (binding tree: expression)
+// 3. value destruction in a pattern match (name: pat)
+//
+// {
+//     { x, y }: Point2D,
+// }
+//
+// {
+//     x: Point2D.x
+// }
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Record<T> {
+    pub struct Record<Value> {
         pub lbrace: tok::LBrace,
-        pub fields: Vec<(Field<T>, tok::Comma)>,
-        pub trailing: Option<Field<T>>,
+        pub fields: Vec<(Field<Value>, tok::Comma)>,
+        pub last: Option<Field<Value>>,
         pub rbrace: tok::RBrace,
     }
 }
 
-ast_struct! {
-    #[derive(Clone, Debug)]
-    pub struct Field<T> {
-        pub ident: Ident,
-        pub value: Option<(tok::Colon, T)>,
-    }
+#[derive(Clone, Debug)]
+pub enum Field<Value> {
+    Shorthand(Ident),
+    BindingAndValue {
+        binding: FieldBinding,
+        colon: tok::Colon,
+        value: Value,
+    },
 }
 
-impl<T> Record<T> {
-    pub fn iter_fields(&self) -> Iter<'_, Field<T>, tok::Comma> {
-        Iter::new(self.fields.iter(), self.trailing.as_ref())
+#[derive(Clone, Debug)]
+pub enum FieldBinding {
+    Binding(Ident),
+    Tree(
+        tok::LBrace,
+        Vec<(Ident, Option<(tok::Colon, FieldBinding)>)>,
+        tok::RBrace,
+    ),
+}
+
+#[derive(Clone, Debug)]
+pub struct BindingTree {
+    pub lbrace: tok::LBrace,
+    pub bindings: Vec<(Ident, tok::Colon, Option<FieldBinding>)>,
+    pub rbrace: tok::RBrace,
+}
+
+impl<Value> Record<Value> {
+    pub fn iter_fields(&self) -> Iter<'_, Field<Value>, tok::Comma> {
+        Iter::new(self.fields.iter(), self.last.as_ref())
     }
 }
 
@@ -39,14 +71,33 @@ impl<T> HasSpan for Record<T> {
 
 impl<T: HasSpan> HasSpan for Field<T> {
     fn start(&self) -> u32 {
-        self.ident.start()
+        match self {
+            Field::Shorthand(ident) => ident.start(),
+            Field::BindingAndValue { binding, .. } => binding.start(),
+        }
     }
 
     fn end(&self) -> u32 {
-        if let Some((_, value)) = self.value.as_ref() {
-            value.end()
-        } else {
-            self.ident.end()
+        match self {
+            Field::Shorthand(ident) => ident.end(),
+            Field::BindingAndValue { value, .. } => value.end(),
         }
     }
 }
+
+impl HasSpan for FieldBinding {
+    fn start(&self) -> u32 {
+        match self {
+            FieldBinding::Binding(binding) => binding.start(),
+            FieldBinding::Tree(lbrace, _, _) => lbrace.start(),
+        }
+    }
+
+    fn end(&self) -> u32 {
+        match self {
+            FieldBinding::Binding(binding) => binding.end(),
+            FieldBinding::Tree(_, _, rbrace) => rbrace.end(),
+        }
+    }
+}
+

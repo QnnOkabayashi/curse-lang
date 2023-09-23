@@ -37,7 +37,7 @@ mod shared {
 
 pub use def::{ChoiceDef, FunctionDef, StructDef};
 pub use expr::{Appl, Arm, Expr, ExprKind, ExprRef, Param, Region, RegionKind, Symbol};
-pub use map::Map;
+pub use map::{Field, FieldBinding, Record};
 pub use pat::{Pat, PatKind, PatRef};
 pub use program::Program;
 pub use shared::{Constructor, Lit, Path};

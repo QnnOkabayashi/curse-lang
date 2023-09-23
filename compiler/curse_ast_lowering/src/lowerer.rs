@@ -3,12 +3,12 @@ use crate::{LoweringError, UnexpectedTypeArgs};
 use bumpalo::Bump;
 use curse_ast::ast;
 use curse_hir::hir::{
-    Appl, Arm, ChoiceDef, Constructor, Expr, ExprKind, ExprRef, FunctionDef, Lit, Map, Param, Pat,
-    PatKind, PatRef, Program, Region, RegionKind, StructDef, Symbol, Type, TypeKind, TypeRef,
+    Appl, Arm, FieldBinding, ChoiceDef, Constructor, Expr, ExprKind, ExprRef, FunctionDef, Lit, Param,
+    Pat, PatKind, PatRef, Program, Record, Region, RegionKind, StructDef, Symbol, Type, TypeKind,
+    TypeRef,
 };
 use curse_interner::{Ident, InternedString};
 use curse_span::HasSpan;
-use std::collections::HashSet;
 use std::{collections::HashMap, slice};
 
 /// AST nodes that lower to things that can appear as field values.
@@ -81,6 +81,43 @@ impl<'hir> Lowerer<'hir> {
         fields.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         fields
     }
+
+    fn lower_type_record(
+        &mut self,
+        record: &ast::Record<ast::Type>,
+    ) -> &'hir [(Ident, TypeRef<'hir>)] {
+        let fields =
+            self.bump
+                .alloc_slice_fill_iter(record.iter_fields().map(|field| match field {
+                    ast::Field::BindingAndValue { binding, value, .. } => {
+                        let ty: TypeRef<'hir> = self.bump.alloc(value.lower(self));
+
+                        match binding {
+                            ast::FieldBinding::Binding(ident) => (*ident, ty),
+                            ast::FieldBinding::Tree(_, tree, _) => {
+                                // hi
+
+                                todo!()
+                            }
+                        }
+                    }
+                    ast::Field::Shorthand(ident) => {
+                        self.errors.push(LoweringError::TypeRecordMissingFieldType {
+                            field_ident: *ident,
+                        });
+
+                        let ty: TypeRef<'hir> = self.bump.alloc(Type {
+                            kind: TypeKind::Error,
+                            span: ident.span(),
+                        });
+
+                        (*ident, ty)
+                    }
+                }));
+
+        fields.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        fields
+    }
 }
 
 impl<'hir> Lower<'hir> for ast::Program {
@@ -115,11 +152,7 @@ impl<'hir> Lower<'hir> for ast::Program {
             function_defs: HashMap::with_capacity(self.function_defs.len()),
             struct_defs: HashMap::with_capacity(self.struct_defs.len()),
             choice_defs: HashMap::with_capacity(self.choice_defs.len()),
-            dynamic_imports: self
-                .dynamic_imports
-                .iter()
-                .map(|di| di.module)
-                .collect(),
+            dynamic_imports: self.dynamic_imports.iter().map(|di| di.module).collect(),
         };
 
         for ast_def in self.function_defs.iter() {
@@ -186,7 +219,7 @@ impl<'hir> Lower<'hir> for ast::ChoiceDef {
             .unwrap_or_default();
 
         let variants = lowerer.with_generic_params(generic_params, |lowerer| {
-            Map::new(
+            Record::new(
                 lowerer
                     .bump
                     .alloc_slice_fill_iter(self.variants.iter_variants().map(|variant| {
@@ -278,7 +311,7 @@ impl<'hir> Lower<'hir> for ast::Expr {
                 Ok(lit) => ExprKind::Lit(lit),
                 Err(()) => ExprKind::Error,
             },
-            ast::Expr::Record(record) => ExprKind::Record(Map {
+            ast::Expr::Record(record) => ExprKind::Record(Record {
                 entries: lowerer.lower_record(record, |field, lowerer| {
                     field.value.as_ref().map(|(_colon, expr)| {
                         let expr = expr.lower(lowerer);
@@ -497,7 +530,7 @@ impl<'hir> Lower<'hir> for ast::Pat {
                 Ok(lit) => PatKind::Lit(lit),
                 Err(()) => PatKind::Error,
             },
-            ast::Pat::Record(record) => PatKind::Record(Map {
+            ast::Pat::Record(record) => PatKind::Record(Record {
                 entries: lowerer.lower_record(record, |field, lowerer| {
                     field.value.as_ref().map(|(_colon, pat)| {
                         let pat = pat.lower(lowerer);
@@ -527,7 +560,7 @@ impl<'hir> Lower<'hir> for ast::Type {
     fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
         let kind = match self {
             ast::Type::Named(named) => named.lower(lowerer),
-            ast::Type::Record(record) => TypeKind::Record(Map {
+            ast::Type::Record(record) => TypeKind::Record(Record {
                 entries: lowerer.lower_record(record, |field, lowerer| {
                     if let Some((_, ty)) = field.value.as_ref() {
                         let ty = ty.lower(lowerer);
@@ -631,5 +664,66 @@ impl<'hir> Lower<'hir> for ast::NamedType {
         } else {
             TypeKind::Named { path, generic_args }
         }
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::FieldBinding {
+    type Lowered = FieldBinding<'hir>;
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        match self {
+            ast::FieldBinding::Binding(ident) => FieldBinding::Binding(*ident),
+            ast::FieldBinding::Tree(_, tree, _) => FieldBinding::Tree(lowerer.bump.alloc_slice_fill_iter(
+                tree.iter().map(|(ident, maybe_colon_binding)| {
+                    (
+                        *ident,
+                        maybe_colon_binding.map(|(_colon, binding)| binding.lower(lowerer)),
+                    )
+                }),
+            )),
+        }
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::Record<ast::Type> {
+    type Lowered = &'hir [Field<'hir, TypeRef<'hir>>];
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        let fields =
+            lowerer
+                .bump
+                .alloc_slice_fill_iter(self.iter_fields().map(|field| match field {
+                    ast::Field::BindingAndValue { binding, value, .. } => {
+                        let ty: TypeRef<'hir> = lowerer.bump.alloc(value.lower(lowerer));
+                        let binding = binding.lower(lowerer);
+
+                        (binding, ty)
+                    }
+                    ast::Field::Shorthand(ident) => {
+                        lowerer
+                            .errors
+                            .push(LoweringError::TypeRecordMissingFieldType {
+                                field_ident: *ident,
+                            });
+
+                        let ty: TypeRef<'hir> = lowerer.bump.alloc(Type {
+                            kind: TypeKind::Error,
+                            span: ident.span(),
+                        });
+
+                        (*ident, ty)
+                    }
+                }));
+
+        fields.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        fields
+    }
+}
+
+impl<'hir> Lower<'hir> for ast::Record<ast::Expr> {
+    type Lowered = &'hir [(FieldBinding<'hir>, Option<Expr)];
+
+    fn lower(&self, lowerer: &mut Lowerer<'hir>) -> Self::Lowered {
+        todo!()
     }
 }
