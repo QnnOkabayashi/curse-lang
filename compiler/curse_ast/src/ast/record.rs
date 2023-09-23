@@ -20,20 +20,16 @@ ast_struct! {
     #[derive(Clone, Debug)]
     pub struct Record<Value> {
         pub lbrace: tok::LBrace,
-        pub fields: Vec<(Field<Value>, tok::Comma)>,
-        pub last: Option<Field<Value>>,
+        pub fields: Vec<(FieldSyntax<Value>, tok::Comma)>,
+        pub last: Option<FieldSyntax<Value>>,
         pub rbrace: tok::RBrace,
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum Field<Value> {
+pub enum FieldSyntax<Value> {
     Shorthand(Ident),
-    BindingAndValue {
-        binding: FieldBinding,
-        colon: tok::Colon,
-        value: Value,
-    },
+    BindingAndValue(FieldBinding, tok::Colon, Value),
 }
 
 #[derive(Clone, Debug)]
@@ -46,15 +42,8 @@ pub enum FieldBinding {
     ),
 }
 
-#[derive(Clone, Debug)]
-pub struct BindingTree {
-    pub lbrace: tok::LBrace,
-    pub bindings: Vec<(Ident, tok::Colon, Option<FieldBinding>)>,
-    pub rbrace: tok::RBrace,
-}
-
 impl<Value> Record<Value> {
-    pub fn iter_fields(&self) -> Iter<'_, Field<Value>, tok::Comma> {
+    pub fn iter_fields(&self) -> Iter<'_, FieldSyntax<Value>, tok::Comma> {
         Iter::new(self.fields.iter(), self.last.as_ref())
     }
 }
@@ -69,18 +58,18 @@ impl<T> HasSpan for Record<T> {
     }
 }
 
-impl<T: HasSpan> HasSpan for Field<T> {
+impl<T: HasSpan> HasSpan for FieldSyntax<T> {
     fn start(&self) -> u32 {
         match self {
-            Field::Shorthand(ident) => ident.start(),
-            Field::BindingAndValue { binding, .. } => binding.start(),
+            FieldSyntax::Shorthand(ident) => ident.start(),
+            FieldSyntax::BindingAndValue(binding, _, _) => binding.start(),
         }
     }
 
     fn end(&self) -> u32 {
         match self {
-            Field::Shorthand(ident) => ident.end(),
-            Field::BindingAndValue { value, .. } => value.end(),
+            FieldSyntax::Shorthand(ident) => ident.end(),
+            FieldSyntax::BindingAndValue(_, _, value) => value.end(),
         }
     }
 }
@@ -100,4 +89,3 @@ impl HasSpan for FieldBinding {
         }
     }
 }
-

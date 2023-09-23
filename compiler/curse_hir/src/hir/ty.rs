@@ -1,4 +1,4 @@
-use crate::hir::{Record, Path};
+use crate::hir::BindingAndValue;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::{fmt, str::FromStr};
@@ -14,7 +14,7 @@ pub struct Type<'hir> {
 pub enum TypeKind<'hir> {
     /// The path and the type arguments, e.g. `std::result::Result (I32 * Error)`
     Named {
-        path: Path<'hir>,
+        path: &'hir [Ident],
         generic_args: &'hir [Type<'hir>],
     },
     /// A generic type argument and the index, e.g. `T`
@@ -23,7 +23,7 @@ pub enum TypeKind<'hir> {
         index: u32,
     },
     /// A record type, e.g. `{ key: K, value: V }`
-    Record(Record<'hir, TypeRef<'hir>>),
+    Record(&'hir [BindingAndValue<'hir, Type<'hir>>]),
     /// A primitive type, e.g. `I32`
     Primitive(PrimitiveType),
     Error,

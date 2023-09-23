@@ -1,9 +1,8 @@
 use crate::{lexer::*, Parser};
 use curse_ast::ast::{
-    tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr, Field, FunctionDef,
-    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef, 
-    Symbol, Type, VariantDef, Variants,
-    Region, RegionKind, bikeshed,
+    bikeshed, tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr, FieldBinding,
+    FieldSyntax, FunctionDef, GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Pat, Path,
+    Program, Record, Region, RegionKind, StructDef, Symbol, Type, VariantDef, Variants,
 };
 use curse_interner::Ident;
 use curse_span::HasSpan;
@@ -131,12 +130,17 @@ VariantDef: VariantDef = {
 /// === Record ===
 
 Record<T>: Record<T> = {
-    "{" (Field<T> ",")* Field<T>? "}" => Record::new(<>),
+    "{" (FieldSyntax<T> ",")* FieldSyntax<T>? "}" => Record::new(<>),
 };
 
-Field<T>: Field<T> = {
-    Ident => Field::Shorthand(<>),
-    Ident ":" T => Field::BindingAndValue(<>),
+FieldSyntax<Value>: FieldSyntax<Value> = {
+    Ident => FieldSyntax::Shorthand(<>),
+    FieldBinding ":" Value => FieldSyntax::BindingAndValue(<>),
+};
+
+FieldBinding: FieldBinding = {
+    Ident => FieldBinding::Binding(<>),
+    "{" (Ident (":" FieldBinding)?)* "}" => FieldBinding::Tree(<>),
 };
 
 

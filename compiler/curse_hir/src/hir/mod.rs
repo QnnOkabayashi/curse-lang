@@ -16,7 +16,7 @@ mod program {
         pub dynamic_imports: HashSet<Ident>,
     }
 }
-mod shared {
+mod lit {
     use curse_interner::Ident;
 
     #[derive(Copy, Clone, Debug)]
@@ -25,20 +25,12 @@ mod shared {
         Ident(Ident),
         Bool(bool),
     }
-
-    #[derive(Copy, Clone, Debug)]
-    pub struct Constructor<'hir, T> {
-        pub path: Path<'hir>,
-        pub inner: &'hir T,
-    }
-
-    pub type Path<'hir> = &'hir [Ident];
 }
 
 pub use def::{ChoiceDef, FunctionDef, StructDef};
 pub use expr::{Appl, Arm, Expr, ExprKind, ExprRef, Param, Region, RegionKind, Symbol};
-pub use map::{Field, FieldBinding, Record};
+pub use lit::Lit;
+pub use map::{BindingAndValue, FieldBinding, FieldSyntax};
 pub use pat::{Pat, PatKind, PatRef};
 pub use program::Program;
-pub use shared::{Constructor, Lit, Path};
 pub use ty::{PrimitiveType, Type, TypeKind, TypeRef};
