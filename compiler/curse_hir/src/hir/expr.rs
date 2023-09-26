@@ -3,7 +3,7 @@ use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::fmt;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Expr<'hir> {
     pub kind: ExprKind<'hir>,
     pub span: Span,
@@ -17,7 +17,7 @@ impl fmt::Debug for Expr<'_> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ExprKind<'hir> {
     Symbol(Symbol),
     Lit(Lit),
@@ -29,7 +29,7 @@ pub enum ExprKind<'hir> {
     Error,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Symbol {
     Plus,
     Minus,
@@ -46,13 +46,13 @@ pub enum Symbol {
     Ge,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Arm<'hir> {
     pub params: &'hir [Param<'hir>],
     pub body: ExprRef<'hir>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Param<'hir> {
     pub pat: PatRef<'hir>,
     pub ascription: Option<TypeRef<'hir>>,
@@ -72,7 +72,7 @@ impl HasSpan for Param<'_> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Appl<'hir> {
     pub parts: &'hir [Expr<'hir>; 3],
 }
@@ -101,7 +101,7 @@ impl fmt::Debug for Appl<'_> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Region<'hir> {
     pub kind: RegionKind,
     // Don't want it to store an ident,
@@ -110,7 +110,7 @@ pub struct Region<'hir> {
     pub body: ExprRef<'hir>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RegionKind {
     Ref,
     Mut,

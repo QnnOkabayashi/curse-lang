@@ -19,14 +19,14 @@ mod program {
 mod shared {
     use curse_interner::Ident;
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum Lit {
         Integer(u32),
         Ident(Ident),
         Bool(bool),
     }
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct Constructor<'hir, T> {
         pub path: Path<'hir>,
         pub inner: &'hir T,

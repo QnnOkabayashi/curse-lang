@@ -5,12 +5,13 @@ use std::{fmt, str::FromStr};
 
 pub type TypeRef<'hir> = &'hir Type<'hir>;
 
+#[derive(PartialEq, Eq)]
 pub struct Type<'hir> {
     pub kind: TypeKind<'hir>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TypeKind<'hir> {
     /// The path and the type arguments, e.g. `std::result::Result (I32 * Error)`
     Named {
@@ -29,7 +30,7 @@ pub enum TypeKind<'hir> {
     Error,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PrimitiveType {
     /// 32-bit signed integer.
     I32,

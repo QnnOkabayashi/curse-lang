@@ -11,5 +11,6 @@ members = [
     "compiler/curse_interner",
     "compiler/curse_span",
 
+    "compiler/curse_cps",
     "compiler/curse_interpreter",
 ]

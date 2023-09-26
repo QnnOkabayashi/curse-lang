@@ -1,6 +1,7 @@
 use curse_interner::Ident;
 use std::fmt;
 
+#[derive(PartialEq, Eq)]
 pub struct Map<'hir, T> {
     pub entries: &'hir [(Ident, T)],
 }
