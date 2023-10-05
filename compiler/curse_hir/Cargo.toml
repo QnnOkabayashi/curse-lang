@@ -8,4 +8,6 @@ curse_interner = { path = "../curse_interner" }
 curse_span = { path = "../curse_span" }
 miette = "5.*"
 thiserror = "1.*"
+# bumpalo_thin_slice = { git = "https://github.com/QnnOkabayashi/bumpalo_thin_slice.git" }
+bumpalo_thin_slice = { path = "../../../bumpalo_thin_slice" }
 

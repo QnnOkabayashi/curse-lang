@@ -1,0 +1,35 @@
+struct Wraps I32
+
+// Left side is a pattern
+// right side is a value
+
+// In fields: lhs is always pattern including bindings that live
+// in the record, rhs is things coming out of the record
+// lhs: pat that comes from the thing being matched, right: pat binding
+
+fn main || (
+    {
+        { a: { x: c }, b }: { a: { x: 1 }, b: 2 },
+    } = {
+        c: 1,
+        b: 2,
+    }
+
+)
+
+struct Vec2 { x: I32, y: I32 }
+
+struct Vec3 {
+    // LHS: deconstructing a type
+    { x, { y, z }: non_x_parts }:
+        // RHS: constructing a type
+        { { x, y }: Vec2, z: I32 }
+}
+
+// same as
+
+struct Vec3 {
+    x: I32,
+    non_x_parts: { y: I32, z: I32 },
+}
+

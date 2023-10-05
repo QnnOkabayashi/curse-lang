@@ -1,22 +1,21 @@
-use crate::hir::{FieldSyntax, Lit};
-use curse_interner::Ident;
+use crate::hir::{Binding, Constructor, Lit};
+use bumpalo_thin_slice::ThinSlice;
 use curse_span::{HasSpan, Span};
 use std::fmt;
 
+#[derive(Copy, Clone)]
 pub struct Pat<'hir> {
     pub kind: PatKind<'hir>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum PatKind<'hir> {
     Lit(Lit),
-    Record(&'hir [FieldSyntax<'hir, Pat<'hir>>]),
-    Constructor(&'hir [Ident], PatRef<'hir>),
+    Record(ThinSlice<'hir, (Binding<'hir>, Option<Pat<'hir>>)>),
+    Constructor(&'hir Constructor<'hir, Pat<'hir>>),
     Error,
 }
-
-pub type PatRef<'hir> = &'hir Pat<'hir>;
 
 impl HasSpan for Pat<'_> {
     fn start(&self) -> u32 {

@@ -1,3 +1,4 @@
+use curse_ast::ast;
 use curse_hir::hir::PrimitiveType;
 use curse_interner::{Ident, InternedString};
 use curse_span::{HasSpan, Span};
@@ -8,7 +9,7 @@ use thiserror::Error;
 #[derive(Debug)]
 pub enum LoweringError {
     TypeRecordMissingFieldType {
-        field_ident: Ident,
+        field_binding: ast::Binding,
     },
     IntegerLiteralOverflow {
         literal: String,
@@ -89,8 +90,10 @@ impl fmt::Display for LoweringError {
 impl Diagnostic for LoweringError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
-            LoweringError::TypeRecordMissingFieldType { field_ident } => Some(Box::new(format!(
-                "add a type to this field, e.g. `{field_ident}: Type`"
+            LoweringError::TypeRecordMissingFieldType {
+                field_binding: field_ident,
+            } => Some(Box::new(format!(
+                "add a type to this field, e.g. `{field_ident:?}: Type`"
             ))),
             LoweringError::IntegerLiteralOverflow { .. } => Some(Box::new("use a smaller value")),
             LoweringError::TooManyClosureParams { .. } => Some(Box::new(
@@ -108,12 +111,12 @@ impl Diagnostic for LoweringError {
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         match self {
-            LoweringError::TypeRecordMissingFieldType { field_ident } => {
-                Some(Box::new(iter::once(LabeledSpan::at(
-                    field_ident.span().start_len(),
-                    format!("field `{field_ident}` is missing a type"),
-                ))))
-            }
+            LoweringError::TypeRecordMissingFieldType {
+                field_binding: field_ident,
+            } => Some(Box::new(iter::once(LabeledSpan::at(
+                field_ident.span().start_len(),
+                format!("field `{field_ident:?}` is missing a type"),
+            )))),
             LoweringError::IntegerLiteralOverflow { literal, span } => Some(Box::new(iter::once(
                 LabeledSpan::at(span.start_len(), format!("`{literal}` is too large")),
             ))),

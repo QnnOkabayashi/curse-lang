@@ -3,7 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 use crate::builtins;
 use crate::error::EvalError;
 use crate::value::{OwnedMap, Value, ValueRef};
-use curse_hir::hir::{self, ExprKind, ExprRef, Lit, PatKind, PatRef, Program};
+use curse_hir::hir::{self, Expr, ExprKind, Lit, Pat, PatKind, Program};
 use curse_interner::InternedString;
 
 // globally available functions, both regular named functions as well as type constructors
@@ -27,7 +27,7 @@ impl<'hir> GlobalBindings<'hir> {
 pub type Bindings<'hir> = HashMap<InternedString, ValueRef<'hir>>;
 
 fn eval_expr<'hir>(
-    expr: ExprRef<'hir>,
+    expr: &'hir Expr<'hir>,
     global_state: &GlobalBindings<'hir>,
     local_state: &mut Bindings<'hir>,
 ) -> Result<ValueRef<'hir>, EvalError> {
@@ -47,36 +47,38 @@ fn eval_expr<'hir>(
         ExprKind::Symbol(hir::Symbol::DotDot) => unimplemented!(),
         ExprKind::Lit(Lit::Integer(int)) => Ok(Rc::new(Value::Integer(int))),
         ExprKind::Lit(Lit::Ident(ident)) => local_state
-            .get(&ident.symbol)
-            .or(global_state.functions.get(&ident.symbol))
+            .get(&ident)
+            .or(global_state.functions.get(&ident))
             .ok_or(EvalError::UnboundVariable {
                 literal: ident.to_string(),
-                span: ident.span,
+                span: expr.span,
             })
             .cloned(),
         ExprKind::Lit(Lit::Bool(bool)) => Ok(Rc::new(Value::Bool(bool))),
-        ExprKind::Record(map) => Ok(Rc::new(Value::Record(OwnedMap::new(
-            map.entries
+        ExprKind::Record(entries) => {
+            let list = entries
                 .iter()
-                .map(|(ident, opt_expr)| match opt_expr {
+                .map(|(binding, opt_expr)| match opt_expr {
                     // if some, set the field with name `ident` to the result of evaluating the
                     // expr
-                    Some(expr) => Ok((*ident, eval_expr(expr, global_state, local_state)?)),
+                    Some(expr) => Ok((*binding, eval_expr(expr, global_state, local_state)?)),
                     // otherwise look up the ident in the environment
                     None => Ok((
-                        *ident,
+                        *binding,
                         local_state
-                            .get(&ident.symbol)
-                            .or(global_state.functions.get(&ident.symbol))
+                            .get(&binding)
+                            .or(global_state.functions.get(&binding))
                             .ok_or_else(|| EvalError::UnboundVariable {
-                                literal: ident.to_string(),
-                                span: ident.span,
+                                literal: binding.to_string(),
+                                span: binding.span,
                             })
                             .cloned()?,
                     )),
                 })
-                .collect::<Result<_, _>>()?,
-        )))),
+                .collect::<Result<_, _>>()?;
+
+            Ok(Rc::new(Value::Record(OwnedMap::new(list))))
+        }
         ExprKind::Constructor(constructor) => Ok(Rc::new(Value::Choice {
             tag: constructor.path,
             value: eval_expr(constructor.inner, global_state, local_state)?,
@@ -138,15 +140,31 @@ fn call_function<'hir>(
 fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
     match (&pattern.kind, value) {
         (PatKind::Record(pattern_map), Value::Record(value_map)) => {
-            if pattern_map.entries.len() != value_map.entries.len() {
+            if pattern_map.len() != value_map.entries.len() {
                 false
             } else {
-                pattern_map.entries.iter().zip(&value_map.entries).all(
-                    |((_, opt_pat), (_, val))| match opt_pat {
-                        Some(pat) => check_pattern(val.as_ref(), pat),
-                        None => true,
-                    },
-                )
+                pattern_map
+                    .iter()
+                    .zip(&value_map.entries)
+                    .all(|(syntax, (_, val))| match syntax {
+                        hir::FieldSyntax::Shorthand(_) => true,
+                        hir::FieldSyntax::BindingAndValue(binding_and_pat) => {
+                            // pattern: { { a, b }: d, c }
+                            // value: { a, b, c }
+                            //
+                            // bindings created: d: { a, b }, c: c
+                            todo!()
+                        }
+
+                        // Some(pat) => check_pattern(val.as_ref(), pat),
+                        // None => true,
+                    })
+                // pattern_map.iter().zip(&value_map.entries).all(
+                //     |((_, opt_pat), (_, val))| match opt_pat {
+                //         Some(pat) => check_pattern(val.as_ref(), pat),
+                //         None => true,
+                //     },
+                // )
             }
         }
         (

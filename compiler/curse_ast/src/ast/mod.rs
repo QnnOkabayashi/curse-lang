@@ -28,8 +28,8 @@ pub use def::{
 pub use expr::{Appl, Arm, Closure, Expr, Param, Paren, Region, RegionKind, Symbol};
 pub use pat::Pat;
 pub use program::Program;
-pub use record::{FieldBinding, FieldSyntax, Record};
-pub use shared::{Constructor, Iter, Lit, Path};
+pub use record::{Binding, Record};
+pub use shared::{Constructor, Lit, Path};
 pub use ty::{GenericArgs, NamedType, Type};
 
 /// Macro to automatically derive a `new` constructor.

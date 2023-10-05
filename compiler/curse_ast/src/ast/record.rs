@@ -1,4 +1,4 @@
-use crate::ast::{tok, Iter};
+use crate::ast::tok;
 use crate::ast_struct;
 use curse_interner::Ident;
 use curse_span::HasSpan;
@@ -18,34 +18,19 @@ use curse_span::HasSpan;
 
 ast_struct! {
     #[derive(Clone, Debug)]
-    pub struct Record<Value> {
+    pub struct Record<T> {
         pub lbrace: tok::LBrace,
-        pub fields: Vec<(FieldSyntax<Value>, tok::Comma)>,
-        pub last: Option<FieldSyntax<Value>>,
+        pub fields: Vec<(Binding, Option<T>)>,
         pub rbrace: tok::RBrace,
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum FieldSyntax<Value> {
-    Shorthand(Ident),
-    BindingAndValue(FieldBinding, tok::Colon, Value),
-}
-
-#[derive(Clone, Debug)]
-pub enum FieldBinding {
-    Binding(Ident),
-    Tree(
-        tok::LBrace,
-        Vec<(Ident, Option<(tok::Colon, FieldBinding)>)>,
-        tok::RBrace,
-    ),
-}
-
-impl<Value> Record<Value> {
-    pub fn iter_fields(&self) -> Iter<'_, FieldSyntax<Value>, tok::Comma> {
-        Iter::new(self.fields.iter(), self.last.as_ref())
-    }
+pub enum Binding {
+    // e.g. `foo`
+    Ident(Ident),
+    // e.g. `{ foo, bar }`
+    Record(Record<Self>),
 }
 
 impl<T> HasSpan for Record<T> {
@@ -58,34 +43,18 @@ impl<T> HasSpan for Record<T> {
     }
 }
 
-impl<T: HasSpan> HasSpan for FieldSyntax<T> {
+impl HasSpan for Binding {
     fn start(&self) -> u32 {
         match self {
-            FieldSyntax::Shorthand(ident) => ident.start(),
-            FieldSyntax::BindingAndValue(binding, _, _) => binding.start(),
+            Binding::Ident(ident) => ident.start(),
+            Binding::Record(record) => record.start(),
         }
     }
 
     fn end(&self) -> u32 {
         match self {
-            FieldSyntax::Shorthand(ident) => ident.end(),
-            FieldSyntax::BindingAndValue(_, _, value) => value.end(),
-        }
-    }
-}
-
-impl HasSpan for FieldBinding {
-    fn start(&self) -> u32 {
-        match self {
-            FieldBinding::Binding(binding) => binding.start(),
-            FieldBinding::Tree(lbrace, _, _) => lbrace.start(),
-        }
-    }
-
-    fn end(&self) -> u32 {
-        match self {
-            FieldBinding::Binding(binding) => binding.end(),
-            FieldBinding::Tree(_, _, rbrace) => rbrace.end(),
+            Binding::Ident(ident) => ident.end(),
+            Binding::Record(record) => record.end(),
         }
     }
 }

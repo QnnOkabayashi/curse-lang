@@ -1,29 +1,30 @@
-use crate::hir::{Arm, TypeRef};
+use crate::hir::{Arm, Type};
+use bumpalo_thin_slice::ThinSlice;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 
 #[derive(Debug)]
 pub struct FunctionDef<'hir> {
     pub ident: Ident,
-    pub generic_params: &'hir [Ident],
-    pub ty: Option<TypeRef<'hir>>,
-    pub arms: &'hir [Arm<'hir>],
+    pub generic_params: ThinSlice<'hir, Ident>,
+    pub ty: Option<Type<'hir>>,
+    pub arms: ThinSlice<'hir, Arm<'hir>>,
     pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct StructDef<'hir> {
     pub ident: Ident,
-    pub generic_params: &'hir [Ident],
-    pub ty: TypeRef<'hir>,
+    pub generic_params: ThinSlice<'hir, Ident>,
+    pub ty: Type<'hir>,
     pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct ChoiceDef<'hir> {
     pub ident: Ident,
-    pub generic_params: &'hir [Ident],
-    pub variants: &'hir [(Ident, TypeRef<'hir>)],
+    pub generic_params: ThinSlice<'hir, Ident>,
+    pub variants: ThinSlice<'hir, (Ident, Type<'hir>)>,
     pub span: Span,
 }
 

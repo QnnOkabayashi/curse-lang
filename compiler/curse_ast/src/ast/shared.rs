@@ -1,42 +1,6 @@
 use crate::{ast::tok, ast_struct};
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
-use std::mem;
-
-ast_struct! {
-    /// Hack to get around the fact that chaining a slice and
-    /// one last element is no longer `ExactSizeIterator`.
-    ///
-    /// https://doc.rust-lang.org/std/iter/trait.ExactSizeIterator.html#when-shouldnt-an-adapter-be-exactsizeiterator
-    #[derive(Debug)]
-    pub struct Iter<'a, T, D> {
-        parts: std::slice::Iter<'a, (T, D)>,
-        last: Option<&'a T>,
-    }
-}
-
-impl<'a, T, D> Iterator for Iter<'a, T, D> {
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.parts
-            .next()
-            .map(|(t, _d)| t)
-            .or_else(|| self.last.take())
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let last = self.last.is_some() as usize;
-        let (lo, hi) = self.parts.size_hint();
-        // hi <= isize::MAX since it comes from a slice,
-        // which must point to an allocation, which cannot be
-        // > isize::MAX
-        // Therefore, it follows that hi + 1 < usize::MAX
-        (lo + last, Some(hi.unwrap() + last))
-    }
-}
-
-impl<'a, T, D> ExactSizeIterator for Iter<'a, T, D> {}
 
 #[derive(Copy, Clone, Debug)]
 pub enum Lit {
@@ -47,35 +11,21 @@ pub enum Lit {
 }
 
 ast_struct! {
-    /// A path, e.g. `std::collections::Vec`
+    /// A path, e.g. `std::collections`
     #[derive(Clone, Debug)]
     pub struct Path {
-        pub parts: Vec<(Ident, tok::ColonColon)>,
-        pub ident: Ident,
+        pub parts: Vec<Ident>,
+        pub last: Ident,
     }
 }
 
-impl Path {
-    pub fn iter_parts(&self) -> Iter<'_, Ident, tok::ColonColon> {
-        Iter::new(self.parts.iter(), Some(&self.ident))
-    }
-}
-
-/// A constructor, e.g. `Option::None {}`
-#[derive(Clone, Debug)]
-pub struct Constructor<T> {
-    pub path: Path,
-    pub inner: T,
-}
-
-impl<T> Constructor<T> {
-    pub fn new(mut path: Path, variant: Option<(tok::ColonColon, Ident)>, inner: T) -> Self {
-        if let Some((colon_colon, variant)) = variant {
-            let last = mem::replace(&mut path.ident, variant);
-            path.parts.push((last, colon_colon));
-        }
-
-        Constructor { path, inner }
+ast_struct! {
+    /// A constructor, e.g. `Option::None {}`
+    #[derive(Clone, Debug)]
+    pub struct Constructor<T> {
+        pub ty: Ident,
+        pub variant: Ident,
+        pub inner: T,
     }
 }
 
@@ -110,21 +60,17 @@ impl HasSpan for Lit {
 
 impl HasSpan for Path {
     fn start(&self) -> u32 {
-        if let Some((ident, _)) = self.parts.first() {
-            ident.start()
-        } else {
-            self.ident.start()
-        }
+        self.parts.first().unwrap().start()
     }
 
     fn end(&self) -> u32 {
-        self.ident.end()
+        self.parts.last().unwrap().end()
     }
 }
 
 impl<T: HasSpan> HasSpan for Constructor<T> {
     fn start(&self) -> u32 {
-        self.path.start()
+        self.ty.start()
     }
 
     fn end(&self) -> u32 {

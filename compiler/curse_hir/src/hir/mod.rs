@@ -16,21 +16,28 @@ mod program {
         pub dynamic_imports: HashSet<Ident>,
     }
 }
-mod lit {
-    use curse_interner::Ident;
+mod shared {
+    use curse_interner::{Ident, InternedString};
 
     #[derive(Copy, Clone, Debug)]
     pub enum Lit {
         Integer(u32),
-        Ident(Ident),
+        Ident(InternedString),
         Bool(bool),
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct Constructor<'hir, Kind> {
+        pub ty: Ident,
+        pub variant: Ident,
+        pub kind: &'hir Kind,
     }
 }
 
 pub use def::{ChoiceDef, FunctionDef, StructDef};
-pub use expr::{Appl, Arm, Expr, ExprKind, ExprRef, Param, Region, RegionKind, Symbol};
-pub use lit::Lit;
-pub use map::{BindingAndValue, FieldBinding, FieldSyntax};
-pub use pat::{Pat, PatKind, PatRef};
+pub use expr::{Appl, Arm, Expr, ExprKind, Param, Region, RegionKind, Symbol};
+pub use map::Binding;
+pub use pat::{Pat, PatKind};
 pub use program::Program;
-pub use ty::{PrimitiveType, Type, TypeKind, TypeRef};
+pub use shared::{Constructor, Lit};
+pub use ty::{PrimitiveType, Type, TypeKind};

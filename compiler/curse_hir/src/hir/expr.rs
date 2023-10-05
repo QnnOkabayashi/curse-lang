@@ -1,4 +1,5 @@
-use crate::hir::{FieldSyntax, Lit, PatRef, TypeRef};
+use crate::hir::{Constructor, Binding, Lit, Pat, Type};
+use bumpalo_thin_slice::ThinSlice;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::fmt;
@@ -8,8 +9,6 @@ pub struct Expr<'hir> {
     pub kind: ExprKind<'hir>,
     pub span: Span,
 }
-
-pub type ExprRef<'hir> = &'hir Expr<'hir>;
 
 impl fmt::Debug for Expr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -21,11 +20,11 @@ impl fmt::Debug for Expr<'_> {
 pub enum ExprKind<'hir> {
     Symbol(Symbol),
     Lit(Lit),
-    Record(&'hir [FieldSyntax<'hir, Expr<'hir>>]),
-    Constructor(&'hir [Ident], ExprRef<'hir>),
-    Closure(&'hir [Arm<'hir>]),
-    Appl(Appl<'hir>),
-    Region(Region<'hir>),
+    Record(ThinSlice<'hir, (Binding<'hir>, Option<Expr<'hir>>)>),
+    Constructor(&'hir Constructor<'hir, Expr<'hir>>),
+    Closure(ThinSlice<'hir, Arm<'hir>>),
+    Appl(&'hir Appl<'hir>),
+    Region(&'hir Region<'hir>),
     Error,
 }
 
@@ -46,16 +45,16 @@ pub enum Symbol {
     Ge,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Arm<'hir> {
-    pub params: &'hir [Param<'hir>],
-    pub body: ExprRef<'hir>,
+    pub params: ThinSlice<'hir, Param<'hir>>,
+    pub body: Expr<'hir>,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct Param<'hir> {
-    pub pat: PatRef<'hir>,
-    pub ascription: Option<TypeRef<'hir>>,
+    pub pat: Pat<'hir>,
+    pub ascription: Option<Type<'hir>>,
 }
 
 impl HasSpan for Param<'_> {
@@ -72,33 +71,11 @@ impl HasSpan for Param<'_> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Appl<'hir> {
-    pub parts: &'hir [Expr<'hir>; 3],
-}
-
-impl<'hir> Appl<'hir> {
-    pub fn lhs(&self) -> &'hir Expr<'hir> {
-        &self.parts[0]
-    }
-
-    pub fn fun(&self) -> &'hir Expr<'hir> {
-        &self.parts[1]
-    }
-
-    pub fn rhs(&self) -> &'hir Expr<'hir> {
-        &self.parts[2]
-    }
-}
-
-impl fmt::Debug for Appl<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Appl")
-            .field("lhs", self.lhs())
-            .field("fun", self.fun())
-            .field("rhs", self.rhs())
-            .finish()
-    }
+    pub lhs: Expr<'hir>,
+    pub fun: Expr<'hir>,
+    pub rhs: Expr<'hir>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -107,7 +84,7 @@ pub struct Region<'hir> {
     // Don't want it to store an ident,
     // want it to store some semantic reference to the variable.
     pub shadows: &'hir [Ident],
-    pub body: ExprRef<'hir>,
+    pub body: Expr<'hir>,
 }
 
 #[derive(Copy, Clone, Debug)]

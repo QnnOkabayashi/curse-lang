@@ -10,5 +10,6 @@ curse_span = { path = "../curse_span" }
 curse_hir = { path = "../curse_hir" }
 miette = "5.*"
 thiserror = "1.*"
-bumpalo = "3.13.0"
+bumpalo = "3.14.0"
+bumpalo_thin_slice = { path = "../../../bumpalo_thin_slice" }
 

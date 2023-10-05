@@ -1,4 +1,4 @@
-use crate::ast::{tok, Closure, Iter, Type};
+use crate::ast::{tok, Closure, Type};
 use crate::ast_struct;
 use curse_interner::Ident;
 use curse_span::HasSpan;
@@ -7,16 +7,9 @@ ast_struct! {
     /// Example: `|K * V|`
     #[derive(Clone, Debug)]
     pub struct GenericParams {
-        open: tok::Pipe,
-        params: Vec<(Ident, tok::Star)>,
-        last: Ident,
-        close: tok::Pipe,
-    }
-}
-
-impl GenericParams {
-    pub fn iter_params(&self) -> Iter<'_, Ident, tok::Star> {
-        Iter::new(self.params.iter(), Some(&self.last))
+        pub open: tok::Pipe,
+        pub params: Vec<Ident>,
+        pub close: tok::Pipe,
     }
 }
 
@@ -66,16 +59,9 @@ ast_struct! {
     /// Example: `{ Some T, None {} }`
     #[derive(Debug, Clone)]
     pub struct Variants {
-        lbrace: tok::LBrace,
-        variants: Vec<(VariantDef, tok::Comma)>,
-        last: Option<VariantDef>,
-        rbrace: tok::RBrace,
-    }
-}
-
-impl Variants {
-    pub fn iter_variants(&self) -> Iter<'_, VariantDef, tok::Comma> {
-        Iter::new(self.variants.iter(), self.last.as_ref())
+        pub lbrace: tok::LBrace,
+        pub variants: Vec<VariantDef>,
+        pub rbrace: tok::RBrace,
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::ast::{tok, Iter, Path, Type};
+use crate::ast::{tok, Path, Type};
 use crate::ast_struct;
 use curse_span::{HasSpan, Span};
 
@@ -16,17 +16,15 @@ pub enum GenericArgs {
     /// Example: `Vec I32`
     Single(Type),
     /// Example: `Result (I32 * Error)`
-    CartesianProduct(tok::LParen, Vec<(Type, tok::Star)>, Type, tok::RParen),
+    CartesianProduct(tok::LParen, Vec<Type>, tok::RParen),
 }
 
 impl GenericArgs {
-    pub fn iter_args(&self) -> Iter<'_, Type, tok::Star> {
-        let (slice, last) = match self {
-            GenericArgs::Single(last) => (&[] as _, Some(last)),
-            GenericArgs::CartesianProduct(_, vec, last, _) => (vec.as_slice(), Some(last)),
-        };
-
-        Iter::new(slice.iter(), last)
+    pub fn types(&self) -> &[Type] {
+        match self {
+            GenericArgs::Single(ty) => std::slice::from_ref(ty),
+            GenericArgs::CartesianProduct(_, types, _) => types,
+        }
     }
 }
 
