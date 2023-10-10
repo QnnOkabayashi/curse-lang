@@ -1,22 +1,22 @@
-use crate::hir::{Lit, Map};
+use crate::hir::{Constructor, Lit};
+use bumpalo_thin_slice::ThinSlice;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::fmt;
 
+#[derive(Copy, Clone)]
 pub struct Pat<'hir> {
     pub kind: PatKind<'hir>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum PatKind<'hir> {
     Lit(Lit),
-    Record(Map<'hir, Option<PatRef<'hir>>>),
-    Constructor(&'hir [Ident], PatRef<'hir>),
+    Record(ThinSlice<'hir, (Pat<'hir>, Option<Pat<'hir>>)>),
+    Constructor(&'hir Constructor<'hir, Pat<'hir>>),
     Error,
 }
-
-pub type PatRef<'hir> = &'hir Pat<'hir>;
 
 impl HasSpan for Pat<'_> {
     fn start(&self) -> u32 {
@@ -31,5 +31,14 @@ impl HasSpan for Pat<'_> {
 impl fmt::Debug for Pat<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self.kind, f)
+    }
+}
+
+impl From<Ident> for Pat<'_> {
+    fn from(value: Ident) -> Self {
+        Pat {
+            kind: PatKind::Lit(Lit::Ident(value.symbol)),
+            span: value.span(),
+        }
     }
 }

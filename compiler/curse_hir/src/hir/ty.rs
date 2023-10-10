@@ -1,21 +1,30 @@
-use crate::hir::{Map, Path};
+use crate::hir::Pat;
+use bumpalo_thin_slice::ThinSlice;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
 use std::{fmt, str::FromStr};
 
-pub type TypeRef<'hir> = &'hir Type<'hir>;
-
+#[derive(Copy, Clone)]
 pub struct Type<'hir> {
     pub kind: TypeKind<'hir>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+impl<'hir> Type<'hir> {
+    pub fn error(span: Span) -> Self {
+        Type {
+            kind: TypeKind::Error,
+            span,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum TypeKind<'hir> {
     /// The path and the type arguments, e.g. `std::result::Result (I32 * Error)`
     Named {
-        path: Path<'hir>,
-        generic_args: &'hir [Type<'hir>],
+        path: ThinSlice<'hir, Ident>,
+        generic_args: ThinSlice<'hir, Type<'hir>>,
     },
     /// A generic type argument and the index, e.g. `T`
     Generic {
@@ -23,7 +32,7 @@ pub enum TypeKind<'hir> {
         index: u32,
     },
     /// A record type, e.g. `{ key: K, value: V }`
-    Record(Map<'hir, TypeRef<'hir>>),
+    Record(ThinSlice<'hir, (Pat<'hir>, Type<'hir>)>),
     /// A primitive type, e.g. `I32`
     Primitive(PrimitiveType),
     Error,

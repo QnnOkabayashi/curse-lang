@@ -1,10 +1,9 @@
-use std::{collections::HashMap, rc::Rc};
-
 use crate::builtins;
 use crate::error::EvalError;
 use crate::value::{OwnedMap, Value, ValueRef};
-use curse_hir::hir::{self, ExprKind, ExprRef, Lit, PatKind, PatRef, Program};
+use curse_hir::hir::{self, Expr, ExprKind, Lit, Pat, PatKind, Program};
 use curse_interner::InternedString;
+use std::{collections::HashMap, rc::Rc};
 
 // globally available functions, both regular named functions as well as type constructors
 pub struct GlobalBindings<'hir> {
@@ -26,10 +25,29 @@ impl<'hir> GlobalBindings<'hir> {
 
 pub type Bindings<'hir> = HashMap<InternedString, ValueRef<'hir>>;
 
-fn eval_expr<'hir>(
-    expr: ExprRef<'hir>,
+fn eval_record<'hir>(
+    fields: impl IntoIterator<Item = (hir::Pat<'hir>, Option<Result<Rc<Value<'hir>>, EvalError>>)>,
     global_state: &GlobalBindings<'hir>,
-    local_state: &mut Bindings<'hir>,
+    local_state: &Bindings<'hir>,
+) -> Result<OwnedMap<Rc<Value<'hir>>>, EvalError> {
+    let mut entries = vec![];
+
+    for (field_pat, opt_expr) in fields {
+        let expr =
+            opt_expr.unwrap_or_else(|| pat_as_expr(&field_pat, global_state, local_state))?;
+
+        match_pattern(expr, &field_pat, &mut |ident, value| {
+            entries.push((ident, value))
+        })?;
+    }
+
+    Ok(OwnedMap::new(entries))
+}
+
+fn eval_expr<'hir>(
+    expr: &Expr<'hir>,
+    global_state: &GlobalBindings<'hir>,
+    local_state: &Bindings<'hir>,
 ) -> Result<ValueRef<'hir>, EvalError> {
     match expr.kind {
         ExprKind::Symbol(hir::Symbol::Plus) => Ok(Rc::new(Value::Builtin(builtins::add))),
@@ -47,50 +65,92 @@ fn eval_expr<'hir>(
         ExprKind::Symbol(hir::Symbol::DotDot) => unimplemented!(),
         ExprKind::Lit(Lit::Integer(int)) => Ok(Rc::new(Value::Integer(int))),
         ExprKind::Lit(Lit::Ident(ident)) => local_state
-            .get(&ident.symbol)
-            .or(global_state.functions.get(&ident.symbol))
+            .get(&ident)
+            .or_else(|| global_state.functions.get(&ident))
             .ok_or(EvalError::UnboundVariable {
                 literal: ident.to_string(),
-                span: ident.span,
+                span: expr.span,
             })
             .cloned(),
         ExprKind::Lit(Lit::Bool(bool)) => Ok(Rc::new(Value::Bool(bool))),
-        ExprKind::Record(map) => Ok(Rc::new(Value::Record(OwnedMap::new(
-            map.entries
-                .iter()
-                .map(|(ident, opt_expr)| match opt_expr {
-                    // if some, set the field with name `ident` to the result of evaluating the
-                    // expr
-                    Some(expr) => Ok((*ident, eval_expr(expr, global_state, local_state)?)),
-                    // otherwise look up the ident in the environment
-                    None => Ok((
-                        *ident,
-                        local_state
-                            .get(&ident.symbol)
-                            .or(global_state.functions.get(&ident.symbol))
-                            .ok_or_else(|| EvalError::UnboundVariable {
-                                literal: ident.to_string(),
-                                span: ident.span,
-                            })
-                            .cloned()?,
-                    )),
-                })
-                .collect::<Result<_, _>>()?,
-        )))),
+        ExprKind::Record(entries) => eval_record(
+            entries.iter().map(|(field_pat, opt_expr)| {
+                let opt_value = opt_expr
+                    .as_ref()
+                    .map(|expr| eval_expr(expr, global_state, local_state));
+
+                (*field_pat, opt_value)
+            }),
+            global_state,
+            local_state,
+        )
+        .map(|fields| Rc::new(Value::Record(fields))),
         ExprKind::Constructor(constructor) => Ok(Rc::new(Value::Choice {
-            tag: constructor.path,
-            value: eval_expr(constructor.inner, global_state, local_state)?,
+            ty: constructor.ty,
+            variant: constructor.variant,
+            value: eval_expr(constructor.kind, global_state, local_state)?,
         })),
-        ExprKind::Closure(arms) => Ok(Rc::new(Value::Function(arms, local_state.clone()))),
+        ExprKind::Closure(arms) => Ok(Rc::new(Value::Function(
+            arms.as_slice(),
+            local_state.clone(),
+        ))),
         ExprKind::Appl(appl) => {
-            let lhs = eval_expr(appl.lhs(), global_state, local_state)?;
-            let fun = eval_expr(appl.fun(), global_state, local_state)?;
-            let rhs = eval_expr(appl.rhs(), global_state, local_state)?;
+            let lhs = eval_expr(&appl.lhs, global_state, local_state)?;
+            let fun = eval_expr(&appl.fun, global_state, local_state)?;
+            let rhs = eval_expr(&appl.rhs, global_state, local_state)?;
             call_function(lhs, fun, rhs, global_state)
         }
         ExprKind::Region(_) => todo!("Regions"),
         ExprKind::Error => todo!("error handling"),
     }
+}
+
+fn pat_as_expr<'hir>(
+    pat: &Pat<'hir>,
+    global_state: &GlobalBindings<'hir>,
+    local_state: &Bindings<'hir>,
+) -> Result<Rc<Value<'hir>>, EvalError> {
+    let value = match pat.kind {
+        PatKind::Lit(Lit::Ident(ident)) => local_state
+            .get(&ident)
+            .or_else(|| global_state.functions.get(&ident))
+            .cloned()
+            .ok_or_else(|| EvalError::UnboundVariable {
+                literal: format!("{pat:?}"),
+                span: pat.span,
+            })?,
+        PatKind::Lit(Lit::Integer(num)) => Rc::new(Value::Integer(num)),
+        PatKind::Lit(Lit::Bool(b)) => Rc::new(Value::Bool(b)),
+        PatKind::Record(fields) => {
+            // { { a: b }: { a: b } }
+            // If we see a record expression like `{ { a, b } }`
+            // then the `pat` would be `{ a, b }`.
+            // This function will generate the `{ a, b }` expr
+            // which is then used for matching to evaluate `{ { a, b }: { a, b } }`
+            // which evaluates to just `{ a, b }`
+            let fields = eval_record(
+                fields.iter().map(|(field_pat, opt_pat)| {
+                    let opt_value = opt_pat
+                        .as_ref()
+                        .map(|pat| pat_as_expr(pat, global_state, local_state));
+
+                    (*field_pat, opt_value)
+                }),
+                global_state,
+                local_state,
+            )?;
+
+            Rc::new(Value::Record(fields))
+        }
+        PatKind::Constructor(constructor) => Rc::new(Value::Choice {
+            ty: constructor.ty,
+            variant: constructor.variant,
+            value: pat_as_expr(constructor.kind, global_state, local_state)?,
+        }),
+        PatKind::Error => todo!(),
+    };
+
+    Ok(value)
 }
 
 fn call_function<'hir>(
@@ -105,10 +165,10 @@ fn call_function<'hir>(
                 .iter()
                 .find(|&arm| match arm.params.len() {
                     0 => left.is_null() && right.is_null(),
-                    1 => check_pattern(&left, arm.params[0].pat) && right.is_null(),
+                    1 => check_pattern(&left, &arm.params[0].pat) && right.is_null(),
                     2 => {
-                        check_pattern(&left, arm.params[0].pat)
-                            && check_pattern(&right, arm.params[1].pat)
+                        check_pattern(&left, &arm.params[0].pat)
+                            && check_pattern(&right, &arm.params[1].pat)
                     }
                     _ => false,
                 })
@@ -116,16 +176,19 @@ fn call_function<'hir>(
 
             // there's definitely some room for neat optimizations here
             let mut new_scope = closure_env.clone();
+            let mut push_binding_fn = |ident, value| {
+                new_scope.insert(ident, value);
+            };
             match arm.params.len() {
-                0 => eval_expr(arm.body, global_state, &mut new_scope),
+                0 => eval_expr(&arm.body, global_state, &mut new_scope),
                 1 => {
-                    match_pattern(left, arm.params[0].pat, &mut new_scope)?;
-                    eval_expr(arm.body, global_state, &mut new_scope)
+                    match_pattern(left, &arm.params[0].pat, &mut push_binding_fn)?;
+                    eval_expr(&arm.body, global_state, &mut new_scope)
                 }
                 2 => {
-                    match_pattern(left, arm.params[0].pat, &mut new_scope)?;
-                    match_pattern(right, arm.params[1].pat, &mut new_scope)?;
-                    eval_expr(arm.body, global_state, &mut new_scope)
+                    match_pattern(left, &arm.params[0].pat, &mut push_binding_fn)?;
+                    match_pattern(right, &arm.params[1].pat, &mut push_binding_fn)?;
+                    eval_expr(&arm.body, global_state, &mut new_scope)
                 }
                 _ => unreachable!("checked above"),
             }
@@ -135,32 +198,35 @@ fn call_function<'hir>(
     }
 }
 
-fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
+fn check_pattern<'hir>(value: &Value, pattern: &Pat<'hir>) -> bool {
     match (&pattern.kind, value) {
         (PatKind::Record(pattern_map), Value::Record(value_map)) => {
-            if pattern_map.entries.len() != value_map.entries.len() {
+            if pattern_map.len() != value_map.entries.len() {
                 false
             } else {
-                pattern_map.entries.iter().zip(&value_map.entries).all(
-                    |((_, opt_pat), (_, val))| match opt_pat {
+                pattern_map
+                    .iter()
+                    .zip(&value_map.entries)
+                    .all(|((_, opt_pat), (_, val))| match opt_pat {
                         Some(pat) => check_pattern(val.as_ref(), pat),
                         None => true,
-                    },
-                )
+                    })
             }
         }
         (
-            PatKind::Constructor(pat_tag, pattern),
+            PatKind::Constructor(hir::Constructor {
+                ty: pat_ty,
+                variant: pat_variant,
+                kind,
+            }),
             Value::Choice {
-                tag: value_tag,
+                ty: value_ty,
+                variant: value_variant,
                 value,
             },
         ) => {
-            if pat_tag == value_tag {
-                check_pattern(value, pattern)
-            } else {
-                false
-            }
+            // `&&` short-circuits according to Rust reference.
+            pat_ty == value_ty && pat_variant == value_variant && check_pattern(value, kind)
         }
         (PatKind::Lit(Lit::Integer(n)), Value::Integer(m)) => n == m,
         (PatKind::Lit(Lit::Bool(b1)), Value::Bool(b2)) => b1 == b2,
@@ -169,56 +235,159 @@ fn check_pattern<'hir>(value: &Value, pattern: PatRef<'hir>) -> bool {
     }
 }
 
+fn match_record<'hir>(
+    bindings: &[(hir::Pat<'hir>, Option<Pat<'hir>>)],
+    // When matching on another record, get_value looks up keys from the other record
+    // When constructing, it pulls idents from the local/global bindings
+    get_value: &mut dyn FnMut(InternedString) -> Option<Rc<Value<'hir>>>,
+    push_binding: &mut dyn FnMut(InternedString, Rc<Value<'hir>>),
+) -> Result<(), EvalError> {
+    for (field_pat, opt_value_pat) in bindings {
+        match field_pat.kind {
+            PatKind::Lit(Lit::Ident(ident)) => {
+                let value = get_value(ident).ok_or(EvalError::FailedPatternMatch)?;
+
+                if let Some(value_pat) = opt_value_pat {
+                    match_pattern(value, value_pat, push_binding)?;
+                } else {
+                    push_binding(ident, value);
+                }
+            }
+            PatKind::Lit(_) => return Err(EvalError::FailedPatternMatch),
+            PatKind::Record(fields) => {
+                if let Some(pat) = opt_value_pat {
+                    // e.g. `{ { a, b }: ab, c }: { a: 1, b: 2, c: 3 }`
+                    // `new_entries` is us making the `{ a, b }` map in the binding,
+                    // where we fill it with values from the parent according to its fields
+                    // but push to a fresh record.
+                    let mut new_entries = vec![];
+                    match_record(&fields[..], get_value, &mut |ident, value| {
+                        new_entries.push((ident, value));
+                    })?;
+
+                    // Now that we've created a fresh record, we take it and try to bind it
+                    // against the pattern
+                    match_pattern(
+                        Rc::new(Value::Record(OwnedMap::new(new_entries))),
+                        pat,
+                        push_binding,
+                    )?;
+                } else {
+                    // `{ { a, b } }: { a, b }`
+                    // kinda pointless, just inline a and b directly into the parent
+                    match_record(bindings, get_value, push_binding)?;
+                }
+            }
+            PatKind::Constructor(_) => todo!(),
+            PatKind::Error => todo!(),
+        }
+        // match field_pat {
+        //     hir::Binding::Ident(field_ident) => {
+        //         let Some(value) = value_fields.remove(&field_ident.symbol) else {
+        //             return Err(EvalError::FailedPatternMatch);
+        //         };
+        //
+        //         if let Some(pat) = opt_value_pat {
+        //             // pattern `{ a: <PAT> }` will bind the value of field `a` to pattern <PAT>,
+        //             // e.g. `{ a: foo }` will bind the value of field `a` to ident `foo`.
+        //             match_pattern(value, &pat, push_binding)?;
+        //         } else {
+        //             // pattern `{ a }` will bind the value of field `a` to ident `a`
+        //             push_binding(field_ident.symbol, value);
+        //         }
+        //     }
+        //     hir::Binding::Record(fields) => {
+        //         if let Some(pat) = opt_value_pat {
+        //             // e.g. `{ { a, b }: ab, c }: { a: 1, b: 2, c: 3 }`
+        //             // `new_entries` is us making the `{ a, b }` map in the binding,
+        //             // where we fill it with values from the parent according to its fields
+        //             // but push to a fresh record.
+        //             let mut new_entries = vec![];
+        //             match_record(&fields[..], value_fields, &mut |ident, value| {
+        //                 new_entries.push((ident, value));
+        //             })?;
+        //
+        //             // Now that we've created a fresh record, we take it and try to bind it
+        //             // against the pattern
+        //             match_pattern(
+        //                 Rc::new(Value::Record(OwnedMap::new(new_entries))),
+        //                 pat,
+        //                 push_binding,
+        //             )?;
+        //         } else {
+        //             // `{ { a, b } }: { a, b }`
+        //             // kinda pointless, just inline a and b directly into the parent
+        //             match_record(bindings, value_fields, push_binding)?;
+        //         }
+        //     }
+        //     hir::Binding::Error => todo!(),
+        // }
+    }
+    Ok(())
+}
+
 fn match_pattern<'hir>(
     value: ValueRef<'hir>,
-    pattern: PatRef<'hir>,
-    local_state: &mut Bindings<'hir>,
+    pattern: &Pat<'hir>,
+    push_binding: &mut dyn FnMut(InternedString, Rc<Value<'hir>>),
 ) -> Result<(), EvalError> {
     if let PatKind::Lit(Lit::Ident(ident)) = pattern.kind {
-        local_state.insert(ident.symbol, value);
+        push_binding(ident, value);
         Ok(())
     } else {
         match (&pattern.kind, value.as_ref()) {
             (PatKind::Record(pattern_map), Value::Record(value_map)) => {
-                if pattern_map.entries.len() == value_map.entries.len() {
-                    // if there's no pattern after the name, binds value to the name, otherwise
-                    // matches on the pattern
-                    for ((name, opt_pat), (_, val)) in
-                        pattern_map.entries.iter().zip(&value_map.entries)
-                    {
-                        if let Some(pat) = opt_pat {
-                            match_pattern(Rc::clone(&val), pat, local_state)?;
-                        } else {
-                            local_state.insert(name.symbol, Rc::clone(&val));
-                        }
-                    }
+                let mut value_fields: HashMap<InternedString, Rc<Value>> = value_map
+                    .entries
+                    .iter()
+                    .map(|(ident, value)| (*ident, Rc::clone(&value)))
+                    .collect();
 
-                    // should be ok since we already made sure the pattern
-                    // successfully matched
+                match_record(
+                    &pattern_map[..],
+                    &mut |ident| value_fields.remove(&ident),
+                    push_binding,
+                )?;
+
+                // Should have seen all the fields now (otherwise it's not matchable)
+                if value_fields.is_empty() {
                     Ok(())
                 } else {
                     Err(EvalError::FailedPatternMatch)
                 }
             }
             (
-                PatKind::Constructor(pat_tag, pattern),
+                PatKind::Constructor(hir::Constructor {
+                    ty: pat_ty,
+                    variant: pat_variant,
+                    kind,
+                }),
                 Value::Choice {
-                    tag: value_tag,
+                    ty: value_ty,
+                    variant: value_variant,
                     value,
                 },
             ) => {
-                if pat_tag == value_tag {
-                    match_pattern(value.clone(), pattern, local_state)
+                if pat_ty == value_ty && pat_variant == value_variant {
+                    match_pattern(value.clone(), kind, push_binding)
                 } else {
                     Err(EvalError::FailedPatternMatch)
                 }
             }
-            (PatKind::Lit(Lit::Integer(n)), Value::Integer(m)) => (*n == *m)
-                .then_some(())
-                .ok_or(EvalError::FailedPatternMatch),
-            (PatKind::Lit(Lit::Bool(b1)), Value::Bool(b2)) => (*b1 == *b2)
-                .then_some(())
-                .ok_or(EvalError::FailedPatternMatch),
+            (PatKind::Lit(Lit::Integer(a)), Value::Integer(b)) => {
+                if *a == *b {
+                    Ok(())
+                } else {
+                    Err(EvalError::FailedPatternMatch)
+                }
+            }
+            (PatKind::Lit(Lit::Bool(a)), Value::Bool(b)) => {
+                if *a == *b {
+                    Ok(())
+                } else {
+                    Err(EvalError::FailedPatternMatch)
+                }
+            }
             (PatKind::Lit(Lit::Ident(_)), _) => {
                 unreachable!("handled above, dang Rc making pattern matching annoying")
             }
@@ -231,13 +400,14 @@ pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<ValueRef<'hir>, 
     let mut global_state = GlobalBindings::new();
 
     for (name, def) in &program.function_defs {
-        global_state
-            .functions
-            .insert(*name, Rc::new(Value::Function(def.arms, HashMap::new())));
+        global_state.functions.insert(
+            *name,
+            Rc::new(Value::Function(def.arms.as_slice(), HashMap::new())),
+        );
     }
 
     for (name, def) in &program.choice_defs {
-        for (variant, _) in def.variants.entries {
+        for (variant, _) in def.variants.iter() {
             global_state.constructors.insert(variant.symbol, *name);
         }
     }

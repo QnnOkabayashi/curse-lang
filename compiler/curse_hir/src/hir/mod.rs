@@ -1,6 +1,5 @@
 mod def;
 mod expr;
-mod map;
 mod pat;
 mod ty;
 mod program {
@@ -17,28 +16,26 @@ mod program {
     }
 }
 mod shared {
-    use curse_interner::Ident;
+    use curse_interner::{Ident, InternedString};
 
     #[derive(Copy, Clone, Debug)]
     pub enum Lit {
         Integer(u32),
-        Ident(Ident),
+        Ident(InternedString),
         Bool(bool),
     }
 
     #[derive(Copy, Clone, Debug)]
-    pub struct Constructor<'hir, T> {
-        pub path: Path<'hir>,
-        pub inner: &'hir T,
+    pub struct Constructor<'hir, Kind> {
+        pub ty: Ident,
+        pub variant: Ident,
+        pub kind: &'hir Kind,
     }
-
-    pub type Path<'hir> = &'hir [Ident];
 }
 
 pub use def::{ChoiceDef, FunctionDef, StructDef};
-pub use expr::{Appl, Arm, Expr, ExprKind, ExprRef, Param, Region, RegionKind, Symbol};
-pub use map::Map;
-pub use pat::{Pat, PatKind, PatRef};
+pub use expr::{Appl, Arm, Expr, ExprKind, Param, Region, RegionKind, Symbol};
+pub use pat::{Pat, PatKind};
 pub use program::Program;
-pub use shared::{Constructor, Lit, Path};
-pub use ty::{PrimitiveType, Type, TypeKind, TypeRef};
+pub use shared::{Constructor, Lit};
+pub use ty::{PrimitiveType, Type, TypeKind};

@@ -1,9 +1,8 @@
 use crate::{lexer::*, Parser};
 use curse_ast::ast::{
-    tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr, Field, FunctionDef,
-    GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Path, Pat, Program, Record, StructDef, 
-    Symbol, Type, VariantDef, Variants,
-    Region, RegionKind, bikeshed,
+    bikeshed, tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr,
+    FunctionDef, GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Pat, Path,
+    Program, Record, Region, RegionKind, StructDef, Symbol, Type, VariantDef, Variants,
 };
 use curse_interner::Ident;
 use curse_span::HasSpan;
@@ -98,8 +97,18 @@ DynamicImport: bikeshed::DynamicImport = {
     "dynamic_import" Ident => bikeshed::DynamicImport::new(<>),
 };
 
+Seq<T, D>: Vec<T> = {
+    (<T> D)* T? => match (<>) {
+        (vec, None) => vec,
+        (mut vec, Some(last)) => {
+            vec.push(last);
+            vec
+        }
+    }
+};
+
 GenericParams: GenericParams = {
-    "|" (TypeIdent "*")* TypeIdent "|" => GenericParams::new(<>),
+    "|" Seq<TypeIdent, "*"> "|" => GenericParams::new(<>),
 };
 
 // ExplicitTypes: ExplicitTypes = {
@@ -120,7 +129,7 @@ ChoiceDef: ChoiceDef = {
 };
 
 Variants: Variants = {
-    "{" (VariantDef ",")* VariantDef? "}" => Variants::new(<>),
+    "{" Seq<VariantDef, ","> "}" => Variants::new(<>),
 }
 
 VariantDef: VariantDef = {
@@ -131,11 +140,7 @@ VariantDef: VariantDef = {
 /// === Record ===
 
 Record<T>: Record<T> = {
-    "{" (Field<T> ",")* Field<T>? "}" => Record::new(<>),
-};
-
-Field<T>: Field<T> = {
-    Ident (":" T)? => Field::new(<>),
+    "{" Seq<(Pat (":" <T>)?), ","> "}" => Record::new(<>),
 };
 
 
@@ -152,7 +157,12 @@ Type: Type = {
 
 GenericArgs: GenericArgs = {
     Type => GenericArgs::Single(<>),
-    "(" (Type "*")* Type ")" => GenericArgs::CartesianProduct(<>),
+    "(" (<Type> "*")* Type ")" => match (<>) {
+        (l, mut vec, last, r) => {
+            vec.push(last);
+            GenericArgs::CartesianProduct(l, vec, r)
+        }
+    },
 };
 
 NamedType: NamedType = {
@@ -181,15 +191,15 @@ Lit: Lit = {
 };
 
 Path: Path = {
-    (Ident "::")* Ident => Path::new(<>),
+    (<Ident> "::")* Ident => Path::new(<>),
 };
 
 TypePath: Path = {
-    (Ident "::")* TypeIdent => Path::new(<>),
+    (<Ident> "::")* TypeIdent => Path::new(<>),
 };
 
 Constructor<T>: Constructor<T> = {
-    TypePath ("::" TypeIdent)? T => Constructor::new(<>),
+    <TypeIdent> "::" <TypeIdent> <T> => Constructor::new(<>),
 };
 
 
@@ -216,8 +226,14 @@ ClosureNonpiecewise: Closure = {
 };
 
 ClosurePiecewise: Closure = {
-    "(" ")" => Closure::Empty(<>),
-    "(" (Arm ",")+ Arm? ")" => Closure::Piecewise(<>),
+    <l:"("> <r:")"> => Closure::Piecewise(l, vec![], r),
+    "(" (<Arm> ",")+ Arm? ")" => match (<>) {
+        (l, vec, None, r) => Closure::Piecewise(l, vec, r),
+        (l, mut vec, Some(last), r) => {
+            vec.push(last);
+            Closure::Piecewise(l, vec, r)
+        }
+    },
 };
 
 Closure = {
@@ -226,11 +242,11 @@ Closure = {
 };
 
 Arm: Arm = {
-    "|" (Param ",")* Param? "|" EndExpr => Arm::new(<>),
+    "|" Seq<Param, ","> "|" EndExpr => Arm::new(<>),
 };
 
 Param: Param = {
-    Pat (":" Type)? => Param::new(<>),
+    Pat (":" <Type>)? => Param::new(<>),
 };
 
 Appl<Rhs>: Appl = {
