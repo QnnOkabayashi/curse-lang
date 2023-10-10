@@ -1,6 +1,6 @@
 use crate::{lexer::*, Parser};
 use curse_ast::ast::{
-    bikeshed, tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr, Binding,
+    bikeshed, tok, Appl, Arm, ChoiceDef, Closure, Constructor, Expr,
     FunctionDef, GenericArgs, GenericParams, Lit, NamedType, Param, Paren, Pat, Path,
     Program, Record, Region, RegionKind, StructDef, Symbol, Type, VariantDef, Variants,
 };
@@ -140,12 +140,7 @@ VariantDef: VariantDef = {
 /// === Record ===
 
 Record<T>: Record<T> = {
-    "{" Seq<(Binding (":" <T>)?), ","> "}" => Record::new(<>),
-};
-
-Binding: Binding = {
-    Ident => Binding::Ident(<>),
-    Record<Binding> => Binding::Record(<>),
+    "{" Seq<(Pat (":" <T>)?), ","> "}" => Record::new(<>),
 };
 
 

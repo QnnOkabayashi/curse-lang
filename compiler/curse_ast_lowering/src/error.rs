@@ -9,7 +9,7 @@ use thiserror::Error;
 #[derive(Debug)]
 pub enum LoweringError {
     TypeRecordMissingFieldType {
-        field_binding: ast::Binding,
+        field_binding: ast::Pat,
     },
     IntegerLiteralOverflow {
         literal: String,

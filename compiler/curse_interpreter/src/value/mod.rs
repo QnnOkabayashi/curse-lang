@@ -1,5 +1,5 @@
 use curse_hir::hir::Arm;
-use curse_interner::Ident;
+use curse_interner::{Ident, InternedString};
 use std::{fmt, rc::Rc};
 
 use crate::{error::EvalError, evaluation::Bindings};
@@ -16,7 +16,8 @@ pub enum Value<'hir> {
     Function(&'hir [Arm<'hir>], Bindings<'hir>),
     Record(OwnedMap<ValueRef<'hir>>),
     Choice {
-        tag: &'hir [Ident],
+        ty: Ident,
+        variant: Ident,
         value: ValueRef<'hir>,
     },
     Builtin(Builtin<'hir>),
@@ -41,22 +42,8 @@ impl fmt::Debug for Value<'_> {
             Function(..) => write!(f, "<function>"),
             Builtin(_) => write!(f, "<builtin>"),
             Record(map) => write!(f, "{map:#?}"),
-            Choice { tag, value } => {
-                // temporary hack until we formalize things
-                struct PathDisplay<'a>(&'a [Ident]);
-                impl fmt::Debug for PathDisplay<'_> {
-                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                        let (last, parts) =
-                            self.0.split_last().expect("at least 1 part in the path");
-
-                        for part in parts {
-                            write!(f, "{part}::")?;
-                        }
-                        write!(f, "{last}")
-                    }
-                }
-
-                write!(f, "{:?} {value:?}", PathDisplay(tag))
+            Choice { ty, variant, value } => {
+                write!(f, "{ty}::{variant} {value:?}")
             }
         }
     }
@@ -72,7 +59,7 @@ pub type Builtin<'hir> = fn(ValueRef<'hir>, ValueRef<'hir>) -> Result<ValueRef<'
 
 #[derive(Clone)]
 pub struct OwnedMap<T> {
-    pub entries: Vec<(Ident, T)>,
+    pub entries: Vec<(InternedString, T)>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for OwnedMap<T> {
@@ -84,7 +71,7 @@ impl<T: fmt::Debug> fmt::Debug for OwnedMap<T> {
 }
 
 impl<'hir, T> OwnedMap<T> {
-    pub fn new(entries: Vec<(Ident, T)>) -> Self {
+    pub fn new(entries: Vec<(InternedString, T)>) -> Self {
         OwnedMap { entries }
     }
 }

@@ -1,4 +1,4 @@
-use crate::hir::Binding;
+use crate::hir::Pat;
 use bumpalo_thin_slice::ThinSlice;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
@@ -32,7 +32,7 @@ pub enum TypeKind<'hir> {
         index: u32,
     },
     /// A record type, e.g. `{ key: K, value: V }`
-    Record(ThinSlice<'hir, (Binding<'hir>, Type<'hir>)>),
+    Record(ThinSlice<'hir, (Pat<'hir>, Type<'hir>)>),
     /// A primitive type, e.g. `I32`
     Primitive(PrimitiveType),
     Error,

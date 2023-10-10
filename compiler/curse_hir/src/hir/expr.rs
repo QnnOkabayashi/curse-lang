@@ -1,4 +1,4 @@
-use crate::hir::{Constructor, Binding, Lit, Pat, Type};
+use crate::hir::{Constructor, Lit, Pat, Type};
 use bumpalo_thin_slice::ThinSlice;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
@@ -20,7 +20,7 @@ impl fmt::Debug for Expr<'_> {
 pub enum ExprKind<'hir> {
     Symbol(Symbol),
     Lit(Lit),
-    Record(ThinSlice<'hir, (Binding<'hir>, Option<Expr<'hir>>)>),
+    Record(ThinSlice<'hir, (Pat<'hir>, Option<Expr<'hir>>)>),
     Constructor(&'hir Constructor<'hir, Expr<'hir>>),
     Closure(ThinSlice<'hir, Arm<'hir>>),
     Appl(&'hir Appl<'hir>),

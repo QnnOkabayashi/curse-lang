@@ -1,6 +1,5 @@
 mod def;
 mod expr;
-mod map;
 mod pat;
 mod ty;
 mod program {
@@ -36,7 +35,6 @@ mod shared {
 
 pub use def::{ChoiceDef, FunctionDef, StructDef};
 pub use expr::{Appl, Arm, Expr, ExprKind, Param, Region, RegionKind, Symbol};
-pub use map::Binding;
 pub use pat::{Pat, PatKind};
 pub use program::Program;
 pub use shared::{Constructor, Lit};
