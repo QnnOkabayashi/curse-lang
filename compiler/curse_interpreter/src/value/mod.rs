@@ -11,9 +11,9 @@ pub enum Value<'hir> {
     Integer(u32),
     // String(&'hir str),
     Bool(bool),
-    Function(Rc<(&'hir [Arm<'hir>], Bindings<'hir>)>),
+    Function(&'hir [Arm<'hir>], Rc<Bindings<'hir>>),
     Record(Rc<Vec<(InternedString, Value<'hir>)>>),
-    Choice(Rc<(Ident, Ident, Value<'hir>)>),
+    Choice(Ident, Ident, Rc<Value<'hir>>),
     Builtin(Builtin<'hir>),
 }
 
@@ -39,8 +39,7 @@ impl fmt::Debug for Value<'_> {
                 .debug_map()
                 .entries(map.iter().map(|(a, b)| (a, b))) // I forgot why but YOU NEED THIS MAP
                 .finish(),
-            Choice(ty_variant_value) => {
-                let (ty, variant, value) = ty_variant_value.as_ref();
+            Choice(ty, variant, value) => {
                 write!(f, "{ty}::{variant} {value:?}")
             }
         }

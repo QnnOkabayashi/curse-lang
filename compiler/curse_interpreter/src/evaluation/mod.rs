@@ -99,15 +99,15 @@ fn eval_expr<'hir>(
 
             Ok(Value::Record(Rc::new(fields)))
         }
-        ExprKind::Constructor(constructor) => Ok(Value::Choice(Rc::new((
+        ExprKind::Constructor(constructor) => Ok(Value::Choice(
             constructor.ty,
             constructor.variant,
-            eval_expr(constructor.kind, bindings_in_scope)?,
-        )))),
-        ExprKind::Closure(arms) => Ok(Value::Function(Rc::new((
+            Rc::new(eval_expr(constructor.kind, bindings_in_scope)?),
+        )),
+        ExprKind::Closure(arms) => Ok(Value::Function(
             arms.as_slice(),
-            bindings_in_scope.local_state.clone(),
-        )))),
+            Rc::new(bindings_in_scope.local_state.clone()),
+        )),
         ExprKind::Appl(appl) => {
             let lhs = eval_expr(&appl.lhs, bindings_in_scope)?;
             let fun = eval_expr(&appl.fun, bindings_in_scope)?;
@@ -154,11 +154,11 @@ fn pat_as_expr<'hir>(
 
             Value::Record(Rc::new(fields))
         }
-        PatKind::Constructor(constructor) => Value::Choice(Rc::new((
+        PatKind::Constructor(constructor) => Value::Choice(
             constructor.ty,
             constructor.variant,
-            pat_as_expr(constructor.kind, bindings_in_scope)?,
-        ))),
+            Rc::new(pat_as_expr(constructor.kind, bindings_in_scope)?),
+        ),
         PatKind::Error => todo!(),
     };
 
@@ -172,8 +172,7 @@ fn call_function<'hir>(
     global_state: &GlobalBindings<'hir>,
 ) -> Result<Value<'hir>, EvalError> {
     match function {
-        Value::Function(arms_and_env) => {
-            let (arms, closure_env) = arms_and_env.as_ref();
+        Value::Function(arms, closure_env) => {
             let arm = arms
                 .iter()
                 .find(|&arm| match arm.params.len() {
@@ -188,7 +187,7 @@ fn call_function<'hir>(
                 .ok_or(EvalError::PatternMatchRefuted)?;
 
             // there's definitely some room for neat optimizations here
-            let mut new_scope = closure_env.clone();
+            let mut new_scope = (*closure_env).clone();
             let mut push_binding_fn = |ident, value| {
                 new_scope.insert(ident, value);
             };
@@ -241,9 +240,8 @@ fn check_pattern<'hir>(value: &Value, pattern: &Pat<'hir>) -> bool {
                 variant: pat_variant,
                 kind,
             }),
-            Value::Choice(value_choice),
+            Value::Choice(value_ty, value_variant, value),
         ) => {
-            let (value_ty, value_variant, value) = value_choice.as_ref();
             // `&&` short-circuits according to Rust reference.
             pat_ty == value_ty && pat_variant == value_variant && check_pattern(value, kind)
         }
@@ -376,11 +374,10 @@ fn match_pattern<'hir>(
                     variant: pat_variant,
                     kind,
                 }),
-                Value::Choice(value_choice),
+                Value::Choice(value_ty, value_variant, value),
             ) => {
-                let (value_ty, value_variant, value) = value_choice.as_ref();
-                if pat_ty == value_ty && pat_variant == value_variant {
-                    match_pattern(value.clone(), kind, push_binding)
+                if *pat_ty == value_ty && *pat_variant == value_variant {
+                    match_pattern((*value).clone(), kind, push_binding)
                 } else {
                     Err(EvalError::FailedPatternMatch)
                 }
@@ -413,7 +410,7 @@ pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<Value<'hir>, Eva
     for (name, def) in &program.function_defs {
         global_state.functions.insert(
             *name,
-            Value::Function(Rc::new((def.arms.as_slice(), HashMap::new()))),
+            Value::Function(def.arms.as_slice(), Rc::new(HashMap::new())),
         );
     }
 
