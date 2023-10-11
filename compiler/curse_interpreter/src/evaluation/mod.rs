@@ -26,143 +26,123 @@ impl<'hir> GlobalBindings<'hir> {
 pub type Bindings<'hir> = HashMap<InternedString, Value<'hir>>;
 
 #[derive(Copy, Clone)]
-struct BindingsInScope<'a, 'hir> {
+struct RuntimeState<'a, 'hir> {
     global_state: &'a GlobalBindings<'hir>,
     local_state: &'a Bindings<'hir>,
 }
 
-impl<'a, 'hir> BindingsInScope<'a, 'hir> {
+impl<'a, 'hir> RuntimeState<'a, 'hir> {
     fn get(self, ident: &InternedString) -> Option<Value<'hir>> {
         self.local_state
             .get(ident)
             .or_else(|| self.global_state.functions.get(ident))
             .cloned()
     }
-}
 
-fn eval_record<'hir>(
-    fields: impl IntoIterator<Item = (hir::Pat<'hir>, Option<Result<Value<'hir>, EvalError>>)>,
-    bindings_in_scope: BindingsInScope<'_, 'hir>,
-) -> Result<Vec<(InternedString, Value<'hir>)>, EvalError> {
-    let mut entries = vec![];
+    fn eval_record(
+        self,
+        fields: impl IntoIterator<Item = (hir::Pat<'hir>, Option<Result<Value<'hir>, EvalError>>)>,
+    ) -> Result<Vec<(InternedString, Value<'hir>)>, EvalError> {
+        let mut entries = vec![];
 
-    for (field_pat, opt_expr) in fields {
-        let expr = opt_expr.unwrap_or_else(|| pat_as_expr(&field_pat, bindings_in_scope))?;
+        for (field_pat, opt_expr) in fields {
+            let expr = opt_expr.unwrap_or_else(|| self.pat_as_expr(&field_pat))?;
 
-        match_pattern(expr, &field_pat, &mut |ident, value| {
-            entries.push((ident, value))
-        })?;
+            match_pattern(expr, &field_pat, &mut |ident, value| {
+                entries.push((ident, value))
+            })?;
+        }
+
+        Ok(entries)
     }
 
-    Ok(entries)
-}
-
-fn eval_expr<'hir>(
-    expr: &Expr<'hir>,
-    bindings_in_scope: BindingsInScope<'_, 'hir>,
-) -> Result<Value<'hir>, EvalError> {
-    match expr.kind {
-        ExprKind::Symbol(hir::Symbol::Plus) => Ok(Value::Builtin(builtins::add)),
-        ExprKind::Symbol(hir::Symbol::Star) => Ok(Value::Builtin(builtins::mul)),
-        ExprKind::Symbol(hir::Symbol::Minus) => Ok(Value::Builtin(builtins::sub)),
-        ExprKind::Symbol(hir::Symbol::Slash) => Ok(Value::Builtin(builtins::div)),
-        ExprKind::Symbol(hir::Symbol::Percent) => Ok(Value::Builtin(builtins::modulo)),
-        ExprKind::Symbol(hir::Symbol::Eq) => Ok(Value::Builtin(builtins::eq)),
-        ExprKind::Symbol(hir::Symbol::Lt) => Ok(Value::Builtin(builtins::lt)),
-        ExprKind::Symbol(hir::Symbol::Gt) => Ok(Value::Builtin(builtins::gt)),
-        ExprKind::Symbol(hir::Symbol::Le) => Ok(Value::Builtin(builtins::le)),
-        ExprKind::Symbol(hir::Symbol::Ge) => Ok(Value::Builtin(builtins::ge)),
-        ExprKind::Symbol(hir::Symbol::Semi) => Ok(Value::Builtin(builtins::semi)),
-        ExprKind::Symbol(hir::Symbol::Dot) => unimplemented!(),
-        ExprKind::Symbol(hir::Symbol::DotDot) => unimplemented!(),
-        ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
-        ExprKind::Lit(Lit::Ident(ident)) => {
-            bindings_in_scope
-                .get(&ident)
-                .ok_or_else(|| EvalError::UnboundVariable {
+    fn eval_expr(self, expr: &Expr<'hir>) -> Result<Value<'hir>, EvalError> {
+        match expr.kind {
+            ExprKind::Symbol(hir::Symbol::Plus) => Ok(Value::Builtin(builtins::add)),
+            ExprKind::Symbol(hir::Symbol::Star) => Ok(Value::Builtin(builtins::mul)),
+            ExprKind::Symbol(hir::Symbol::Minus) => Ok(Value::Builtin(builtins::sub)),
+            ExprKind::Symbol(hir::Symbol::Slash) => Ok(Value::Builtin(builtins::div)),
+            ExprKind::Symbol(hir::Symbol::Percent) => Ok(Value::Builtin(builtins::modulo)),
+            ExprKind::Symbol(hir::Symbol::Eq) => Ok(Value::Builtin(builtins::eq)),
+            ExprKind::Symbol(hir::Symbol::Lt) => Ok(Value::Builtin(builtins::lt)),
+            ExprKind::Symbol(hir::Symbol::Gt) => Ok(Value::Builtin(builtins::gt)),
+            ExprKind::Symbol(hir::Symbol::Le) => Ok(Value::Builtin(builtins::le)),
+            ExprKind::Symbol(hir::Symbol::Ge) => Ok(Value::Builtin(builtins::ge)),
+            ExprKind::Symbol(hir::Symbol::Semi) => Ok(Value::Builtin(builtins::semi)),
+            ExprKind::Symbol(hir::Symbol::Dot) => unimplemented!(),
+            ExprKind::Symbol(hir::Symbol::DotDot) => unimplemented!(),
+            ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
+            ExprKind::Lit(Lit::Ident(ident)) => {
+                self.get(&ident).ok_or_else(|| EvalError::UnboundVariable {
                     literal: ident.to_string(),
                     span: expr.span,
                 })
-        }
-        ExprKind::Lit(Lit::Bool(bool)) => Ok(Value::Bool(bool)),
-        ExprKind::Record(entries) => {
-            let fields = eval_record(
-                entries.iter().map(|(field_pat, opt_expr)| {
-                    let opt_value = opt_expr
-                        .as_ref()
-                        .map(|expr| eval_expr(expr, bindings_in_scope));
+            }
+            ExprKind::Lit(Lit::Bool(bool)) => Ok(Value::Bool(bool)),
+            ExprKind::Record(entries) => {
+                let fields = self.eval_record(entries.iter().map(|(field_pat, opt_expr)| {
+                    let opt_value = opt_expr.as_ref().map(|expr| self.eval_expr(expr));
 
                     (*field_pat, opt_value)
-                }),
-                bindings_in_scope,
-            )?;
+                }))?;
 
-            Ok(Value::Record(Rc::new(fields)))
+                Ok(Value::Record(Rc::new(fields)))
+            }
+            ExprKind::Constructor(constructor) => Ok(Value::Choice(
+                constructor.ty,
+                constructor.variant,
+                Rc::new(self.eval_expr(constructor.kind)?),
+            )),
+            ExprKind::Closure(arms) => Ok(Value::Function(
+                arms.as_slice(),
+                Rc::new(self.local_state.clone()),
+            )),
+            ExprKind::Appl(appl) => {
+                let lhs = self.eval_expr(&appl.lhs)?;
+                let fun = self.eval_expr(&appl.fun)?;
+                let rhs = self.eval_expr(&appl.rhs)?;
+                call_function(lhs, fun, rhs, self.global_state)
+            }
+            ExprKind::Region(_) => todo!("Regions"),
+            ExprKind::Error => todo!("error handling"),
         }
-        ExprKind::Constructor(constructor) => Ok(Value::Choice(
-            constructor.ty,
-            constructor.variant,
-            Rc::new(eval_expr(constructor.kind, bindings_in_scope)?),
-        )),
-        ExprKind::Closure(arms) => Ok(Value::Function(
-            arms.as_slice(),
-            Rc::new(bindings_in_scope.local_state.clone()),
-        )),
-        ExprKind::Appl(appl) => {
-            let lhs = eval_expr(&appl.lhs, bindings_in_scope)?;
-            let fun = eval_expr(&appl.fun, bindings_in_scope)?;
-            let rhs = eval_expr(&appl.rhs, bindings_in_scope)?;
-            call_function(lhs, fun, rhs, bindings_in_scope.global_state)
-        }
-        ExprKind::Region(_) => todo!("Regions"),
-        ExprKind::Error => todo!("error handling"),
     }
-}
 
-fn pat_as_expr<'hir>(
-    pat: &Pat<'hir>,
-    bindings_in_scope: BindingsInScope<'_, 'hir>,
-) -> Result<Value<'hir>, EvalError> {
-    let value = match pat.kind {
-        PatKind::Lit(Lit::Ident(ident)) => {
-            bindings_in_scope
-                .get(&ident)
-                .ok_or_else(|| EvalError::UnboundVariable {
-                    literal: format!("{pat:?}"),
+    fn pat_as_expr(self, pat: &Pat<'hir>) -> Result<Value<'hir>, EvalError> {
+        let value = match pat.kind {
+            PatKind::Lit(Lit::Ident(ident)) => {
+                self.get(&ident).ok_or_else(|| EvalError::UnboundVariable {
+                    literal: ident.to_string(),
                     span: pat.span,
                 })?
-        }
-        PatKind::Lit(Lit::Integer(num)) => Value::Integer(num),
-        PatKind::Lit(Lit::Bool(b)) => Value::Bool(b),
-        PatKind::Record(fields) => {
-            // { { a: b }: { a: b } }
-            // If we see a record expression like `{ { a, b } }`
-            // then the `pat` would be `{ a, b }`.
-            // This function will generate the `{ a, b }` expr
-            // which is then used for matching to evaluate `{ { a, b }: { a, b } }`
-            // which evaluates to just `{ a, b }`
-            let fields = eval_record(
-                fields.iter().map(|(field_pat, opt_pat)| {
-                    let opt_value = opt_pat
-                        .as_ref()
-                        .map(|pat| pat_as_expr(pat, bindings_in_scope));
+            }
+            PatKind::Lit(Lit::Integer(num)) => Value::Integer(num),
+            PatKind::Lit(Lit::Bool(b)) => Value::Bool(b),
+            PatKind::Record(fields) => {
+                // { { a: b }: { a: b } }
+                // If we see a record expression like `{ { a, b } }`
+                // then the `pat` would be `{ a, b }`.
+                // This function will generate the `{ a, b }` expr
+                // which is then used for matching to evaluate `{ { a, b }: { a, b } }`
+                // which evaluates to just `{ a, b }`
+                let fields = self.eval_record(fields.iter().map(|(field_pat, opt_pat)| {
+                    let opt_value = opt_pat.as_ref().map(|pat| self.pat_as_expr(pat));
 
                     (*field_pat, opt_value)
-                }),
-                bindings_in_scope,
-            )?;
+                }))?;
 
-            Value::Record(Rc::new(fields))
-        }
-        PatKind::Constructor(constructor) => Value::Choice(
-            constructor.ty,
-            constructor.variant,
-            Rc::new(pat_as_expr(constructor.kind, bindings_in_scope)?),
-        ),
-        PatKind::Error => todo!(),
-    };
+                Value::Record(Rc::new(fields))
+            }
+            PatKind::Constructor(constructor) => Value::Choice(
+                constructor.ty,
+                constructor.variant,
+                Rc::new(self.pat_as_expr(constructor.kind)?),
+            ),
+            PatKind::Error => todo!(),
+        };
 
-    Ok(value)
+        Ok(value)
+    }
 }
 
 fn call_function<'hir>(
@@ -205,14 +185,11 @@ fn call_function<'hir>(
                 _ => unreachable!("functions in curse cannot have more than parameters"),
             };
 
-            let local_state = &new_scope;
-            eval_expr(
-                &arm.body,
-                BindingsInScope {
-                    global_state,
-                    local_state,
-                },
-            )
+            RuntimeState {
+                global_state,
+                local_state: &new_scope,
+            }
+            .eval_expr(&arm.body)
         }
         Value::Builtin(builtin) => builtin(left, right),
         _ => Err(EvalError::TypeMismatch),
@@ -294,48 +271,8 @@ fn match_record<'hir>(
             PatKind::Constructor(_) => todo!(),
             PatKind::Error => todo!(),
         }
-        // match field_pat {
-        //     hir::Binding::Ident(field_ident) => {
-        //         let Some(value) = value_fields.remove(&field_ident.symbol) else {
-        //             return Err(EvalError::FailedPatternMatch);
-        //         };
-        //
-        //         if let Some(pat) = opt_value_pat {
-        //             // pattern `{ a: <PAT> }` will bind the value of field `a` to pattern <PAT>,
-        //             // e.g. `{ a: foo }` will bind the value of field `a` to ident `foo`.
-        //             match_pattern(value, &pat, push_binding)?;
-        //         } else {
-        //             // pattern `{ a }` will bind the value of field `a` to ident `a`
-        //             push_binding(field_ident.symbol, value);
-        //         }
-        //     }
-        //     hir::Binding::Record(fields) => {
-        //         if let Some(pat) = opt_value_pat {
-        //             // e.g. `{ { a, b }: ab, c }: { a: 1, b: 2, c: 3 }`
-        //             // `new_entries` is us making the `{ a, b }` map in the binding,
-        //             // where we fill it with values from the parent according to its fields
-        //             // but push to a fresh record.
-        //             let mut new_entries = vec![];
-        //             match_record(&fields[..], value_fields, &mut |ident, value| {
-        //                 new_entries.push((ident, value));
-        //             })?;
-        //
-        //             // Now that we've created a fresh record, we take it and try to bind it
-        //             // against the pattern
-        //             match_pattern(
-        //                 (Value::Record(OwnedMap::new(new_entries))),
-        //                 pat,
-        //                 push_binding,
-        //             )?;
-        //         } else {
-        //             // `{ { a, b } }: { a, b }`
-        //             // kinda pointless, just inline a and b directly into the parent
-        //             match_record(bindings, value_fields, push_binding)?;
-        //         }
-        //     }
-        //     hir::Binding::Error => todo!(),
-        // }
     }
+
     Ok(())
 }
 
