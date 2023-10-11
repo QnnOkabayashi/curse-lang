@@ -1,7 +1,7 @@
-use crate::builtins;
-use crate::error::EvalError;
+use crate::builtins::Builtin;
+use crate::error::{EvalError, MatchError};
 use crate::value::Value;
-use curse_hir::hir::{self, Expr, ExprKind, Lit, Pat, PatKind, Program};
+use curse_hir::hir::{Constructor, Expr, ExprKind, Lit, Pat, PatKind, Program, Symbol};
 use curse_interner::InternedString;
 use std::{collections::HashMap, rc::Rc};
 
@@ -41,29 +41,42 @@ impl<'a, 'hir> RuntimeState<'a, 'hir> {
 
     fn eval_record(
         self,
-        fields: impl IntoIterator<Item = (hir::Pat<'hir>, Option<Result<Value<'hir>, EvalError>>)>,
+        fields: impl IntoIterator<Item = (Pat<'hir>, Option<Result<Value<'hir>, EvalError>>)>,
     ) -> Result<Vec<(InternedString, Value<'hir>)>, EvalError> {
         let mut entries = vec![];
 
         for (field_pat, opt_res_value) in fields {
             if let Some(res_value) = opt_res_value {
-                match_pattern(res_value?, &field_pat, &mut |ident, value| {
+                bind_pat_against_value(res_value?, &field_pat, &mut |ident, value| {
                     entries.push((ident, value))
                 })?;
             } else {
-                // I'd like to get rid of pat_as_expr because it feels very unnecessary
-                // Essentially what is happening right now is that if we see { .., <PAT>, .. },
-                // then it converts it into { .., <PAT>: <PAT>, .. } because all valid patterns
-                // are also valid expressions, and then MATCHES THEM TOGETHER. Yes, it creates
-                // an expression from a pattern and then attempts to match it to itself.
-                // Of course it always succeeds, but it's silly that it even does that since
-                // I feel like the amount of computation done to create the expression is greater
-                // than or equal to the amount of computation to do what we're trying to do.
-                match_pattern(
-                    self.pat_as_expr(&field_pat)?,
-                    &field_pat,
-                    &mut |ident, value| entries.push((ident, value)),
-                )?;
+                match field_pat.kind {
+                    PatKind::Lit(Lit::Ident(ident)) => {
+                        let value = self.get(&ident).ok_or_else(|| EvalError::UnboundVariable {
+                            literal: ident.to_string(),
+                            span: field_pat.span,
+                        })?;
+                        entries.push((ident, value));
+                    }
+                    PatKind::Lit(Lit::Integer(_)) => {
+                        return Err(EvalError::Match(MatchError::IntLiteralField(
+                            field_pat.span.start_len().into(),
+                        )))
+                    }
+                    PatKind::Lit(Lit::Bool(_)) => {
+                        return Err(EvalError::Match(MatchError::BoolLiteralField(
+                            field_pat.span.start_len().into(),
+                        )))
+                    }
+                    PatKind::Record(_) => {
+                        return Err(EvalError::Match(MatchError::RecordFieldPatWithoutValue(
+                            field_pat.span.start_len().into(),
+                        )))
+                    }
+                    PatKind::Constructor(_) => todo!(),
+                    PatKind::Error => todo!(),
+                }
             }
         }
 
@@ -72,19 +85,19 @@ impl<'a, 'hir> RuntimeState<'a, 'hir> {
 
     fn eval_expr(self, expr: &Expr<'hir>) -> Result<Value<'hir>, EvalError> {
         match expr.kind {
-            ExprKind::Symbol(hir::Symbol::Plus) => Ok(Value::Builtin(builtins::add)),
-            ExprKind::Symbol(hir::Symbol::Star) => Ok(Value::Builtin(builtins::mul)),
-            ExprKind::Symbol(hir::Symbol::Minus) => Ok(Value::Builtin(builtins::sub)),
-            ExprKind::Symbol(hir::Symbol::Slash) => Ok(Value::Builtin(builtins::div)),
-            ExprKind::Symbol(hir::Symbol::Percent) => Ok(Value::Builtin(builtins::modulo)),
-            ExprKind::Symbol(hir::Symbol::Eq) => Ok(Value::Builtin(builtins::eq)),
-            ExprKind::Symbol(hir::Symbol::Lt) => Ok(Value::Builtin(builtins::lt)),
-            ExprKind::Symbol(hir::Symbol::Gt) => Ok(Value::Builtin(builtins::gt)),
-            ExprKind::Symbol(hir::Symbol::Le) => Ok(Value::Builtin(builtins::le)),
-            ExprKind::Symbol(hir::Symbol::Ge) => Ok(Value::Builtin(builtins::ge)),
-            ExprKind::Symbol(hir::Symbol::Semi) => Ok(Value::Builtin(builtins::semi)),
-            ExprKind::Symbol(hir::Symbol::Dot) => unimplemented!(),
-            ExprKind::Symbol(hir::Symbol::DotDot) => unimplemented!(),
+            ExprKind::Symbol(Symbol::Plus) => Ok(Value::Builtin(Builtin::Add)),
+            ExprKind::Symbol(Symbol::Star) => Ok(Value::Builtin(Builtin::Mul)),
+            ExprKind::Symbol(Symbol::Minus) => Ok(Value::Builtin(Builtin::Sub)),
+            ExprKind::Symbol(Symbol::Slash) => Ok(Value::Builtin(Builtin::Div)),
+            ExprKind::Symbol(Symbol::Percent) => Ok(Value::Builtin(Builtin::Mod)),
+            ExprKind::Symbol(Symbol::Eq) => Ok(Value::Builtin(Builtin::Eq)),
+            ExprKind::Symbol(Symbol::Lt) => Ok(Value::Builtin(Builtin::Lt)),
+            ExprKind::Symbol(Symbol::Gt) => Ok(Value::Builtin(Builtin::Gt)),
+            ExprKind::Symbol(Symbol::Le) => Ok(Value::Builtin(Builtin::Le)),
+            ExprKind::Symbol(Symbol::Ge) => Ok(Value::Builtin(Builtin::Ge)),
+            ExprKind::Symbol(Symbol::Semi) => Ok(Value::Builtin(Builtin::Semi)),
+            ExprKind::Symbol(Symbol::Dot) => unimplemented!(),
+            ExprKind::Symbol(Symbol::DotDot) => unimplemented!(),
             ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
             ExprKind::Lit(Lit::Ident(ident)) => {
                 self.get(&ident).ok_or_else(|| EvalError::UnboundVariable {
@@ -121,42 +134,6 @@ impl<'a, 'hir> RuntimeState<'a, 'hir> {
             ExprKind::Error => todo!("error handling"),
         }
     }
-
-    fn pat_as_expr(self, pat: &Pat<'hir>) -> Result<Value<'hir>, EvalError> {
-        let value = match pat.kind {
-            PatKind::Lit(Lit::Ident(ident)) => {
-                self.get(&ident).ok_or_else(|| EvalError::UnboundVariable {
-                    literal: ident.to_string(),
-                    span: pat.span,
-                })?
-            }
-            PatKind::Lit(Lit::Integer(num)) => Value::Integer(num),
-            PatKind::Lit(Lit::Bool(b)) => Value::Bool(b),
-            PatKind::Record(fields) => {
-                // { { a: b }: { a: b } }
-                // If we see a record expression like `{ { a, b } }`
-                // then the `pat` would be `{ a, b }`.
-                // This function will generate the `{ a, b }` expr
-                // which is then used for matching to evaluate `{ { a, b }: { a, b } }`
-                // which evaluates to just `{ a, b }`
-                let fields = self.eval_record(fields.iter().map(|(field_pat, opt_pat)| {
-                    let opt_value = opt_pat.as_ref().map(|pat| self.pat_as_expr(pat));
-
-                    (*field_pat, opt_value)
-                }))?;
-
-                Value::Record(Rc::new(fields))
-            }
-            PatKind::Constructor(constructor) => Value::Choice(
-                constructor.ty,
-                constructor.variant,
-                Rc::new(self.pat_as_expr(constructor.kind)?),
-            ),
-            PatKind::Error => todo!(),
-        };
-
-        Ok(value)
-    }
 }
 
 fn call_function<'hir>(
@@ -190,11 +167,11 @@ fn call_function<'hir>(
                     // nothing to match
                 }
                 1 => {
-                    match_pattern(left, &arm.params[0].pat, &mut push_binding_fn)?;
+                    bind_pat_against_value(left, &arm.params[0].pat, &mut push_binding_fn)?;
                 }
                 2 => {
-                    match_pattern(left, &arm.params[0].pat, &mut push_binding_fn)?;
-                    match_pattern(right, &arm.params[1].pat, &mut push_binding_fn)?;
+                    bind_pat_against_value(left, &arm.params[0].pat, &mut push_binding_fn)?;
+                    bind_pat_against_value(right, &arm.params[1].pat, &mut push_binding_fn)?;
                 }
                 _ => unreachable!("functions in curse cannot have more than parameters"),
             };
@@ -205,8 +182,8 @@ fn call_function<'hir>(
             }
             .eval_expr(&arm.body)
         }
-        Value::Builtin(builtin) => builtin(left, right),
-        _ => Err(EvalError::TypeMismatch),
+        Value::Builtin(op) => op.compute(left, right),
+        uncallable => Err(EvalError::TypeMismatch(format!("expected function or builtin, found {uncallable:?}"))),
     }
 }
 
@@ -226,7 +203,7 @@ fn check_pattern<'hir>(value: &Value, pattern: &Pat<'hir>) -> bool {
             }
         }
         (
-            PatKind::Constructor(hir::Constructor {
+            PatKind::Constructor(Constructor {
                 ty: pat_ty,
                 variant: pat_variant,
                 kind,
@@ -244,7 +221,7 @@ fn check_pattern<'hir>(value: &Value, pattern: &Pat<'hir>) -> bool {
 }
 
 fn match_record<'hir>(
-    bindings: &[(hir::Pat<'hir>, Option<Pat<'hir>>)],
+    bindings: &[(Pat<'hir>, Option<Pat<'hir>>)],
     // When matching on another record, get_value looks up keys from the other record
     // When constructing, it pulls idents from the local/global bindings
     get_value: &mut dyn FnMut(InternedString) -> Option<Value<'hir>>,
@@ -256,7 +233,7 @@ fn match_record<'hir>(
                 let value = get_value(ident).ok_or(EvalError::FailedPatternMatch)?;
 
                 if let Some(value_pat) = opt_value_pat {
-                    match_pattern(value, value_pat, push_binding)?;
+                    bind_pat_against_value(value, value_pat, push_binding)?;
                 } else {
                     push_binding(ident, value);
                 }
@@ -275,7 +252,7 @@ fn match_record<'hir>(
 
                     // Now that we've created a fresh record, we take it and try to bind it
                     // against the pattern
-                    match_pattern(Value::Record(Rc::new(new_entries)), pat, push_binding)?;
+                    bind_pat_against_value(Value::Record(Rc::new(new_entries)), pat, push_binding)?;
                 } else {
                     // `{ { a, b } }: { a, b }`
                     // kinda pointless, just inline a and b directly into the parent
@@ -290,68 +267,64 @@ fn match_record<'hir>(
     Ok(())
 }
 
-fn match_pattern<'hir>(
+fn bind_pat_against_value<'hir>(
     value: Value<'hir>,
     pattern: &Pat<'hir>,
     push_binding: &mut dyn FnMut(InternedString, Value<'hir>),
 ) -> Result<(), EvalError> {
-    if let PatKind::Lit(Lit::Ident(ident)) = pattern.kind {
-        push_binding(ident, value);
-        Ok(())
-    } else {
-        match (&pattern.kind, value) {
-            (PatKind::Record(pattern_map), Value::Record(value_map)) => {
-                let mut value_fields: HashMap<InternedString, Value<'hir>> = value_map
-                    .iter()
-                    .map(|(ident, value)| (*ident, value.clone()))
-                    .collect();
-
-                match_record(
-                    &pattern_map[..],
-                    &mut |ident| value_fields.remove(&ident),
-                    push_binding,
-                )?;
-
-                // Should have seen all the fields now (otherwise it's not matchable)
-                if value_fields.is_empty() {
-                    Ok(())
-                } else {
-                    Err(EvalError::FailedPatternMatch)
-                }
-            }
-            (
-                PatKind::Constructor(hir::Constructor {
-                    ty: pat_ty,
-                    variant: pat_variant,
-                    kind,
-                }),
-                Value::Choice(value_ty, value_variant, value),
-            ) => {
-                if *pat_ty == value_ty && *pat_variant == value_variant {
-                    match_pattern((*value).clone(), kind, push_binding)
-                } else {
-                    Err(EvalError::FailedPatternMatch)
-                }
-            }
-            (PatKind::Lit(Lit::Integer(a)), Value::Integer(b)) => {
-                if *a == b {
-                    Ok(())
-                } else {
-                    Err(EvalError::FailedPatternMatch)
-                }
-            }
-            (PatKind::Lit(Lit::Bool(a)), Value::Bool(b)) => {
-                if *a == b {
-                    Ok(())
-                } else {
-                    Err(EvalError::FailedPatternMatch)
-                }
-            }
-            (PatKind::Lit(Lit::Ident(_)), _) => {
-                unreachable!("handled above, dang Rc making pattern matching annoying")
-            }
-            _ => Err(EvalError::FailedPatternMatch),
+    match (pattern.kind, value) {
+        (PatKind::Lit(Lit::Ident(ident)), value) => {
+            push_binding(ident, value);
+            Ok(())
         }
+        (PatKind::Record(pattern_map), Value::Record(value_map)) => {
+            let mut value_fields: HashMap<InternedString, Value<'hir>> = value_map
+                .iter()
+                .map(|(ident, value)| (*ident, value.clone()))
+                .collect();
+
+            match_record(
+                &pattern_map[..],
+                &mut |ident| value_fields.remove(&ident),
+                push_binding,
+            )?;
+
+            // Should have seen all the fields now (otherwise it's not matchable)
+            if value_fields.is_empty() {
+                Ok(())
+            } else {
+                Err(EvalError::FailedPatternMatch)
+            }
+        }
+        (
+            PatKind::Constructor(Constructor {
+                ty: pat_ty,
+                variant: pat_variant,
+                kind,
+            }),
+            Value::Choice(value_ty, value_variant, value),
+        ) => {
+            if *pat_ty == value_ty && *pat_variant == value_variant {
+                bind_pat_against_value((*value).clone(), kind, push_binding)
+            } else {
+                Err(EvalError::FailedPatternMatch)
+            }
+        }
+        (PatKind::Lit(Lit::Integer(a)), Value::Integer(b)) => {
+            if a == b {
+                Ok(())
+            } else {
+                Err(EvalError::FailedPatternMatch)
+            }
+        }
+        (PatKind::Lit(Lit::Bool(a)), Value::Bool(b)) => {
+            if a == b {
+                Ok(())
+            } else {
+                Err(EvalError::FailedPatternMatch)
+            }
+        }
+        _ => Err(EvalError::FailedPatternMatch),
     }
 }
 

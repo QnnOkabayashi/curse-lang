@@ -1,31 +1,43 @@
 use crate::{error::EvalError, value::Value};
 
-macro_rules! binary_operation {
-    ($name:ident = $rettype:ident: $lhs:ident $op:tt $rhs:ident) => {
-        pub fn $name<'hir>(
-            lhs: Value<'hir>,
-            rhs: Value<'hir>,
-        ) -> Result<Value<'hir>, EvalError> {
-            match (lhs, rhs) {
-                (Value::Integer($lhs), Value::Integer($rhs)) => Ok(Value::$rettype($lhs $op $rhs)),
-                _ => Err(EvalError::TypeMismatch),
-            }
-        }
-    };
+#[derive(Copy, Clone, Debug)]
+pub enum Builtin {
+    Add,
+    Mul,
+    Sub,
+    Div,
+    Mod,
+    Eq,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Semi,
 }
 
-binary_operation!(add = Integer: n + m);
-binary_operation!(mul = Integer: n * m);
-binary_operation!(sub = Integer: n - m);
-binary_operation!(div = Integer: n / m);
-binary_operation!(modulo = Integer: n % m);
-
-binary_operation!(eq = Bool: n == m);
-binary_operation!(lt = Bool: n < m);
-binary_operation!(gt = Bool: n > m);
-binary_operation!(le = Bool: n <= m);
-binary_operation!(ge = Bool: n >= m);
-
-pub fn semi<'hir>(_lhs: Value<'hir>, rhs: Value<'hir>) -> Result<Value<'hir>, EvalError> {
-    Ok(rhs)
+impl Builtin {
+    pub fn compute<'hir>(
+        self,
+        lhs: Value<'hir>,
+        rhs: Value<'hir>,
+    ) -> Result<Value<'hir>, EvalError> {
+        use Builtin::*;
+        match (self, lhs, rhs) {
+            (Add, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs + rhs)),
+            (Mul, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs * rhs)),
+            (Sub, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs - rhs)),
+            (Div, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs / rhs)),
+            (Mod, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs % rhs)),
+            (Lt, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Bool(lhs < rhs)),
+            (Gt, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Bool(lhs > rhs)),
+            (Le, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Bool(lhs <= rhs)),
+            (Ge, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Bool(lhs >= rhs)),
+            (Eq, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Bool(lhs == rhs)),
+            (Eq, Value::Bool(lhs), Value::Bool(rhs)) => Ok(Value::Bool(lhs == rhs)),
+            (Semi, _lhs, rhs) => Ok(rhs),
+            (builtin, l, r) => Err(EvalError::TypeMismatch(format!(
+                "function call `{l:?} {builtin:?} {r:?}` is invalid"
+            ))),
+        }
+    }
 }

@@ -1,5 +1,5 @@
 use curse_span::Span;
-use miette::Diagnostic;
+use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 #[derive(Debug, Diagnostic, Error)]
@@ -13,12 +13,27 @@ pub enum EvalError {
     #[error("Failed pattern match")]
     FailedPatternMatch,
 
+    #[error("{0}")]
+    Match(MatchError),
+
     #[error("Pattern match refuted")]
     PatternMatchRefuted,
 
     #[error("Type mismatch (prolly compiler bug)")]
-    TypeMismatch,
+    TypeMismatch(String),
+}
 
-    #[error("Missing field in record")]
-    MissingField,
+#[derive(Debug, Diagnostic, Error)]
+pub enum MatchError {
+    #[error("cannot have an integer literal as a field pattern")]
+    #[diagnostic(help("remove this field"))]
+    IntLiteralField(#[label("here")] SourceSpan),
+
+    #[error("cannot have an boolean literal as a field pattern")]
+    #[diagnostic(help("remove this field"))]
+    BoolLiteralField(#[label("here")] SourceSpan),
+
+    #[error("record field pattern without value")]
+    #[diagnostic(help("inline these fields"))]
+    RecordFieldPatWithoutValue(#[label("here")] SourceSpan),
 }

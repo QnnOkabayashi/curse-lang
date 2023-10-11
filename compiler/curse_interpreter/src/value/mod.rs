@@ -2,7 +2,7 @@ use curse_hir::hir::Arm;
 use curse_interner::{Ident, InternedString};
 use std::{fmt, rc::Rc};
 
-use crate::{error::EvalError, evaluation::Bindings};
+use crate::{builtins::Builtin, evaluation::Bindings};
 
 // Type representing a value in curse. Subject to change as we potentially come up with better
 // representations of these values
@@ -14,7 +14,7 @@ pub enum Value<'hir> {
     Function(&'hir [Arm<'hir>], Rc<Bindings<'hir>>),
     Record(Rc<Vec<(InternedString, Value<'hir>)>>),
     Choice(Ident, Ident, Rc<Value<'hir>>),
-    Builtin(Builtin<'hir>),
+    Builtin(Builtin),
 }
 
 impl Value<'_> {
@@ -51,5 +51,3 @@ impl Default for Value<'_> {
         Self::Record(Rc::new(Vec::new()))
     }
 }
-
-pub type Builtin<'hir> = fn(Value<'hir>, Value<'hir>) -> Result<Value<'hir>, EvalError>;
