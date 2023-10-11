@@ -45,12 +45,26 @@ impl<'a, 'hir> RuntimeState<'a, 'hir> {
     ) -> Result<Vec<(InternedString, Value<'hir>)>, EvalError> {
         let mut entries = vec![];
 
-        for (field_pat, opt_expr) in fields {
-            let expr = opt_expr.unwrap_or_else(|| self.pat_as_expr(&field_pat))?;
-
-            match_pattern(expr, &field_pat, &mut |ident, value| {
-                entries.push((ident, value))
-            })?;
+        for (field_pat, opt_res_value) in fields {
+            if let Some(res_value) = opt_res_value {
+                match_pattern(res_value?, &field_pat, &mut |ident, value| {
+                    entries.push((ident, value))
+                })?;
+            } else {
+                // I'd like to get rid of pat_as_expr because it feels very unnecessary
+                // Essentially what is happening right now is that if we see { .., <PAT>, .. },
+                // then it converts it into { .., <PAT>: <PAT>, .. } because all valid patterns
+                // are also valid expressions, and then MATCHES THEM TOGETHER. Yes, it creates
+                // an expression from a pattern and then attempts to match it to itself.
+                // Of course it always succeeds, but it's silly that it even does that since
+                // I feel like the amount of computation done to create the expression is greater
+                // than or equal to the amount of computation to do what we're trying to do.
+                match_pattern(
+                    self.pat_as_expr(&field_pat)?,
+                    &field_pat,
+                    &mut |ident, value| entries.push((ident, value)),
+                )?;
+            }
         }
 
         Ok(entries)
