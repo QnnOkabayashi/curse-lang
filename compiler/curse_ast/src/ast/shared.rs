@@ -60,11 +60,11 @@ impl HasSpan for Lit {
 
 impl HasSpan for Path {
     fn start(&self) -> u32 {
-        self.parts.first().unwrap().start()
+        self.parts.first().unwrap_or(&self.last).start()
     }
 
     fn end(&self) -> u32 {
-        self.parts.last().unwrap().end()
+        self.parts.last().unwrap_or(&self.last).end()
     }
 }
 
