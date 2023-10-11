@@ -26,7 +26,13 @@ impl Builtin {
             (Add, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs + rhs)),
             (Mul, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs * rhs)),
             (Sub, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs - rhs)),
-            (Div, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs / rhs)),
+            (Div, Value::Integer(lhs), Value::Integer(rhs)) => {
+                if let Some(quotient) = lhs.checked_div(rhs) {
+                    Ok(Value::Integer(quotient))
+                } else {
+                    Err(EvalError::DivByZero)
+                }
+            }
             (Mod, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Integer(lhs % rhs)),
             (Lt, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Bool(lhs < rhs)),
             (Gt, Value::Integer(lhs), Value::Integer(rhs)) => Ok(Value::Bool(lhs > rhs)),

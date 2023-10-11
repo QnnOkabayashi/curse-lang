@@ -21,6 +21,9 @@ pub enum EvalError {
 
     #[error("Type mismatch (prolly compiler bug)")]
     TypeMismatch(String),
+
+    #[error("Attempted to divide by 0")]
+    DivByZero,
 }
 
 #[derive(Debug, Diagnostic, Error)]
