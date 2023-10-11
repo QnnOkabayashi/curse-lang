@@ -1,6 +1,6 @@
 use crate::builtins;
 use crate::error::EvalError;
-use crate::value::{OwnedMap, Value, ValueRef};
+use crate::value::Value;
 use curse_hir::hir::{self, Expr, ExprKind, Lit, Pat, PatKind, Program};
 use curse_interner::InternedString;
 use std::{collections::HashMap, rc::Rc};
@@ -8,7 +8,7 @@ use std::{collections::HashMap, rc::Rc};
 // globally available functions, both regular named functions as well as type constructors
 pub struct GlobalBindings<'hir> {
     // name of function => the function as a curse `Value`
-    functions: HashMap<InternedString, ValueRef<'hir>>,
+    functions: HashMap<InternedString, Value<'hir>>,
 
     // name of variant => name of enum
     constructors: HashMap<InternedString, InternedString>,
@@ -23,13 +23,13 @@ impl<'hir> GlobalBindings<'hir> {
     }
 }
 
-pub type Bindings<'hir> = HashMap<InternedString, ValueRef<'hir>>;
+pub type Bindings<'hir> = HashMap<InternedString, Value<'hir>>;
 
 fn eval_record<'hir>(
-    fields: impl IntoIterator<Item = (hir::Pat<'hir>, Option<Result<Rc<Value<'hir>>, EvalError>>)>,
+    fields: impl IntoIterator<Item = (hir::Pat<'hir>, Option<Result<Value<'hir>, EvalError>>)>,
     global_state: &GlobalBindings<'hir>,
     local_state: &Bindings<'hir>,
-) -> Result<OwnedMap<Rc<Value<'hir>>>, EvalError> {
+) -> Result<Vec<(InternedString, Value<'hir>)>, EvalError> {
     let mut entries = vec![];
 
     for (field_pat, opt_expr) in fields {
@@ -41,29 +41,29 @@ fn eval_record<'hir>(
         })?;
     }
 
-    Ok(OwnedMap::new(entries))
+    Ok(entries)
 }
 
 fn eval_expr<'hir>(
     expr: &Expr<'hir>,
     global_state: &GlobalBindings<'hir>,
     local_state: &Bindings<'hir>,
-) -> Result<ValueRef<'hir>, EvalError> {
+) -> Result<Value<'hir>, EvalError> {
     match expr.kind {
-        ExprKind::Symbol(hir::Symbol::Plus) => Ok(Rc::new(Value::Builtin(builtins::add))),
-        ExprKind::Symbol(hir::Symbol::Star) => Ok(Rc::new(Value::Builtin(builtins::mul))),
-        ExprKind::Symbol(hir::Symbol::Minus) => Ok(Rc::new(Value::Builtin(builtins::sub))),
-        ExprKind::Symbol(hir::Symbol::Slash) => Ok(Rc::new(Value::Builtin(builtins::div))),
-        ExprKind::Symbol(hir::Symbol::Percent) => Ok(Rc::new(Value::Builtin(builtins::modulo))),
-        ExprKind::Symbol(hir::Symbol::Eq) => Ok(Rc::new(Value::Builtin(builtins::eq))),
-        ExprKind::Symbol(hir::Symbol::Lt) => Ok(Rc::new(Value::Builtin(builtins::lt))),
-        ExprKind::Symbol(hir::Symbol::Gt) => Ok(Rc::new(Value::Builtin(builtins::gt))),
-        ExprKind::Symbol(hir::Symbol::Le) => Ok(Rc::new(Value::Builtin(builtins::le))),
-        ExprKind::Symbol(hir::Symbol::Ge) => Ok(Rc::new(Value::Builtin(builtins::ge))),
-        ExprKind::Symbol(hir::Symbol::Semi) => Ok(Rc::new(Value::Builtin(builtins::semi))),
+        ExprKind::Symbol(hir::Symbol::Plus) => Ok(Value::Builtin(builtins::add)),
+        ExprKind::Symbol(hir::Symbol::Star) => Ok(Value::Builtin(builtins::mul)),
+        ExprKind::Symbol(hir::Symbol::Minus) => Ok(Value::Builtin(builtins::sub)),
+        ExprKind::Symbol(hir::Symbol::Slash) => Ok(Value::Builtin(builtins::div)),
+        ExprKind::Symbol(hir::Symbol::Percent) => Ok(Value::Builtin(builtins::modulo)),
+        ExprKind::Symbol(hir::Symbol::Eq) => Ok(Value::Builtin(builtins::eq)),
+        ExprKind::Symbol(hir::Symbol::Lt) => Ok(Value::Builtin(builtins::lt)),
+        ExprKind::Symbol(hir::Symbol::Gt) => Ok(Value::Builtin(builtins::gt)),
+        ExprKind::Symbol(hir::Symbol::Le) => Ok(Value::Builtin(builtins::le)),
+        ExprKind::Symbol(hir::Symbol::Ge) => Ok(Value::Builtin(builtins::ge)),
+        ExprKind::Symbol(hir::Symbol::Semi) => Ok(Value::Builtin(builtins::semi)),
         ExprKind::Symbol(hir::Symbol::Dot) => unimplemented!(),
         ExprKind::Symbol(hir::Symbol::DotDot) => unimplemented!(),
-        ExprKind::Lit(Lit::Integer(int)) => Ok(Rc::new(Value::Integer(int))),
+        ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
         ExprKind::Lit(Lit::Ident(ident)) => local_state
             .get(&ident)
             .or_else(|| global_state.functions.get(&ident))
@@ -72,7 +72,7 @@ fn eval_expr<'hir>(
                 span: expr.span,
             })
             .cloned(),
-        ExprKind::Lit(Lit::Bool(bool)) => Ok(Rc::new(Value::Bool(bool))),
+        ExprKind::Lit(Lit::Bool(bool)) => Ok(Value::Bool(bool)),
         ExprKind::Record(entries) => eval_record(
             entries.iter().map(|(field_pat, opt_expr)| {
                 let opt_value = opt_expr
@@ -84,16 +84,16 @@ fn eval_expr<'hir>(
             global_state,
             local_state,
         )
-        .map(|fields| Rc::new(Value::Record(fields))),
-        ExprKind::Constructor(constructor) => Ok(Rc::new(Value::Choice {
-            ty: constructor.ty,
-            variant: constructor.variant,
-            value: eval_expr(constructor.kind, global_state, local_state)?,
-        })),
-        ExprKind::Closure(arms) => Ok(Rc::new(Value::Function(
+        .map(|fields| Value::Record(Rc::new(fields))),
+        ExprKind::Constructor(constructor) => Ok(Value::Choice(Rc::new((
+            constructor.ty,
+            constructor.variant,
+            eval_expr(constructor.kind, global_state, local_state)?,
+        )))),
+        ExprKind::Closure(arms) => Ok(Value::Function(Rc::new((
             arms.as_slice(),
             local_state.clone(),
-        ))),
+        )))),
         ExprKind::Appl(appl) => {
             let lhs = eval_expr(&appl.lhs, global_state, local_state)?;
             let fun = eval_expr(&appl.fun, global_state, local_state)?;
@@ -109,7 +109,7 @@ fn pat_as_expr<'hir>(
     pat: &Pat<'hir>,
     global_state: &GlobalBindings<'hir>,
     local_state: &Bindings<'hir>,
-) -> Result<Rc<Value<'hir>>, EvalError> {
+) -> Result<Value<'hir>, EvalError> {
     let value = match pat.kind {
         PatKind::Lit(Lit::Ident(ident)) => local_state
             .get(&ident)
@@ -119,8 +119,8 @@ fn pat_as_expr<'hir>(
                 literal: format!("{pat:?}"),
                 span: pat.span,
             })?,
-        PatKind::Lit(Lit::Integer(num)) => Rc::new(Value::Integer(num)),
-        PatKind::Lit(Lit::Bool(b)) => Rc::new(Value::Bool(b)),
+        PatKind::Lit(Lit::Integer(num)) => Value::Integer(num),
+        PatKind::Lit(Lit::Bool(b)) => Value::Bool(b),
         PatKind::Record(fields) => {
             // { { a: b }: { a: b } }
             // If we see a record expression like `{ { a, b } }`
@@ -140,13 +140,13 @@ fn pat_as_expr<'hir>(
                 local_state,
             )?;
 
-            Rc::new(Value::Record(fields))
+            Value::Record(Rc::new(fields))
         }
-        PatKind::Constructor(constructor) => Rc::new(Value::Choice {
-            ty: constructor.ty,
-            variant: constructor.variant,
-            value: pat_as_expr(constructor.kind, global_state, local_state)?,
-        }),
+        PatKind::Constructor(constructor) => Value::Choice(Rc::new((
+            constructor.ty,
+            constructor.variant,
+            pat_as_expr(constructor.kind, global_state, local_state)?,
+        ))),
         PatKind::Error => todo!(),
     };
 
@@ -154,13 +154,14 @@ fn pat_as_expr<'hir>(
 }
 
 fn call_function<'hir>(
-    left: ValueRef<'hir>,
-    function: ValueRef<'hir>,
-    right: ValueRef<'hir>,
+    left: Value<'hir>,
+    function: Value<'hir>,
+    right: Value<'hir>,
     global_state: &GlobalBindings<'hir>,
-) -> Result<ValueRef<'hir>, EvalError> {
-    match function.as_ref() {
-        Value::Function(arms, closure_env) => {
+) -> Result<Value<'hir>, EvalError> {
+    match function {
+        Value::Function(arms_and_env) => {
+            let (arms, closure_env) = arms_and_env.as_ref();
             let arm = arms
                 .iter()
                 .find(|&arm| match arm.params.len() {
@@ -201,14 +202,14 @@ fn call_function<'hir>(
 fn check_pattern<'hir>(value: &Value, pattern: &Pat<'hir>) -> bool {
     match (&pattern.kind, value) {
         (PatKind::Record(pattern_map), Value::Record(value_map)) => {
-            if pattern_map.len() != value_map.entries.len() {
+            if pattern_map.len() != value_map.len() {
                 false
             } else {
                 pattern_map
                     .iter()
-                    .zip(&value_map.entries)
+                    .zip(value_map.iter())
                     .all(|((_, opt_pat), (_, val))| match opt_pat {
-                        Some(pat) => check_pattern(val.as_ref(), pat),
+                        Some(pat) => check_pattern(val, pat),
                         None => true,
                     })
             }
@@ -219,12 +220,9 @@ fn check_pattern<'hir>(value: &Value, pattern: &Pat<'hir>) -> bool {
                 variant: pat_variant,
                 kind,
             }),
-            Value::Choice {
-                ty: value_ty,
-                variant: value_variant,
-                value,
-            },
+            Value::Choice(value_choice),
         ) => {
+            let (value_ty, value_variant, value) = value_choice.as_ref();
             // `&&` short-circuits according to Rust reference.
             pat_ty == value_ty && pat_variant == value_variant && check_pattern(value, kind)
         }
@@ -239,8 +237,8 @@ fn match_record<'hir>(
     bindings: &[(hir::Pat<'hir>, Option<Pat<'hir>>)],
     // When matching on another record, get_value looks up keys from the other record
     // When constructing, it pulls idents from the local/global bindings
-    get_value: &mut dyn FnMut(InternedString) -> Option<Rc<Value<'hir>>>,
-    push_binding: &mut dyn FnMut(InternedString, Rc<Value<'hir>>),
+    get_value: &mut dyn FnMut(InternedString) -> Option<Value<'hir>>,
+    push_binding: &mut dyn FnMut(InternedString, Value<'hir>),
 ) -> Result<(), EvalError> {
     for (field_pat, opt_value_pat) in bindings {
         match field_pat.kind {
@@ -267,11 +265,7 @@ fn match_record<'hir>(
 
                     // Now that we've created a fresh record, we take it and try to bind it
                     // against the pattern
-                    match_pattern(
-                        Rc::new(Value::Record(OwnedMap::new(new_entries))),
-                        pat,
-                        push_binding,
-                    )?;
+                    match_pattern(Value::Record(Rc::new(new_entries)), pat, push_binding)?;
                 } else {
                     // `{ { a, b } }: { a, b }`
                     // kinda pointless, just inline a and b directly into the parent
@@ -310,7 +304,7 @@ fn match_record<'hir>(
         //             // Now that we've created a fresh record, we take it and try to bind it
         //             // against the pattern
         //             match_pattern(
-        //                 Rc::new(Value::Record(OwnedMap::new(new_entries))),
+        //                 (Value::Record(OwnedMap::new(new_entries))),
         //                 pat,
         //                 push_binding,
         //             )?;
@@ -327,20 +321,19 @@ fn match_record<'hir>(
 }
 
 fn match_pattern<'hir>(
-    value: ValueRef<'hir>,
+    value: Value<'hir>,
     pattern: &Pat<'hir>,
-    push_binding: &mut dyn FnMut(InternedString, Rc<Value<'hir>>),
+    push_binding: &mut dyn FnMut(InternedString, Value<'hir>),
 ) -> Result<(), EvalError> {
     if let PatKind::Lit(Lit::Ident(ident)) = pattern.kind {
         push_binding(ident, value);
         Ok(())
     } else {
-        match (&pattern.kind, value.as_ref()) {
+        match (&pattern.kind, value) {
             (PatKind::Record(pattern_map), Value::Record(value_map)) => {
-                let mut value_fields: HashMap<InternedString, Rc<Value>> = value_map
-                    .entries
+                let mut value_fields: HashMap<InternedString, Value<'hir>> = value_map
                     .iter()
-                    .map(|(ident, value)| (*ident, Rc::clone(&value)))
+                    .map(|(ident, value)| (*ident, value.clone()))
                     .collect();
 
                 match_record(
@@ -362,12 +355,9 @@ fn match_pattern<'hir>(
                     variant: pat_variant,
                     kind,
                 }),
-                Value::Choice {
-                    ty: value_ty,
-                    variant: value_variant,
-                    value,
-                },
+                Value::Choice(value_choice),
             ) => {
+                let (value_ty, value_variant, value) = value_choice.as_ref();
                 if pat_ty == value_ty && pat_variant == value_variant {
                     match_pattern(value.clone(), kind, push_binding)
                 } else {
@@ -375,14 +365,14 @@ fn match_pattern<'hir>(
                 }
             }
             (PatKind::Lit(Lit::Integer(a)), Value::Integer(b)) => {
-                if *a == *b {
+                if *a == b {
                     Ok(())
                 } else {
                     Err(EvalError::FailedPatternMatch)
                 }
             }
             (PatKind::Lit(Lit::Bool(a)), Value::Bool(b)) => {
-                if *a == *b {
+                if *a == b {
                     Ok(())
                 } else {
                     Err(EvalError::FailedPatternMatch)
@@ -396,13 +386,13 @@ fn match_pattern<'hir>(
     }
 }
 
-pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<ValueRef<'hir>, EvalError> {
+pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<Value<'hir>, EvalError> {
     let mut global_state = GlobalBindings::new();
 
     for (name, def) in &program.function_defs {
         global_state.functions.insert(
             *name,
-            Rc::new(Value::Function(def.arms.as_slice(), HashMap::new())),
+            Value::Function(Rc::new((def.arms.as_slice(), HashMap::new()))),
         );
     }
 
@@ -413,13 +403,13 @@ pub fn execute_program<'hir>(program: &Program<'hir>) -> Result<ValueRef<'hir>, 
     }
 
     call_function(
-        Rc::new(Value::default()),
+        Value::default(),
         global_state
             .functions
             .get(&InternedString::get_or_intern("main"))
             .ok_or(EvalError::MissingMain)
             .cloned()?,
-        Rc::new(Value::default()),
+        Value::default(),
         &global_state,
     )
 }

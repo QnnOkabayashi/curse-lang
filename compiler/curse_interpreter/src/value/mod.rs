@@ -4,8 +4,6 @@ use std::{fmt, rc::Rc};
 
 use crate::{error::EvalError, evaluation::Bindings};
 
-pub type ValueRef<'hir> = Rc<Value<'hir>>;
-
 // Type representing a value in curse. Subject to change as we potentially come up with better
 // representations of these values
 #[derive(Clone)]
@@ -13,20 +11,16 @@ pub enum Value<'hir> {
     Integer(u32),
     // String(&'hir str),
     Bool(bool),
-    Function(&'hir [Arm<'hir>], Bindings<'hir>),
-    Record(OwnedMap<ValueRef<'hir>>),
-    Choice {
-        ty: Ident,
-        variant: Ident,
-        value: ValueRef<'hir>,
-    },
+    Function(Rc<(&'hir [Arm<'hir>], Bindings<'hir>)>),
+    Record(Rc<Vec<(InternedString, Value<'hir>)>>),
+    Choice(Rc<(Ident, Ident, Value<'hir>)>),
     Builtin(Builtin<'hir>),
 }
 
 impl Value<'_> {
     pub fn is_null(&self) -> bool {
         match self {
-            Value::Record(map) => map.entries.is_empty(),
+            Value::Record(entries) => entries.is_empty(),
             _ => false,
         }
     }
@@ -41,8 +35,12 @@ impl fmt::Debug for Value<'_> {
             Bool(bool) => write!(f, "{bool}"),
             Function(..) => write!(f, "<function>"),
             Builtin(_) => write!(f, "<builtin>"),
-            Record(map) => write!(f, "{map:#?}"),
-            Choice { ty, variant, value } => {
+            Record(map) => f
+                .debug_map()
+                .entries(map.iter().map(|(a, b)| (a, b))) // I forgot why but YOU NEED THIS MAP
+                .finish(),
+            Choice(ty_variant_value) => {
+                let (ty, variant, value) = ty_variant_value.as_ref();
                 write!(f, "{ty}::{variant} {value:?}")
             }
         }
@@ -51,33 +49,8 @@ impl fmt::Debug for Value<'_> {
 
 impl Default for Value<'_> {
     fn default() -> Self {
-        Self::Record(OwnedMap::default())
+        Self::Record(Rc::new(Vec::new()))
     }
 }
 
-pub type Builtin<'hir> = fn(ValueRef<'hir>, ValueRef<'hir>) -> Result<ValueRef<'hir>, EvalError>;
-
-#[derive(Clone)]
-pub struct OwnedMap<T> {
-    pub entries: Vec<(InternedString, T)>,
-}
-
-impl<T: fmt::Debug> fmt::Debug for OwnedMap<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map()
-            .entries(self.entries.iter().map(|(name, value)| (name, value)))
-            .finish()
-    }
-}
-
-impl<'hir, T> OwnedMap<T> {
-    pub fn new(entries: Vec<(InternedString, T)>) -> Self {
-        OwnedMap { entries }
-    }
-}
-
-impl<T> Default for OwnedMap<T> {
-    fn default() -> Self {
-        OwnedMap::new(vec![])
-    }
-}
+pub type Builtin<'hir> = fn(Value<'hir>, Value<'hir>) -> Result<Value<'hir>, EvalError>;
