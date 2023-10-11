@@ -25,16 +25,29 @@ impl<'hir> GlobalBindings<'hir> {
 
 pub type Bindings<'hir> = HashMap<InternedString, Value<'hir>>;
 
+#[derive(Copy, Clone)]
+struct BindingsInScope<'a, 'hir> {
+    global_state: &'a GlobalBindings<'hir>,
+    local_state: &'a Bindings<'hir>,
+}
+
+impl<'a, 'hir> BindingsInScope<'a, 'hir> {
+    fn get(self, ident: &InternedString) -> Option<Value<'hir>> {
+        self.local_state
+            .get(ident)
+            .or_else(|| self.global_state.functions.get(ident))
+            .cloned()
+    }
+}
+
 fn eval_record<'hir>(
     fields: impl IntoIterator<Item = (hir::Pat<'hir>, Option<Result<Value<'hir>, EvalError>>)>,
-    global_state: &GlobalBindings<'hir>,
-    local_state: &Bindings<'hir>,
+    bindings_in_scope: BindingsInScope<'_, 'hir>,
 ) -> Result<Vec<(InternedString, Value<'hir>)>, EvalError> {
     let mut entries = vec![];
 
     for (field_pat, opt_expr) in fields {
-        let expr =
-            opt_expr.unwrap_or_else(|| pat_as_expr(&field_pat, global_state, local_state))?;
+        let expr = opt_expr.unwrap_or_else(|| pat_as_expr(&field_pat, bindings_in_scope))?;
 
         match_pattern(expr, &field_pat, &mut |ident, value| {
             entries.push((ident, value))
@@ -46,8 +59,7 @@ fn eval_record<'hir>(
 
 fn eval_expr<'hir>(
     expr: &Expr<'hir>,
-    global_state: &GlobalBindings<'hir>,
-    local_state: &Bindings<'hir>,
+    bindings_in_scope: BindingsInScope<'_, 'hir>,
 ) -> Result<Value<'hir>, EvalError> {
     match expr.kind {
         ExprKind::Symbol(hir::Symbol::Plus) => Ok(Value::Builtin(builtins::add)),
@@ -64,41 +76,43 @@ fn eval_expr<'hir>(
         ExprKind::Symbol(hir::Symbol::Dot) => unimplemented!(),
         ExprKind::Symbol(hir::Symbol::DotDot) => unimplemented!(),
         ExprKind::Lit(Lit::Integer(int)) => Ok(Value::Integer(int)),
-        ExprKind::Lit(Lit::Ident(ident)) => local_state
-            .get(&ident)
-            .or_else(|| global_state.functions.get(&ident))
-            .ok_or(EvalError::UnboundVariable {
-                literal: ident.to_string(),
-                span: expr.span,
-            })
-            .cloned(),
+        ExprKind::Lit(Lit::Ident(ident)) => {
+            bindings_in_scope
+                .get(&ident)
+                .ok_or_else(|| EvalError::UnboundVariable {
+                    literal: ident.to_string(),
+                    span: expr.span,
+                })
+        }
         ExprKind::Lit(Lit::Bool(bool)) => Ok(Value::Bool(bool)),
-        ExprKind::Record(entries) => eval_record(
-            entries.iter().map(|(field_pat, opt_expr)| {
-                let opt_value = opt_expr
-                    .as_ref()
-                    .map(|expr| eval_expr(expr, global_state, local_state));
+        ExprKind::Record(entries) => {
+            let fields = eval_record(
+                entries.iter().map(|(field_pat, opt_expr)| {
+                    let opt_value = opt_expr
+                        .as_ref()
+                        .map(|expr| eval_expr(expr, bindings_in_scope));
 
-                (*field_pat, opt_value)
-            }),
-            global_state,
-            local_state,
-        )
-        .map(|fields| Value::Record(Rc::new(fields))),
+                    (*field_pat, opt_value)
+                }),
+                bindings_in_scope,
+            )?;
+
+            Ok(Value::Record(Rc::new(fields)))
+        }
         ExprKind::Constructor(constructor) => Ok(Value::Choice(Rc::new((
             constructor.ty,
             constructor.variant,
-            eval_expr(constructor.kind, global_state, local_state)?,
+            eval_expr(constructor.kind, bindings_in_scope)?,
         )))),
         ExprKind::Closure(arms) => Ok(Value::Function(Rc::new((
             arms.as_slice(),
-            local_state.clone(),
+            bindings_in_scope.local_state.clone(),
         )))),
         ExprKind::Appl(appl) => {
-            let lhs = eval_expr(&appl.lhs, global_state, local_state)?;
-            let fun = eval_expr(&appl.fun, global_state, local_state)?;
-            let rhs = eval_expr(&appl.rhs, global_state, local_state)?;
-            call_function(lhs, fun, rhs, global_state)
+            let lhs = eval_expr(&appl.lhs, bindings_in_scope)?;
+            let fun = eval_expr(&appl.fun, bindings_in_scope)?;
+            let rhs = eval_expr(&appl.rhs, bindings_in_scope)?;
+            call_function(lhs, fun, rhs, bindings_in_scope.global_state)
         }
         ExprKind::Region(_) => todo!("Regions"),
         ExprKind::Error => todo!("error handling"),
@@ -107,18 +121,17 @@ fn eval_expr<'hir>(
 
 fn pat_as_expr<'hir>(
     pat: &Pat<'hir>,
-    global_state: &GlobalBindings<'hir>,
-    local_state: &Bindings<'hir>,
+    bindings_in_scope: BindingsInScope<'_, 'hir>,
 ) -> Result<Value<'hir>, EvalError> {
     let value = match pat.kind {
-        PatKind::Lit(Lit::Ident(ident)) => local_state
-            .get(&ident)
-            .or_else(|| global_state.functions.get(&ident))
-            .cloned()
-            .ok_or_else(|| EvalError::UnboundVariable {
-                literal: format!("{pat:?}"),
-                span: pat.span,
-            })?,
+        PatKind::Lit(Lit::Ident(ident)) => {
+            bindings_in_scope
+                .get(&ident)
+                .ok_or_else(|| EvalError::UnboundVariable {
+                    literal: format!("{pat:?}"),
+                    span: pat.span,
+                })?
+        }
         PatKind::Lit(Lit::Integer(num)) => Value::Integer(num),
         PatKind::Lit(Lit::Bool(b)) => Value::Bool(b),
         PatKind::Record(fields) => {
@@ -132,12 +145,11 @@ fn pat_as_expr<'hir>(
                 fields.iter().map(|(field_pat, opt_pat)| {
                     let opt_value = opt_pat
                         .as_ref()
-                        .map(|pat| pat_as_expr(pat, global_state, local_state));
+                        .map(|pat| pat_as_expr(pat, bindings_in_scope));
 
                     (*field_pat, opt_value)
                 }),
-                global_state,
-                local_state,
+                bindings_in_scope,
             )?;
 
             Value::Record(Rc::new(fields))
@@ -145,7 +157,7 @@ fn pat_as_expr<'hir>(
         PatKind::Constructor(constructor) => Value::Choice(Rc::new((
             constructor.ty,
             constructor.variant,
-            pat_as_expr(constructor.kind, global_state, local_state)?,
+            pat_as_expr(constructor.kind, bindings_in_scope)?,
         ))),
         PatKind::Error => todo!(),
     };
@@ -181,18 +193,27 @@ fn call_function<'hir>(
                 new_scope.insert(ident, value);
             };
             match arm.params.len() {
-                0 => eval_expr(&arm.body, global_state, &mut new_scope),
+                0 => {
+                    // nothing to match
+                }
                 1 => {
                     match_pattern(left, &arm.params[0].pat, &mut push_binding_fn)?;
-                    eval_expr(&arm.body, global_state, &mut new_scope)
                 }
                 2 => {
                     match_pattern(left, &arm.params[0].pat, &mut push_binding_fn)?;
                     match_pattern(right, &arm.params[1].pat, &mut push_binding_fn)?;
-                    eval_expr(&arm.body, global_state, &mut new_scope)
                 }
-                _ => unreachable!("checked above"),
-            }
+                _ => unreachable!("functions in curse cannot have more than parameters"),
+            };
+
+            let local_state = &new_scope;
+            eval_expr(
+                &arm.body,
+                BindingsInScope {
+                    global_state,
+                    local_state,
+                },
+            )
         }
         Value::Builtin(builtin) => builtin(left, right),
         _ => Err(EvalError::TypeMismatch),
