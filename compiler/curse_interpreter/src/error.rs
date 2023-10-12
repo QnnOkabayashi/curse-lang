@@ -24,6 +24,9 @@ pub enum EvalError {
 
     #[error("Attempted to divide by 0")]
     DivByZero,
+
+    #[error("Debug: {0}")]
+    Debug(i32),
 }
 
 #[derive(Debug, Diagnostic, Error)]

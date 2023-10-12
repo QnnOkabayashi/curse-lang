@@ -41,13 +41,14 @@ impl<'a, 'hir> RuntimeState<'a, 'hir> {
 
     fn eval_record(
         self,
-        fields: impl IntoIterator<Item = (Pat<'hir>, Option<Result<Value<'hir>, EvalError>>)>,
+        fields: &[(Pat<'hir>, Option<Expr<'hir>>)],
     ) -> Result<Vec<(InternedString, Value<'hir>)>, EvalError> {
         let mut entries = vec![];
 
-        for (field_pat, opt_res_value) in fields {
-            if let Some(res_value) = opt_res_value {
-                bind_pat_against_value(res_value?, &field_pat, &mut |ident, value| {
+        for (field_pat, opt_expr) in fields {
+            if let Some(expr) = opt_expr {
+                let value = self.eval_expr(expr)?;
+                bind_pat_against_value(value, &field_pat, &mut |ident, value| {
                     entries.push((ident, value))
                 })?;
             } else {
@@ -107,11 +108,7 @@ impl<'a, 'hir> RuntimeState<'a, 'hir> {
             }
             ExprKind::Lit(Lit::Bool(bool)) => Ok(Value::Bool(bool)),
             ExprKind::Record(entries) => {
-                let fields = self.eval_record(entries.iter().map(|(field_pat, opt_expr)| {
-                    let opt_value = opt_expr.as_ref().map(|expr| self.eval_expr(expr));
-
-                    (*field_pat, opt_value)
-                }))?;
+                let fields = self.eval_record(entries.as_slice())?;
 
                 Ok(Value::Record(Rc::new(fields)))
             }
@@ -183,7 +180,9 @@ fn call_function<'hir>(
             .eval_expr(&arm.body)
         }
         Value::Builtin(op) => op.compute(left, right),
-        uncallable => Err(EvalError::TypeMismatch(format!("expected function or builtin, found {uncallable:?}"))),
+        uncallable => Err(EvalError::TypeMismatch(format!(
+            "expected function or builtin, found {uncallable:?}"
+        ))),
     }
 }
 
@@ -230,7 +229,15 @@ fn match_record<'hir>(
     for (field_pat, opt_value_pat) in bindings {
         match field_pat.kind {
             PatKind::Lit(Lit::Ident(ident)) => {
-                let value = get_value(ident).ok_or(EvalError::FailedPatternMatch)?;
+                // BUG(quinn): when matching a record on another record,
+                // this is the correct behavior, e.g. `{ a: b }` should
+                // take the value `a` and assign it to a new variable, `b`.
+                // But when constructing a record from the environment,
+                // we want the field to be called `a` and to take on the
+                // value `b` from the environment.
+                // Looks like we're going to have to split this into two
+                // functions.
+                let value = get_value(ident).ok_or(EvalError::Debug(1))?;
 
                 if let Some(value_pat) = opt_value_pat {
                     bind_pat_against_value(value, value_pat, push_binding)?;
