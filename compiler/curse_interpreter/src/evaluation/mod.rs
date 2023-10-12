@@ -39,6 +39,7 @@ impl<'a, 'hir> RuntimeState<'a, 'hir> {
             .cloned()
     }
 
+    // Create a record from the environment
     fn eval_record(
         self,
         fields: &[(Pat<'hir>, Option<Expr<'hir>>)],
@@ -159,16 +160,16 @@ fn call_function<'hir>(
             let mut push_binding_fn = |ident, value| {
                 new_scope.insert(ident, value);
             };
-            match arm.params.len() {
-                0 => {
+            match arm.params.as_slice() {
+                [] => {
                     // nothing to match
                 }
-                1 => {
-                    bind_pat_against_value(left, &arm.params[0].pat, &mut push_binding_fn)?;
+                [lhs] => {
+                    bind_pat_against_value(left, &lhs.pat, &mut push_binding_fn)?;
                 }
-                2 => {
-                    bind_pat_against_value(left, &arm.params[0].pat, &mut push_binding_fn)?;
-                    bind_pat_against_value(right, &arm.params[1].pat, &mut push_binding_fn)?;
+                [lhs, rhs] => {
+                    bind_pat_against_value(left, &lhs.pat, &mut push_binding_fn)?;
+                    bind_pat_against_value(right, &rhs.pat, &mut push_binding_fn)?;
                 }
                 _ => unreachable!("functions in curse cannot have more than parameters"),
             };
@@ -274,6 +275,9 @@ fn match_record<'hir>(
     Ok(())
 }
 
+// a: b
+// I think this is being used for both creation
+// from env and matching on a pat
 fn bind_pat_against_value<'hir>(
     value: Value<'hir>,
     pattern: &Pat<'hir>,
