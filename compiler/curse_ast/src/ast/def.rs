@@ -1,77 +1,63 @@
 use crate::ast::{tok, Closure, Type};
-use crate::ast_struct;
 use curse_interner::Ident;
 use curse_span::HasSpan;
+use derive_more::From;
 
-ast_struct! {
-    /// Example: `|K * V|`
-    #[derive(Clone, Debug)]
-    pub struct GenericParams {
-        pub open: tok::Pipe,
-        pub params: Vec<Ident>,
-        pub close: tok::Pipe,
-    }
+/// Example: `|K * V|`
+#[derive(Clone, Debug, From)]
+pub struct GenericParams {
+    pub open: tok::Pipe,
+    pub params: Vec<Ident>,
+    pub close: tok::Pipe,
 }
 
-ast_struct! {
-    /// Example: `fn add = |x, y| x + y`
-    #[derive(Clone, Debug)]
-    pub struct FunctionDef {
-        pub fn_: tok::Fn,
-        pub ident: Ident,
-        pub function: Closure,
-    }
+/// Example: `fn add = |x, y| x + y`
+#[derive(Clone, Debug, From)]
+pub struct FunctionDef {
+    pub fn_: tok::Fn,
+    pub ident: Ident,
+    pub function: Closure,
 }
 
-ast_struct! {
-    /// Example: `T: T -> T`
-    #[derive(Clone, Debug)]
-    pub struct ExplicitTypes {
-        pub generic_params: Option<GenericParams>,
-        pub colon: tok::Colon,
-        pub ty: Type,
-    }
+/// Example: `T: T -> T`
+#[derive(Clone, Debug, From)]
+pub struct ExplicitTypes {
+    pub generic_params: Option<GenericParams>,
+    pub colon: tok::Colon,
+    pub ty: Type,
 }
 
-ast_struct! {
-    /// Example: `struct Id I32`
-    #[derive(Clone, Debug)]
-    pub struct StructDef {
-        pub struct_: tok::Struct,
-        pub ident: Ident,
-        pub generic_params: Option<GenericParams>,
-        pub ty: Type,
-    }
+/// Example: `struct Id I32`
+#[derive(Clone, Debug, From)]
+pub struct StructDef {
+    pub struct_: tok::Struct,
+    pub ident: Ident,
+    pub generic_params: Option<GenericParams>,
+    pub ty: Type,
 }
 
-ast_struct! {
-    /// Example: `choice Option |T| { Some T, None {} }`
-    #[derive(Clone, Debug)]
-    pub struct ChoiceDef {
-        pub choice: tok::Choice,
-        pub ident: Ident,
-        pub generic_params: Option<GenericParams>,
-        pub variants: Variants,
-    }
+/// Example: `choice Option |T| { Some T, None {} }`
+#[derive(Clone, Debug, From)]
+pub struct ChoiceDef {
+    pub choice: tok::Choice,
+    pub ident: Ident,
+    pub generic_params: Option<GenericParams>,
+    pub variants: Variants,
 }
 
-ast_struct! {
-    /// Example: `{ Some T, None {} }`
-    #[derive(Debug, Clone)]
-    pub struct Variants {
-        pub lbrace: tok::LBrace,
-        pub variants: Vec<VariantDef>,
-        pub rbrace: tok::RBrace,
-    }
+/// Example: `{ Some T, None {} }`
+#[derive(Debug, Clone, From)]
+pub struct Variants {
+    pub lbrace: tok::LBrace,
+    pub variants: Vec<VariantDef>,
+    pub rbrace: tok::RBrace,
 }
 
-ast_struct! {
-    /// Example: `Some T`
-    #[derive(Clone, Debug)]
-    pub struct VariantDef {
-        pub ident: Ident,
-        pub ty: Type,
-    }
+/// Example: `Some T`
+#[derive(Clone, Debug, From)]
+pub struct VariantDef {
+    pub ident: Ident,
+    pub ty: Type,
 }
 
 impl HasSpan for GenericParams {

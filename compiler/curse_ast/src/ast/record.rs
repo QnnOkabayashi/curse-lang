@@ -1,14 +1,12 @@
 use crate::ast::{tok, Pat};
-use crate::ast_struct;
 use curse_span::HasSpan;
+use derive_more::From;
 
-ast_struct! {
-    #[derive(Clone, Debug)]
-    pub struct Record<T> {
-        pub lbrace: tok::LBrace,
-        pub fields: Vec<(Pat, Option<T>)>,
-        pub rbrace: tok::RBrace,
-    }
+#[derive(Clone, Debug, From)]
+pub struct Record<T> {
+    pub lbrace: tok::LBrace,
+    pub fields: Vec<(Pat, Option<T>)>,
+    pub rbrace: tok::RBrace,
 }
 
 impl<T> HasSpan for Record<T> {

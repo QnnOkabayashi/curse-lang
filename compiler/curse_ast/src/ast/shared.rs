@@ -1,6 +1,7 @@
-use crate::{ast::tok, ast_struct};
+use crate::ast::tok;
 use curse_interner::Ident;
 use curse_span::{HasSpan, Span};
+use derive_more::From;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Lit {
@@ -10,23 +11,19 @@ pub enum Lit {
     False(tok::False),
 }
 
-ast_struct! {
-    /// A path, e.g. `std::collections`
-    #[derive(Clone, Debug)]
-    pub struct Path {
-        pub parts: Vec<Ident>,
-        pub last: Ident,
-    }
+/// A path, e.g. `std::collections`
+#[derive(Clone, Debug, From)]
+pub struct Path {
+    pub parts: Vec<Ident>,
+    pub last: Ident,
 }
 
-ast_struct! {
-    /// A constructor, e.g. `Option::None {}`
-    #[derive(Clone, Debug)]
-    pub struct Constructor<T> {
-        pub ty: Ident,
-        pub variant: Ident,
-        pub inner: T,
-    }
+/// A constructor, e.g. `Option::None {}`
+#[derive(Clone, Debug, From)]
+pub struct Constructor<T> {
+    pub ty: Ident,
+    pub variant: Ident,
+    pub inner: T,
 }
 
 impl HasSpan for Lit {

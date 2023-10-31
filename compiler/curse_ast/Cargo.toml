@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 curse_span = { path = "../curse_span" }
 curse_interner = { path = "../curse_interner" }
+derive_more = { version = "0.99.17", default-features = false, features = ["from"] }

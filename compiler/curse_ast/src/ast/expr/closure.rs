@@ -1,6 +1,6 @@
 use crate::ast::{tok, Expr, Pat, Type};
-use crate::ast_struct;
 use curse_span::{HasSpan, Span};
+use derive_more::From;
 
 #[derive(Clone, Debug)]
 pub enum Closure {
@@ -43,16 +43,14 @@ impl HasSpan for Closure {
     }
 }
 
-ast_struct! {
-    #[derive(Clone, Debug)]
-    pub struct Arm {
-        pub open: tok::Pipe,
-        // There should only be up to 2 params,
-        // but more shouldn't make the parser fail.
-        pub params: Vec<Param>,
-        pub close: tok::Pipe,
-        pub body: Expr,
-    }
+#[derive(Clone, Debug, From)]
+pub struct Arm {
+    pub open: tok::Pipe,
+    // There should only be up to 2 params,
+    // but more shouldn't make the parser fail.
+    pub params: Vec<Param>,
+    pub close: tok::Pipe,
+    pub body: Expr,
 }
 
 impl HasSpan for Arm {
@@ -65,12 +63,10 @@ impl HasSpan for Arm {
     }
 }
 
-ast_struct! {
-    #[derive(Clone, Debug)]
-    pub struct Param {
-        pub pat: Pat,
-        pub ascription: Option<Type>,
-    }
+#[derive(Clone, Debug, From)]
+pub struct Param {
+    pub pat: Pat,
+    pub ascription: Option<Type>,
 }
 
 impl HasSpan for Param {

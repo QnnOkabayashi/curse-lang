@@ -1,14 +1,12 @@
 use crate::ast::{tok, Path, Type};
-use crate::ast_struct;
 use curse_span::{HasSpan, Span};
+use derive_more::From;
 
-ast_struct! {
-    /// A named type, e.g. `std::vec::Vec T`
-    #[derive(Clone, Debug)]
-    pub struct NamedType {
-        pub path: Path,
-        pub generic_args: Option<GenericArgs>,
-    }
+/// A named type, e.g. `std::vec::Vec T`
+#[derive(Clone, Debug, From)]
+pub struct NamedType {
+    pub path: Path,
+    pub generic_args: Option<GenericArgs>,
 }
 
 #[derive(Clone, Debug)]

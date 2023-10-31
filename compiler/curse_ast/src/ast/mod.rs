@@ -12,13 +12,12 @@ mod ty;
 pub mod bikeshed {
     use crate::ast::tok;
     use curse_interner::Ident;
+    use derive_more::From;
 
-    crate::ast_struct! {
-        #[derive(Debug, Clone)]
-        pub struct DynamicImport {
-            pub dynamic_import: tok::DynamicImport,
-            pub module: Ident,
-        }
+    #[derive(Debug, Clone, From)]
+    pub struct DynamicImport {
+        pub dynamic_import: tok::DynamicImport,
+        pub module: Ident,
     }
 }
 
@@ -31,44 +30,3 @@ pub use program::Program;
 pub use record::Record;
 pub use shared::{Constructor, Lit, Path};
 pub use ty::{GenericArgs, NamedType, Type};
-
-/// Macro to automatically derive a `new` constructor.
-#[macro_export]
-macro_rules! ast_struct {
-(
-    $(#[$attrs:meta])*
-    $vis:vis struct $name:ident <$($generics:tt),*> {
-        $($field_vis:vis $field:ident : $ty:ty,)*
-    }
-) => {
-        $(#[$attrs])*
-        $vis struct $name <$($generics),*> {
-            $($field_vis $field : $ty,)*
-        }
-
-        impl<$($generics),*> $name <$($generics),*> {
-            pub fn new($($field : $ty),*) -> $name <$($generics),*> {
-                $name { $($field),* }
-            }
-        }
-    };
-
-
-(
-    $(#[$attrs:meta])*
-    $vis:vis struct $name:ident {
-        $($field_vis:vis $field:ident : $ty:ty,)*
-    }
-) => {
-        $(#[$attrs])*
-        $vis struct $name {
-            $($field_vis $field : $ty,)*
-        }
-
-        impl $name {
-            pub fn new($($field : $ty),*) -> $name {
-                $name { $($field),* }
-            }
-        }
-    };
-}

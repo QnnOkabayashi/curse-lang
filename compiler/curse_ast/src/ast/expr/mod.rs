@@ -1,6 +1,6 @@
 use crate::ast::{tok, Constructor, Lit, Pat, Record};
-use crate::ast_struct;
 use curse_span::{HasSpan, Span};
+use derive_more::From;
 
 mod closure;
 pub use closure::*;
@@ -18,13 +18,11 @@ pub enum Expr {
     Error,
 }
 
-ast_struct! {
-    #[derive(Clone, Debug)]
-    pub struct Paren {
-        pub lparen: tok::LParen,
-        pub expr: Expr,
-        pub rparen: tok::RParen,
-    }
+#[derive(Clone, Debug, From)]
+pub struct Paren {
+    pub lparen: tok::LParen,
+    pub expr: Expr,
+    pub rparen: tok::RParen,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -44,27 +42,23 @@ pub enum Symbol {
     Ge(tok::Ge),
 }
 
-ast_struct! {
-    #[derive(Clone, Debug)]
-    pub struct Appl {
-        pub lhs: Expr,
-        pub fun: Expr,
-        pub rhs: Expr,
-    }
+#[derive(Clone, Debug, From)]
+pub struct Appl {
+    pub lhs: Expr,
+    pub fun: Expr,
+    pub rhs: Expr,
 }
 
-ast_struct! {
-    /// A region, e.g. `ref mut x { x + 1 }`
-    #[derive(Clone, Debug)]
-    pub struct Region {
-        pub kind: RegionKind,
-        // Should only be an ident or a record of idents with no values, e.g. `{ a, b }`.
-        // Anything else will be caught at lowering.
-        pub pat: Pat,
-        pub lbrace: tok::LBrace,
-        pub body: Expr,
-        pub rbrace: tok::RBrace,
-    }
+/// A region, e.g. `ref mut x { x + 1 }`
+#[derive(Clone, Debug, From)]
+pub struct Region {
+    pub kind: RegionKind,
+    // Should only be an ident or a record of idents with no values, e.g. `{ a, b }`.
+    // Anything else will be caught at lowering.
+    pub pat: Pat,
+    pub lbrace: tok::LBrace,
+    pub body: Expr,
+    pub rbrace: tok::RBrace,
 }
 
 #[derive(Clone, Debug)]

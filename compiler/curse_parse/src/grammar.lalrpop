@@ -94,7 +94,7 @@ pub Program: Program = {
 
 // TODO(quinn): BAD BAD BAD THIS IS BASICALLY C INCLUDE
 DynamicImport: bikeshed::DynamicImport = {
-    "dynamic_import" Ident => bikeshed::DynamicImport::new(<>),
+    "dynamic_import" Ident => bikeshed::DynamicImport::from((<>)),
 };
 
 Seq<T, D>: Vec<T> = {
@@ -108,39 +108,34 @@ Seq<T, D>: Vec<T> = {
 };
 
 GenericParams: GenericParams = {
-    "|" Seq<TypeIdent, "*"> "|" => GenericParams::new(<>),
+    "|" Seq<TypeIdent, "*"> "|" => GenericParams::from((<>)),
 };
 
-// ExplicitTypes: ExplicitTypes = {
-//     GenericParams? ":" Ref<Type> => ExplicitTypes::new(<>),
-// }
-
 FunctionDef: FunctionDef = {
-    "fn" Ident Closure => FunctionDef::new(<>),
-    // "fn" Ident ExplicitTypes? Closure => FunctionDef::new(<>),
+    "fn" Ident Closure => FunctionDef::from((<>)),
 };
 
 StructDef: StructDef = {
-    "struct" TypeIdent GenericParams? Type => StructDef::new(<>),
+    "struct" TypeIdent GenericParams? Type => StructDef::from((<>)),
 };
 
 ChoiceDef: ChoiceDef = {
-    "choice" TypeIdent GenericParams? Variants => ChoiceDef::new(<>),
+    "choice" TypeIdent GenericParams? Variants => ChoiceDef::from((<>)),
 };
 
 Variants: Variants = {
-    "{" Seq<VariantDef, ","> "}" => Variants::new(<>),
+    "{" Seq<VariantDef, ","> "}" => Variants::from((<>)),
 }
 
 VariantDef: VariantDef = {
-    TypeIdent Type => VariantDef::new(<>),
+    TypeIdent Type => VariantDef::from((<>)),
 };
 
 
 /// === Record ===
 
 Record<T>: Record<T> = {
-    "{" Seq<(Pat (":" <T>)?), ","> "}" => Record::new(<>),
+    "{" Seq<(Pat (":" <T>)?), ","> "}" => Record::from((<>)),
 };
 
 
@@ -166,7 +161,7 @@ GenericArgs: GenericArgs = {
 };
 
 NamedType: NamedType = {
-    TypePath GenericArgs? => NamedType::new(<>),
+    TypePath GenericArgs? => NamedType::from((<>)),
 };
 
 
@@ -191,15 +186,15 @@ Lit: Lit = {
 };
 
 Path: Path = {
-    (<Ident> "::")* Ident => Path::new(<>),
+    (<Ident> "::")* Ident => Path::from((<>)),
 };
 
 TypePath: Path = {
-    (<Ident> "::")* TypeIdent => Path::new(<>),
+    (<Ident> "::")* TypeIdent => Path::from((<>)),
 };
 
 Constructor<T>: Constructor<T> = {
-    <TypeIdent> "::" <TypeIdent> <T> => Constructor::new(<>),
+    <TypeIdent> "::" <TypeIdent> <T> => Constructor::from((<>)),
 };
 
 
@@ -242,19 +237,19 @@ Closure = {
 };
 
 Arm: Arm = {
-    "|" Seq<Param, ","> "|" EndExpr => Arm::new(<>),
+    "|" Seq<Param, ","> "|" EndExpr => Arm::from((<>)),
 };
 
 Param: Param = {
-    Pat (":" <Type>)? => Param::new(<>),
+    Pat (":" <Type>)? => Param::from((<>)),
 };
 
 Appl<Rhs>: Appl = {
-    Expr Term Rhs => Appl::new(<>),
+    Expr Term Rhs => Appl::from((<>)),
 };
 
 Region: Region = {
-    RegionKind Pat "{" EndExpr "}" => Region::new(<>),
+    RegionKind Pat "{" EndExpr "}" => Region::from((<>)),
 };
 
 RegionKind: RegionKind = {
@@ -264,7 +259,7 @@ RegionKind: RegionKind = {
 }
 
 Paren: Paren = {
-    "(" EndExpr ")" => Paren::new(<>),
+    "(" EndExpr ")" => Paren::from((<>)),
 };
 
 Term: Expr = {
